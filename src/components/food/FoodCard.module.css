@@ -1,0 +1,87 @@
+/* FoodCard.module.css */
+
+.card {
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+    text-decoration: none;
+    color: inherit;
+    margin-bottom: 0; /* Reset legacy margin */
+    height: 100%; /* Force uniform card height */
+
+    background-color: var(--card-bg, #ffffff);
+    border: 1.5px solid rgba(125, 132, 74, 0.12);
+    /* Subtle version of theme green #7d844a */
+    border-radius: var(--border-radius, 16px);
+    padding: 14px;
+    transition: transform 0.25s cubic-bezier(0.4, 0, 0.2, 1), 
+                box-shadow 0.25s cubic-bezier(0.4, 0, 0.2, 1), 
+                border-color 0.25s ease;
+    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.03), 0 2px 4px -1px rgba(0, 0, 0, 0.02);
+}
+
+.card:hover {
+    transform: translateY(-5px);
+    border-color: rgba(125, 132, 74, 0.35);
+    box-shadow: 0 15px 30px -5px rgba(125, 132, 74, 0.12), 0 8px 15px -5px rgba(125, 132, 74, 0.06);
+}
+
+.imageWrapper {
+    border-radius: 12px;
+    /* Slightly smaller than card radius for nested look */
+    overflow: hidden;
+    background-color: #f7fafc;
+    aspect-ratio: 4/3;
+    position: relative;
+    box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.02);
+}
+
+.image {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    transition: transform 0.4s ease;
+}
+
+.card:hover .image {
+    transform: scale(1.05);
+}
+
+.name {
+    font-size: 1.15rem;
+    font-weight: 700;
+    color: #1a202c;
+    text-align: left;
+    margin: 4px 0 2px 0;
+    transition: color 0.2s ease;
+}
+
+.card:hover .name {
+    color: #7d844a;
+}
+
+.description {
+    font-size: 0.9rem;
+    color: #4a5568;
+    margin: 0 0 4px 0;
+    line-height: 1.45;
+    display: -webkit-box;
+    -webkit-line-clamp: 3;
+    line-clamp: 3;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    flex-grow: 1; /* Pushes the price block down so it aligns across cards */
+}
+
+.price {
+    font-weight: 800;
+    color: #7d844a;
+    font-size: 1.1rem;
+    margin: auto 0 0 0; /* Pushes to absolute bottom of the card content */
+    display: inline-block;
+    background-color: rgba(125, 132, 74, 0.06);
+    padding: 4px 10px;
+    border-radius: 8px;
+    width: fit-content;
+}

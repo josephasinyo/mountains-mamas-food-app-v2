@@ -1,0 +1,1727 @@
+'use client';
+
+import React, { useState, useEffect } from 'react';
+import { updateOrderStatus, bulkUpdateStatus, exportOrdersCSV, updateOrderDetails, deleteOrder, bulkDeleteOrders } from './actions';
+import { Button, buttonVariants } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Badge } from '@/components/ui/badge';
+import { Checkbox } from '@/components/ui/checkbox';
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
+import { Label } from '@/components/ui/label';
+import { Textarea } from '@/components/ui/textarea';
+import {
+    Dialog, DialogContent, DialogHeader, DialogTitle,
+    DialogDescription, DialogFooter,
+} from '@/components/ui/dialog';
+import {
+    Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
+} from '@/components/ui/table';
+import {
+    Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
+} from '@/components/ui/select';
+import {
+    Download, CheckCircle, Ticket, ShoppingCart, Lock,
+    ChevronRight, X, Building2, Pencil, Printer,
+    MoreHorizontal, Trash2, Check, ListFilter,
+    ArrowUpDown, ArrowUp, ArrowDown, LayoutGrid, List
+} from 'lucide-react';
+import { cn, formatDateUS, formatDateTimeUS } from '@/lib/utils';
+import {
+    DropdownMenu,
+    DropdownMenuContent,
+    DropdownMenuItem,
+    DropdownMenuLabel,
+    DropdownMenuGroup,
+    DropdownMenuSeparator,
+    DropdownMenuTrigger,
+    DropdownMenuSub,
+    DropdownMenuSubContent,
+    DropdownMenuSubTrigger,
+} from '@/components/ui/dropdown-menu';
+import { toast } from 'sonner';
+import { ConfirmDialog } from '@/components/ConfirmDialog';
+import { motion, AnimatePresence } from 'framer-motion';
+import { OrderItemDetails } from '@/components/ui/OrderItemCustomFields';
+import { formatFieldName, STANDARD_ITEM_KEYS } from '@/lib/format-field-name';
+
+interface OrderItem {
+    id: string;
+    meal_name: string;
+    quantity: number;
+    box_type: string | null;
+    bread_type: string | null;
+    cookie_choice: string | null;
+    guest_name: string | null;
+    customizations: string | null;
+    unit_price: number;
+    custom_fields: Record<string, any> | null;
+}
+
+interface Order {
+    id: string;
+    customer_name: string;
+    guide_name: string | null;
+    tour_date: string;
+    pickup_time: string | null;
+    status: string;
+    payment_status: string;
+    notes: string | null;
+    is_locked: boolean;
+    created_at: string;
+    company_id: string | null;
+    tour_companies: { name: string; slug: string } | null;
+    order_items: OrderItem[];
+}
+
+interface OrdersClientProps {
+    initialOrders: Order[];
+    companies: { id: string; name: string; status: string }[];
+}
+
+const STATUS_LABELS: Record<string, string> = {
+    pending: 'Pending',
+    fulfilled: 'Fulfilled',
+    cancelled: 'Cancelled',
+};
+
+const formatBoxType = (box: string | null) => {
+    if (!box) return '';
+    if (box.toLowerCase().startsWith('this is a')) return box;
+    return box
+        .replace(/junior box lunch/i, 'Junior Box')
+        .replace(/junior bag lunch/i, 'Junior Bag')
+        .replace(/box lunch/i, 'Box Lunch')
+        .replace(/bag lunch/i, 'Bag Lunch')
+        .replace(/junior box/i, 'Junior Box')
+        .replace(/standard box/i, 'Box Lunch')
+        .replace(/sandwich only/i, 'Sandwich only');
+};
+
+export function OrdersClient({ initialOrders, companies }: OrdersClientProps) {
+    const [orders, setOrders] = useState<Order[]>(initialOrders);
+    const [selected, setSelected] = useState<Set<string>>(new Set());
+    const [expanded, setExpanded] = useState<string | null>(null);
+    const [dateRange, setDateRange] = useState('');
+    const [dateFilterMode, setDateFilterMode] = useState<'tour' | 'order'>('tour');
+    const [companyFilter, setCompanyFilter] = useState('');
+    const [statusFilter, setStatusFilter] = useState('');
+    const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
+    const [editingOrder, setEditingOrder] = useState<Order | null>(null);
+    const [editItems, setEditItems] = useState<OrderItem[]>([]);
+    const [loading, setLoading] = useState(false);
+    const [isMounted, setIsMounted] = useState(false);
+    const [viewMode, setViewMode] = useState<'table' | 'cards'>('cards');
+    const [sortConfig, setSortConfig] = useState<{ key: 'created_at' | 'tour_date', direction: 'asc' | 'desc' }>({ 
+        key: 'created_at', 
+        direction: 'desc' 
+    });
+
+    const [confirmState, setConfirmState] = React.useState<{
+        isOpen: boolean;
+        title: string;
+        description: string;
+        resolve: (val: boolean) => void;
+        variant?: 'danger' | 'warning' | 'info' | 'success';
+        confirmText?: string;
+    } | null>(null);
+
+    const niceConfirm = (title: string, description: string, variant: 'danger' | 'warning' | 'info' | 'success' = 'info', confirmText = 'Confirm') => {
+        return new Promise<boolean>((resolve) => {
+            setConfirmState({
+                isOpen: true,
+                title,
+                description,
+                resolve,
+                variant,
+                confirmText
+            });
+        });
+    };
+
+    const toggleSort = (key: 'created_at' | 'tour_date') => {
+        setSortConfig(prev => ({
+            key,
+            direction: prev.key === key && prev.direction === 'desc' ? 'asc' : 'desc'
+        }));
+    };
+
+    const getDateFilterLabel = () => {
+        if (!dateRange) return 'ALL';
+        if (dateRange === 'today') return 'TODAY';
+        if (dateRange === 'yesterday') return 'YESTERDAY';
+        if (dateRange === 'this_week') return 'THIS WEEK';
+        if (dateRange === 'last_week') return 'LAST WEEK';
+        if (dateRange === 'this_month') return 'THIS MONTH';
+        if (dateRange === 'last_month') return 'LAST MONTH';
+        return dateRange;
+    };
+
+    const getCompanyFilterLabel = () => {
+        if (!companyFilter) return 'ALL';
+        const comp = companies.find(c => c.id === companyFilter);
+        return comp ? comp.name.toUpperCase() : 'UNKNOWN';
+    };
+
+    const getStatusFilterLabel = () => {
+        if (!statusFilter) return 'ALL';
+        return (STATUS_LABELS[statusFilter] || statusFilter).toUpperCase();
+    };
+
+    useEffect(() => {
+        setIsMounted(true);
+    }, []);
+
+    // Form States
+    const [customerName, setCustomerName] = useState('');
+    const [guideName, setGuideName] = useState('');
+    const [tourDate, setTourDate] = useState('');
+    const [pickupTime, setPickupTime] = useState('');
+    const [notes, setNotes] = useState('');
+    const [companyId, setCompanyId] = useState<string | null>(null);
+
+    const hasChanges = editingOrder ? (
+        customerName !== (editingOrder.customer_name || '') ||
+        guideName !== (editingOrder.guide_name || '') ||
+        tourDate !== (editingOrder.tour_date || '') ||
+        pickupTime !== (editingOrder.pickup_time || '') ||
+        notes !== (editingOrder.notes || '') ||
+        companyId !== (editingOrder.company_id || null) ||
+        JSON.stringify(editItems) !== JSON.stringify(editingOrder.order_items)
+    ) : false;
+
+    const filtered = orders.filter(o => {
+        // Date Filtering Logic
+        if (dateRange) {
+            const now = new Date();
+            const todayStr = now.toISOString().split('T')[0];
+            const targetDateStr = dateFilterMode === 'tour' ? o.tour_date : o.created_at.split('T')[0];
+            
+            if (dateRange === 'today') {
+                if (targetDateStr !== todayStr) return false;
+            } else if (dateRange === 'yesterday') {
+                const yesterday = new Date(now);
+                yesterday.setDate(yesterday.getDate() - 1);
+                const yesterdayStr = yesterday.toISOString().split('T')[0];
+                if (targetDateStr !== yesterdayStr) return false;
+            } else {
+                const orderDate = new Date(targetDateStr);
+                const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+
+                if (dateRange === 'this_week') {
+                    const startOfWeek = new Date(today);
+                    startOfWeek.setDate(today.getDate() - today.getDay());
+                    if (orderDate < startOfWeek) return false;
+                } else if (dateRange === 'last_week') {
+                    const startOfLastWeek = new Date(today);
+                    startOfLastWeek.setDate(today.getDate() - today.getDay() - 7);
+                    const endOfLastWeek = new Date(startOfLastWeek);
+                    endOfLastWeek.setDate(startOfLastWeek.getDate() + 6);
+                    if (orderDate < startOfLastWeek || orderDate > endOfLastWeek) return false;
+                } else if (dateRange === 'this_month') {
+                    if (orderDate.getMonth() !== today.getMonth() || orderDate.getFullYear() !== today.getFullYear()) return false;
+                } else if (dateRange === 'last_month') {
+                    const lastMonth = new Date(today.getFullYear(), today.getMonth() - 1, 1);
+                    if (orderDate.getMonth() !== lastMonth.getMonth() || orderDate.getFullYear() !== lastMonth.getFullYear()) return false;
+                } else if (dateRange.includes('-')) { // Custom date YYYY-MM-DD
+                    if (targetDateStr !== dateRange) return false;
+                }
+            }
+        }
+
+        if (companyFilter && o.company_id !== companyFilter) return false;
+        if (statusFilter && o.status !== statusFilter) return false;
+        return true;
+    });
+
+    const sorted = [...filtered].sort((a, b) => {
+        const aVal = a[sortConfig.key];
+        const bVal = b[sortConfig.key];
+        if (!aVal) return 1;
+        if (!bVal) return -1;
+        
+        if (sortConfig.direction === 'asc') {
+            return aVal > bVal ? 1 : -1;
+        } else {
+            return aVal < bVal ? 1 : -1;
+        }
+    });
+
+    const ordersToPrint = React.useMemo(() => {
+        if (selected.size > 0) {
+            return sorted.filter(o => selected.has(o.id));
+        }
+        return sorted;
+    }, [sorted, selected]);
+
+    const totalLunchItemsCount = React.useMemo(() => {
+        return filtered.reduce((sum: number, order: any) => {
+            return sum + (order.order_items?.reduce((acc: number, item: any) => acc + (item.quantity || 1), 0) || 0);
+        }, 0);
+    }, [filtered]);
+
+    function toggleSelect(id: string) {
+        const next = new Set(selected);
+        next.has(id) ? next.delete(id) : next.add(id);
+        setSelected(next);
+    }
+
+    function toggleAll() {
+        if (selected.size === filtered.length) {
+            setSelected(new Set());
+        } else {
+            setSelected(new Set(filtered.map(o => o.id)));
+        }
+    }
+
+    async function handleStatus(id: string, status: string) {
+        const result = await updateOrderStatus(id, status);
+        if (result.success) {
+            setOrders(prev => prev.map(o => o.id === id ? { ...o, status } : o));
+        }
+    }
+
+    async function handleBulk(status: string) {
+        if (!selected.size) return;
+        const confirmed = await niceConfirm(
+            'Confirm Bulk Update',
+            `Are you sure you want to mark ${selected.size} order(s) as ${STATUS_LABELS[status] || status}?`,
+            status === 'cancelled' ? 'danger' : 'info'
+        );
+        if (!confirmed) return;
+        const result = await bulkUpdateStatus(Array.from(selected), status);
+        if (result.success) {
+            setOrders(prev => prev.map(o => selected.has(o.id) ? { ...o, status } : o));
+            setSelected(new Set());
+        }
+    }
+
+    async function handleEditSubmit(e: React.FormEvent<HTMLFormElement>) {
+        e.preventDefault();
+        if (!editingOrder || !hasChanges) return;
+        setLoading(true);
+
+        const details = {
+            customer_name: customerName,
+            guide_name: guideName || null,
+            tour_date: tourDate,
+            pickup_time: pickupTime || null,
+            notes: notes || null,
+            company_id: companyId || null,
+        };
+
+        const result = await updateOrderDetails(
+            editingOrder.id, 
+            details, 
+            editItems.map(item => ({ 
+                id: item.id, 
+                quantity: item.quantity, 
+                customizations: item.customizations,
+                guest_name: item.guest_name,
+                box_type: item.box_type,
+                bread_type: item.bread_type,
+                cookie_choice: item.cookie_choice
+            }))
+        );
+
+        if (result.success) {
+            const companyName = companies.find(c => c.id === companyId)?.name;
+            setOrders(prev => prev.map(o => o.id === editingOrder.id ? { 
+                ...o, 
+                ...details, 
+                tour_companies: companyId ? { name: companyName || '', slug: '' } : null,
+                order_items: editItems 
+            } : o));
+            setIsEditDialogOpen(false);
+            setEditingOrder(null);
+            setEditItems([]);
+            setLoading(false);
+        }
+    }
+
+    async function handleDelete(id: string) {
+        const confirmed = await niceConfirm(
+            'Delete Order',
+            'Are you sure you want to delete this order? This action cannot be undone.',
+            'danger',
+            'Delete'
+        );
+        if (!confirmed) return;
+        setLoading(true);
+        const result = await deleteOrder(id);
+        if (result.success) {
+            setOrders(prev => prev.filter(o => o.id !== id));
+            toast.success('Order deleted successfully');
+        } else {
+            toast.error(result.error || 'Failed to delete order');
+        }
+        setLoading(false);
+    }
+
+    const updateEditItem = (itemId: string, updates: Partial<OrderItem>) => {
+        setEditItems(prev => prev.map(item => item.id === itemId ? { ...item, ...updates } : item));
+    };
+
+    async function handleExport() {
+        const result = await exportOrdersCSV({
+            dateFrom: dateRange.includes('-') ? dateRange : undefined,
+            companyId: companyFilter || undefined,
+            status: statusFilter || undefined,
+        });
+        if (result.success && result.csv) {
+            const blob = new Blob([result.csv], { type: 'text/csv' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `orders-${new Date().toISOString().split('T')[0]}.csv`;
+            a.click();
+            URL.revokeObjectURL(url);
+        }
+    }
+
+    const pendingCount = filtered.filter(o => o.status === 'pending').length;
+    const hasFilters = !!(dateRange || companyFilter || statusFilter);
+    const allSelected = filtered.length > 0 && selected.size === filtered.length;
+
+    return (
+        <>
+            <div className="space-y-6 dashboard-web-view no-print">
+            {/* Header */}
+            <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between mb-8">
+                <div className="flex items-center justify-between w-full md:w-auto">
+                    <div>
+                        <h1 className="text-3xl font-extrabold tracking-tight text-gray-900">Orders</h1>
+                        <p className="hidden md:block text-sm font-medium text-gray-500 mt-1">
+                            <span className="text-violet-600 font-bold">{filtered.length}</span> order{filtered.length !== 1 ? 's' : ''} total ·{' '}
+                            <span className="text-violet-600 font-bold">{totalLunchItemsCount}</span> total lunch{totalLunchItemsCount !== 1 ? 'es' : ''} ·{' '}
+                            <span className="text-amber-500 font-bold">{pendingCount}</span> pending
+                        </p>
+                    </div>
+                    {/* Mobile View Mode Toggle */}
+                    <div className="flex md:hidden items-center gap-1 bg-gray-100 p-1 rounded-xl h-11 border border-gray-200/50">
+                        <Button 
+                            variant="ghost" 
+                            size="sm" 
+                            type="button"
+                            onClick={() => setViewMode('table')}
+                            className={`h-9 rounded-lg px-3 transition-all ${viewMode === 'table' ? 'bg-white shadow-sm text-violet-600 font-bold' : 'text-gray-500 font-medium'}`}
+                        >
+                            <List className="size-4 mr-1" />
+                            <span className="text-xs">List</span>
+                        </Button>
+                        <Button 
+                            variant="ghost" 
+                            size="sm" 
+                            type="button"
+                            onClick={() => setViewMode('cards')}
+                            className={`h-9 rounded-lg px-3 transition-all ${viewMode === 'cards' ? 'bg-white shadow-sm text-violet-600 font-bold' : 'text-gray-500 font-medium'}`}
+                        >
+                            <LayoutGrid className="size-4 mr-1" />
+                            <span className="text-xs">Cards</span>
+                        </Button>
+                    </div>
+                </div>
+
+                {/* Mobile-only Stats */}
+                <p className="block md:hidden text-xs font-semibold text-gray-500 bg-gray-50 border border-gray-100/70 rounded-xl p-3 text-center">
+                    <span className="text-violet-600 font-black">{filtered.length}</span> orders ·{' '}
+                    <span className="text-violet-600 font-black">{totalLunchItemsCount}</span> lunches ·{' '}
+                    <span className="text-amber-500 font-black">{pendingCount}</span> pending
+                </p>
+
+                {/* Actions Grid */}
+                <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 w-full md:w-auto">
+                    {/* Desktop View Mode Toggle */}
+                    <div className="hidden md:flex items-center gap-1 bg-gray-100 p-1 rounded-xl h-11 border border-gray-200/50 mr-2">
+                        <Button 
+                            variant="ghost" 
+                            size="sm" 
+                            type="button"
+                            onClick={() => setViewMode('table')}
+                            className={`h-9 rounded-lg px-3 transition-all ${viewMode === 'table' ? 'bg-white shadow-sm text-violet-600 font-bold' : 'text-gray-500 font-medium'}`}
+                        >
+                            <List className="size-4 mr-1.5" />
+                            <span className="text-xs">List</span>
+                        </Button>
+                        <Button 
+                            variant="ghost" 
+                            size="sm" 
+                            type="button"
+                            onClick={() => setViewMode('cards')}
+                            className={`h-9 rounded-lg px-3 transition-all ${viewMode === 'cards' ? 'bg-white shadow-sm text-violet-600 font-bold' : 'text-gray-500 font-medium'}`}
+                        >
+                            <LayoutGrid className="size-4 mr-1.5" />
+                            <span className="text-xs">Cards</span>
+                        </Button>
+                    </div>
+
+                    {/* Print & Export buttons row */}
+                    <div className="grid grid-cols-3 md:flex items-center gap-2 w-full md:w-auto">
+                        <Button 
+                            variant="outline" 
+                            className="gap-1.5 h-11 px-2 md:px-4 rounded-xl border-gray-200 hover:border-violet-200 hover:bg-violet-50 transition-all font-bold no-print text-[11px] md:text-sm" 
+                            onClick={() => {
+                                document.body.classList.add('print-table-mode');
+                                window.print();
+                                document.body.classList.remove('print-table-mode');
+                            }}
+                        >
+                            <Printer className="size-4 shrink-0" />
+                            <span className="truncate">
+                                {selected.size > 0 ? `Print Table (${selected.size})` : 'Print Table'}
+                            </span>
+                        </Button>
+                        <Button 
+                            variant="outline" 
+                            className="gap-1.5 h-11 px-2 md:px-4 rounded-xl border-gray-200 hover:border-violet-200 hover:bg-violet-50 transition-all font-bold no-print text-[11px] md:text-sm" 
+                            onClick={() => {
+                                document.body.classList.add('print-tickets-mode');
+                                window.print();
+                                document.body.classList.remove('print-tickets-mode');
+                            }}
+                        >
+                            <Ticket className="size-4 text-violet-600 shrink-0" />
+                            <span className="truncate">
+                                {selected.size > 0 ? `Tickets (${selected.size})` : 'Tickets'}
+                            </span>
+                        </Button>
+                        <Button 
+                            variant="outline" 
+                            className="gap-1.5 h-11 px-2 md:px-4 rounded-xl border-gray-200 hover:border-violet-200 hover:bg-violet-50 transition-all font-bold no-print text-[11px] md:text-sm" 
+                            onClick={handleExport}
+                        >
+                            <Download className="size-4 shrink-0" />
+                            <span className="truncate">Export</span>
+                        </Button>
+                    </div>
+                </div>
+            </div>
+
+            {/* Filters */}
+            <Card className="rounded-2xl border-gray-100 shadow-sm mb-6">
+                <CardContent className="p-3 flex flex-wrap items-center gap-4">
+                    <div className="flex items-center gap-1 bg-gray-100/50 p-1 rounded-xl border border-gray-200">
+                        <Button 
+                            variant="ghost" 
+                            size="sm" 
+                            onClick={() => setDateFilterMode('tour')}
+                            className={`h-8 rounded-lg px-3 text-[11px] font-bold uppercase tracking-wider transition-all ${
+                                dateFilterMode === 'tour' 
+                                    ? 'bg-white text-violet-600 shadow-sm border-gray-200' 
+                                    : 'text-gray-400 hover:text-gray-600'
+                            }`}
+                        >
+                            Tour Date
+                        </Button>
+                        <Button 
+                            variant="ghost" 
+                            size="sm" 
+                            onClick={() => setDateFilterMode('order')}
+                            className={`h-8 rounded-lg px-3 text-[11px] font-bold uppercase tracking-wider transition-all ${
+                                dateFilterMode === 'order' 
+                                    ? 'bg-white text-violet-600 shadow-sm border-gray-200' 
+                                    : 'text-gray-400 hover:text-gray-600'
+                            }`}
+                        >
+                            Order Date
+                        </Button>
+                    </div>
+
+                    <Select value={dateRange} onValueChange={(val) => setDateRange(val ?? '')}>
+                        <SelectTrigger className="w-[180px] h-10 rounded-xl border-gray-200 font-semibold text-sm">
+                            <SelectValue placeholder="All Dates">
+                                {dateRange ? (
+                                    dateRange === 'today' ? 'Today' :
+                                    dateRange === 'yesterday' ? 'Yesterday' :
+                                    dateRange === 'this_week' ? 'This Week' :
+                                    dateRange === 'last_week' ? 'Last Week' :
+                                    dateRange === 'this_month' ? 'This Month' :
+                                    dateRange === 'last_month' ? 'Last Month' :
+                                    dateRange
+                                ) : 'All Dates'}
+                            </SelectValue>
+                        </SelectTrigger>
+                        <SelectContent>
+                            <SelectItem value="">All Dates</SelectItem>
+                            <SelectItem value="today">Today</SelectItem>
+                            <SelectItem value="yesterday">Yesterday</SelectItem>
+                            <SelectItem value="this_week">This Week</SelectItem>
+                            <SelectItem value="last_week">Last Week</SelectItem>
+                            <SelectItem value="this_month">This Month</SelectItem>
+                            <SelectItem value="last_month">Last Month</SelectItem>
+                        </SelectContent>
+                    </Select>
+
+                    <Input 
+                        type="date" 
+                        value={dateRange.includes('-') ? dateRange : ''} 
+                        onChange={e => setDateRange(e.target.value)}
+                        className="w-[160px] h-10 rounded-xl border-gray-200 text-sm font-semibold" 
+                    />
+
+                    <Select value={companyFilter} onValueChange={(val) => setCompanyFilter(val ?? '')}>
+                        <SelectTrigger className="w-[180px] h-10 rounded-xl border-gray-200 font-semibold text-sm">
+                            <SelectValue placeholder="All Companies">
+                                {companyFilter ? (
+                                    companies.find(c => c.id === companyFilter)?.name || 'All Companies'
+                                ) : 'All Companies'}
+                            </SelectValue>
+                        </SelectTrigger>
+                        <SelectContent>
+                            <SelectItem value="">All Companies</SelectItem>
+                            {companies.map(c => <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}
+                        </SelectContent>
+                    </Select>
+
+                    <Select value={statusFilter} onValueChange={(val) => setStatusFilter(val ?? '')}>
+                        <SelectTrigger className="w-[160px] h-10 rounded-xl border-gray-200 font-semibold text-sm">
+                            <SelectValue placeholder="All Statuses">
+                                {statusFilter ? (
+                                    statusFilter === 'pending' ? 'Pending' :
+                                    statusFilter === 'fulfilled' ? 'Fulfilled' :
+                                    statusFilter === 'cancelled' ? 'Cancelled' :
+                                    statusFilter
+                                ) : 'All Statuses'}
+                            </SelectValue>
+                        </SelectTrigger>
+                        <SelectContent>
+                            <SelectItem value="">All Statuses</SelectItem>
+                            <SelectItem value="pending" className="font-semibold text-xs">Pending</SelectItem>
+                            <SelectItem value="fulfilled" className="font-semibold text-xs">Fulfilled</SelectItem>
+                            <SelectItem value="cancelled" className="font-semibold text-xs">Cancelled</SelectItem>
+                        </SelectContent>
+                    </Select>
+
+                    {hasFilters && (
+                        <Button variant="ghost" size="sm" onClick={() => { setDateRange(''); setCompanyFilter(''); setStatusFilter(''); }} className="gap-2 text-xs font-bold h-10 px-4 text-gray-400 hover:text-gray-900 transition-colors">
+                            <X className="size-3.5" /> Clear
+                        </Button>
+                    )}
+                </CardContent>
+            </Card>
+
+            {/* Bulk Actions */}
+            {selected.size > 0 && (
+                <div className="flex items-center gap-4 p-4 rounded-2xl border border-violet-200 bg-violet-50/50 shadow-sm mb-6">
+                    <span className="text-sm font-bold text-violet-700 ml-2">{selected.size} items selected</span>
+                    <div className="h-6 w-px bg-violet-200 mx-2" />
+                    <Select onValueChange={(val: string | null) => { if (val) handleBulk(val); }}>
+                        <SelectTrigger className="w-[180px] h-9 rounded-xl border-violet-200 bg-white text-xs font-bold text-violet-700">
+                            <SelectValue placeholder="Update Status" />
+                        </SelectTrigger>
+                        <SelectContent>
+                            <SelectItem value="pending">Mark Pending</SelectItem>
+                            <SelectItem value="fulfilled">Mark Fulfilled</SelectItem>
+                            <SelectItem value="cancelled">Mark Cancelled</SelectItem>
+                        </SelectContent>
+                    </Select>
+                    
+                    <Button 
+                        size="sm" 
+                        variant="ghost" 
+                        className="h-9 px-4 rounded-xl font-bold text-rose-600 hover:text-rose-700 hover:bg-rose-50 transition-all ml-auto gap-2" 
+                        onClick={async () => {
+                            if (!selected.size) return;
+                            
+                            const confirmed = await niceConfirm(
+                                'Delete Selected Orders',
+                                `Are you sure you want to delete all ${selected.size} selected order(s)? This action cannot be undone.`,
+                                'danger',
+                                'Delete'
+                            );
+                            if (!confirmed) return;
+                            
+                            setLoading(true);
+                            const result = await bulkDeleteOrders(Array.from(selected));
+                            
+                            if (result.success) {
+                                toast.success('Orders deleted successfully!');
+                                const deletedIds = new Set(selected);
+                                setOrders(prev => prev.filter(o => !deletedIds.has(o.id)));
+                                setSelected(new Set());
+                            } else {
+                                toast.error(result.error || 'Failed to delete orders');
+                            }
+                            setLoading(false);
+                        }}
+                        disabled={loading}
+                    >
+                        <Trash2 className="size-4" />
+                        {loading ? 'Deleting...' : 'Delete Selected'}
+                    </Button>
+
+                    <Button size="sm" variant="ghost" className="h-9 px-4 rounded-xl font-bold text-gray-400 hover:text-gray-600" onClick={() => setSelected(new Set())}>
+                        Deselect
+                    </Button>
+                </div>
+            )}
+
+            {/* Table */}
+            {filtered.length === 0 ? (
+                <Card className="rounded-3xl border-gray-100 shadow-sm overflow-hidden">
+                    <CardContent className="flex flex-col items-center justify-center py-24 text-gray-400">
+                        <div className="size-20 rounded-full bg-gray-50 flex items-center justify-center mb-6">
+                            <ShoppingCart className="size-10 opacity-20" />
+                        </div>
+                        <p className="font-bold text-gray-900 text-lg">No orders found</p>
+                        <p className="text-sm mt-1 max-w-[300px] text-center">
+                            {orders.length === 0 ? 'Orders will appear once customers start ordering.' : 'Try adjusting your filters.'}
+                        </p>
+                    </CardContent>
+                </Card>
+            ) : viewMode === 'table' ? (
+                <Card className="rounded-3xl border-gray-100 shadow-xl shadow-gray-200/50 overflow-hidden bg-white">
+                    <Table>
+                        <TableHeader className="bg-gray-50/50">
+                            <TableRow className="hover:bg-transparent border-gray-100">
+                                <TableHead className="w-[50px] pl-6 py-4">
+                                    <Checkbox
+                                        checked={allSelected}
+                                        onCheckedChange={toggleAll}
+                                        className="rounded-md border-gray-300 data-[state=checked]:bg-violet-600 data-[state=checked]:border-violet-600"
+                                    />
+                                </TableHead>
+                                <TableHead className="w-[32px] py-4" />
+                                <TableHead className="font-bold text-gray-900 py-4">Customer</TableHead>
+                                <TableHead className="font-bold text-gray-900 py-4">Company</TableHead>
+                                <TableHead 
+                                    className="font-bold text-gray-900 py-4 cursor-pointer hover:bg-gray-100/50 transition-colors group/sort"
+                                    onClick={() => toggleSort('tour_date')}
+                                >
+                                    <div className="flex items-center gap-1">
+                                        Tour Date
+                                        {sortConfig.key === 'tour_date' ? (
+                                            sortConfig.direction === 'asc' ? <ArrowUp className="size-3 text-violet-600" /> : <ArrowDown className="size-3 text-violet-600" />
+                                        ) : (
+                                            <ArrowUpDown className="size-3 text-gray-300 opacity-0 group-hover/sort:opacity-100 transition-opacity" />
+                                        )}
+                                    </div>
+                                </TableHead>
+                                <TableHead 
+                                    className="font-bold text-gray-900 py-4 cursor-pointer hover:bg-gray-100/50 transition-colors group/sort"
+                                    onClick={() => toggleSort('created_at')}
+                                >
+                                    <div className="flex items-center gap-1">
+                                        Placed At
+                                        {sortConfig.key === 'created_at' ? (
+                                            sortConfig.direction === 'asc' ? <ArrowUp className="size-3 text-violet-600" /> : <ArrowDown className="size-3 text-violet-600" />
+                                        ) : (
+                                            <ArrowUpDown className="size-3 text-gray-300 opacity-0 group-hover/sort:opacity-100 transition-opacity" />
+                                        )}
+                                    </div>
+                                </TableHead>
+                                <TableHead className="font-bold text-gray-900 py-4">Items</TableHead>
+                                <TableHead className="font-bold text-gray-900 py-4">Status</TableHead>
+                                <TableHead className="font-bold text-gray-900 py-4 text-center pr-6">Actions</TableHead>
+                            </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                            {sorted.flatMap((order) => {
+                                const rows = [
+                                    <TableRow
+                                        key={order.id}
+                                        className={`cursor-pointer transition-all duration-200 border-b border-gray-100 group relative ${
+                                            expanded === order.id 
+                                                ? 'bg-violet-50/50' 
+                                                : 'hover:bg-gray-50/80'
+                                        }`}
+                                        onClick={() => setExpanded(expanded === order.id ? null : order.id)}
+                                    >
+                                        <TableCell className={`pl-6 py-4 relative ${expanded === order.id ? 'after:absolute after:left-0 after:top-0 after:bottom-0 after:w-1 after:bg-violet-600' : ''}`} onClick={e => e.stopPropagation()}>
+                                            <Checkbox
+                                                checked={selected.has(order.id)}
+                                                onCheckedChange={() => toggleSelect(order.id)}
+                                                className="rounded-md border-gray-300 data-[state=checked]:bg-violet-600 data-[state=checked]:border-violet-600"
+                                            />
+                                        </TableCell>
+                                        <TableCell className="py-4">
+                                            <ChevronRight className={`size-4 text-gray-300 group-hover:text-gray-500 transition-transform duration-300 ${expanded === order.id ? 'rotate-90 text-violet-600' : ''}`} />
+                                        </TableCell>
+                                        <TableCell className="py-4">
+                                            <div className="flex items-center gap-3">
+                                                <div className={`size-9 rounded-xl flex items-center justify-center text-[13px] font-black transition-all ${
+                                                    expanded === order.id 
+                                                        ? 'bg-violet-600 text-white shadow-sm' 
+                                                        : 'bg-gray-100 text-gray-600 group-hover:bg-violet-100 group-hover:text-violet-700'
+                                                }`}>
+                                                    {order.customer_name?.charAt(0).toUpperCase() || '?'}
+                                                </div>
+                                                <div>
+                                                    <div className="flex items-center gap-1.5">
+                                                        <p className="font-bold text-[13.5px] text-gray-900">{order.customer_name}</p>
+                                                        {order.is_locked && <Lock className="size-3 text-amber-500" />}
+                                                    </div>
+                                                    {order.guide_name && (
+                                                        <p className="text-[11px] font-semibold text-violet-600/70 uppercase tracking-wider mt-0.5">Guide: {order.guide_name}</p>
+                                                    )}
+                                                </div>
+                                            </div>
+                                        </TableCell>
+                                        <TableCell className="py-3">
+                                            <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-gray-100/50 border border-gray-200/50 text-[11px] font-bold text-gray-600">
+                                                <Building2 className="size-3 text-gray-400" />
+                                                {order.tour_companies?.name || 'Individual'}
+                                            </div>
+                                        </TableCell>
+                                        <TableCell className="py-3">
+                                            <div className="flex flex-col">
+                                                <span className="text-[13px] font-bold text-gray-900">{formatDateUS(order.tour_date)}</span>
+                                                <span className="text-[10px] font-semibold text-gray-400 uppercase tracking-tight">{order.pickup_time || 'No time set'}</span>
+                                            </div>
+                                        </TableCell>
+                                        <TableCell className="py-3">
+                                            <div className="flex flex-col">
+                                                <span className="text-[13px] font-bold text-gray-900">
+                                                    {isMounted ? formatDateUS(order.created_at) : ''}
+                                                </span>
+                                                <span className="text-[10px] font-semibold text-gray-400 uppercase tracking-tight">
+                                                    {isMounted ? new Date(order.created_at).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }) : ''}
+                                                </span>
+                                            </div>
+                                        </TableCell>
+                                        <TableCell className="py-3 text-left">
+                                            <div className="flex flex-col items-start gap-1">
+                                                <div className="flex items-center gap-2">
+                                                    <div className="size-7 rounded-lg bg-violet-50 flex items-center justify-center text-[11px] font-extrabold text-violet-600 border border-violet-100">
+                                                        {order.order_items?.reduce((acc: number, item: any) => acc + item.quantity, 0) || 0}
+                                                    </div>
+                                                    <span className="text-[12px] font-bold text-gray-900">Total Items</span>
+                                                </div>
+                                                <div className="flex flex-col items-start gap-0.5 ml-1">
+                                                    {order.order_items?.slice(0, 5).map((item: any, i: number) => (
+                                                        <p key={i} className="text-[10px] font-medium text-gray-500 leading-tight">
+                                                            <span className="font-bold text-violet-600/80">{item.quantity}x</span> {item.meal_name}
+                                                        </p>
+                                                    ))}
+                                                    {order.order_items && order.order_items.length > 5 && (
+                                                        <p className="text-[9px] font-bold text-violet-500 italic mt-0.5">
+                                                            {order.order_items.length - 5} more items
+                                                        </p>
+                                                    )}
+                                                </div>
+                                            </div>
+                                        </TableCell>
+                                        <TableCell className="py-3">
+                                            <Badge variant="outline" className={`
+                                                ${order.status === 'pending' ? 'bg-amber-50 text-amber-700 border-amber-200' : ''}
+                                                ${order.status === 'ticket_created' ? 'bg-blue-50 text-blue-700 border-blue-200' : ''}
+                                                ${order.status === 'fulfilled' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : ''}
+                                                ${order.status === 'cancelled' ? 'bg-rose-50 text-rose-700 border-rose-200' : ''}
+                                            `}>
+                                                {STATUS_LABELS[order.status] || order.status}
+                                            </Badge>
+                                        </TableCell>
+                                        <TableCell className="py-4 text-center pr-6" onClick={e => e.stopPropagation()}>
+                                            <DropdownMenu>
+                                                <DropdownMenuTrigger className={cn(
+                                                    buttonVariants({ variant: 'ghost', size: 'icon' }),
+                                                    "h-9 w-9 p-0 rounded-xl hover:bg-violet-50 hover:text-violet-600 transition-all"
+                                                )}>
+                                                    <MoreHorizontal className="size-4" />
+                                                </DropdownMenuTrigger>
+                                                <DropdownMenuContent align="end" className="w-[180px] rounded-xl border-gray-100 shadow-xl p-1 bg-white">
+                                                    <DropdownMenuGroup>
+                                                        <DropdownMenuLabel className="text-[10px] font-bold text-gray-400 uppercase tracking-widest px-3 py-2">Actions</DropdownMenuLabel>
+                                                    </DropdownMenuGroup>
+                                                    <DropdownMenuItem 
+                                                        className="rounded-lg gap-2 font-bold text-gray-700 focus:bg-violet-50 focus:text-violet-700 cursor-pointer"
+                                                        onClick={() => {
+                                                            setEditingOrder(order);
+                                                            setCustomerName(order.customer_name || '');
+                                                            setGuideName(order.guide_name || '');
+                                                            setTourDate(order.tour_date || '');
+                                                            setPickupTime(order.pickup_time || '');
+                                                            setNotes(order.notes || '');
+                                                            setCompanyId(order.company_id || null);
+                                                            setEditItems(JSON.parse(JSON.stringify(order.order_items || [])));
+                                                            setIsEditDialogOpen(true);
+                                                        }}
+                                                    >
+                                                        <Pencil className="size-3.5" /> Edit Order
+                                                    </DropdownMenuItem>
+ 
+                                                    <DropdownMenuSub>
+                                                        <DropdownMenuSubTrigger className="rounded-lg gap-2 font-bold text-gray-700 focus:bg-violet-50 focus:text-violet-700 cursor-pointer">
+                                                            <ListFilter className="size-3.5" /> Change Status
+                                                        </DropdownMenuSubTrigger>
+                                                        <DropdownMenuSubContent className="rounded-xl border-gray-100 shadow-xl p-1 ml-1 bg-white">
+                                                            {Object.entries(STATUS_LABELS).map(([value, label]) => (
+                                                                <DropdownMenuItem
+                                                                    key={value}
+                                                                    className="rounded-lg gap-2 font-bold text-gray-700 focus:bg-violet-50 focus:text-violet-700 cursor-pointer"
+                                                                    onClick={() => handleStatus(order.id, value)}
+                                                                >
+                                                                    {order.status === value && <Check className="size-3 text-violet-600" />}
+                                                                    <span className={order.status === value ? 'text-violet-600 pl-0' : 'pl-5'}>{label}</span>
+                                                                </DropdownMenuItem>
+                                                            ))}
+                                                        </DropdownMenuSubContent>
+                                                    </DropdownMenuSub>
+ 
+                                                    <DropdownMenuSeparator className="bg-gray-100 my-1" />
+                                                    
+                                                    <DropdownMenuItem 
+                                                        className="rounded-lg gap-2 font-bold text-rose-600 focus:bg-rose-50 focus:text-rose-700 cursor-pointer"
+                                                        onClick={() => handleDelete(order.id)}
+                                                    >
+                                                        <Trash2 className="size-3.5" /> Delete Order
+                                                    </DropdownMenuItem>
+                                                </DropdownMenuContent>
+                                            </DropdownMenu>
+                                        </TableCell>
+                                    </TableRow>
+                                ];
+ 
+                                if (expanded === order.id) {
+                                    rows.push(
+                                        <TableRow key={`${order.id}-detail`} className="border-none hover:bg-transparent">
+                                            <TableCell colSpan={9} className="p-0 border-b border-gray-100">
+                                                <div className="bg-gray-50/50 px-6 py-8 border-t border-gray-100">
+                                                    <div className="max-w-3xl mx-auto">
+                                                        {/* Single Unified Card */}
+                                                        <div className="bg-white rounded-[24px] border border-gray-200 shadow-sm overflow-hidden divide-y divide-gray-100">
+                                                            {/* Section 1: Items List */}
+                                                            <div className="divide-y divide-gray-100/70">
+                                                                {order.order_items?.map((item: any, i: number) => (
+                                                                    <div key={i} className="flex items-center justify-between p-4 hover:bg-gray-50/50 transition-colors">
+                                                                        <div className="flex items-center gap-4">
+                                                                            <div className="font-black text-violet-600 text-base w-8">
+                                                                                {item.quantity}x
+                                                                            </div>
+                                                                            <div className="space-y-0.5">
+                                                                                <p className="font-extrabold text-base text-gray-900 leading-tight">{item.meal_name}</p>
+                                                                                <OrderItemDetails item={item} />
+                                                                            </div>
+                                                                        </div>
+                                                                        <div className="text-right ml-8">
+                                                                            <p className="font-bold text-base text-gray-900 tracking-tight">${(item.unit_price * item.quantity).toFixed(2)}</p>
+                                                                            <p className="text-xs text-gray-400 font-semibold uppercase tracking-wider">${item.unit_price.toFixed(2)} ea</p>
+                                                                        </div>
+                                                                    </div>
+                                                                ))}
+                                                            </div>
+ 
+                                                            {order.notes && (
+                                                                <div className="bg-amber-50/30 p-6">
+                                                                    <span className="text-[11px] font-black text-amber-700 uppercase tracking-[0.2em] block mb-2">KITCHEN NOTES</span>
+                                                                    <p className="text-[15px] text-amber-900 font-black italic leading-relaxed">&ldquo;{order.notes}&rdquo;</p>
+                                                                </div>
+                                                            )}
+ 
+                                                            <div className="flex items-center justify-between p-6 bg-gray-50/30">
+                                                                <div className="flex items-center gap-10">
+                                                                    <div className="flex flex-col">
+                                                                        <span className="text-[11px] font-bold text-gray-400 uppercase tracking-wider">Pickup</span>
+                                                                        <span className="text-[14px] font-black text-gray-900">{order.pickup_time || 'N/A'}</span>
+                                                                    </div>
+                                                                    <div className="flex flex-col">
+                                                                        <span className="text-[11px] font-bold text-gray-400 uppercase tracking-wider">Payment</span>
+                                                                        <span className="text-[14px] font-black text-gray-900 capitalize">{order.payment_status?.replace('_', ' ')}</span>
+                                                                    </div>
+                                                                    <div className="flex flex-col">
+                                                                        <span className="text-[11px] font-bold text-gray-400 uppercase tracking-wider">Placed At</span>
+                                                                        <span className="text-[14px] font-black text-gray-900">
+                                                                            {isMounted ? new Date(order.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : ''}
+                                                                        </span>
+                                                                    </div>
+                                                                </div>
+                                                                
+                                                                <div className="text-right flex items-center gap-4">
+                                                                    <span className="text-[12px] font-bold text-gray-400 uppercase tracking-widest">TOTAL AMOUNT</span>
+                                                                    <span className="text-[20px] font-black text-violet-600 tracking-tighter">
+                                                                        ${order.order_items?.reduce((acc: number, item: any) => acc + (Number(item.unit_price) * item.quantity), 0).toFixed(2)}
+                                                                    </span>
+                                                                </div>
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </TableCell>
+                                        </TableRow>
+                                    );
+                                }
+                                return rows;
+                            })}
+                        </TableBody>
+                    </Table>
+                </Card>
+            ) : (
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 no-print">
+                    {filtered.map((order) => {
+                        const isExpanded = expanded === order.id;
+                        const totalItems = order.order_items?.reduce((acc: number, item: any) => acc + item.quantity, 0) || 0;
+                        const totalPrice = order.order_items?.reduce((acc: number, item: any) => acc + (Number(item.unit_price) * item.quantity), 0) || 0;
+
+                        return (
+                            <Card 
+                                key={order.id} 
+                                className={cn(
+                                    "rounded-[24px] border border-gray-100 bg-white shadow-sm transition-all duration-300 overflow-hidden cursor-pointer hover:shadow-md relative",
+                                    isExpanded ? "ring-2 ring-violet-500 shadow-md animate-in fade-in zoom-in-95 duration-200" : ""
+                                )}
+                                onClick={() => setExpanded(isExpanded ? null : order.id)}
+                            >
+                                <CardContent className="p-5 space-y-4">
+                                    <div className="flex items-start justify-between">
+                                        <div className="flex items-center gap-3">
+                                            <div onClick={e => e.stopPropagation()} className="pt-0.5">
+                                                <Checkbox
+                                                    checked={selected.has(order.id)}
+                                                    onCheckedChange={() => toggleSelect(order.id)}
+                                                    className="rounded-md border-gray-300 data-[state=checked]:bg-violet-600 data-[state=checked]:border-violet-600"
+                                                />
+                                            </div>
+                                            <div className={cn(
+                                                "size-10 rounded-xl flex items-center justify-center text-sm font-black transition-all",
+                                                isExpanded 
+                                                    ? "bg-violet-600 text-white shadow-sm" 
+                                                    : "bg-violet-50 text-violet-700"
+                                            )}>
+                                                {order.customer_name?.charAt(0).toUpperCase() || '?'}
+                                            </div>
+                                            <div className="min-w-0 max-w-[150px] sm:max-w-[200px]">
+                                                <div className="flex items-center gap-1.5">
+                                                    <h3 className="font-bold text-[15px] text-gray-900 leading-tight truncate">{order.customer_name}</h3>
+                                                    {order.is_locked && <Lock className="size-3 text-amber-500 shrink-0" />}
+                                                </div>
+                                                {order.guide_name && (
+                                                    <p className="text-[10px] font-bold text-violet-600/70 uppercase tracking-wider mt-0.5 truncate">Guide: {order.guide_name}</p>
+                                                )}
+                                            </div>
+                                        </div>
+                                        
+                                        <div onClick={e => e.stopPropagation()}>
+                                            <DropdownMenu>
+                                                <DropdownMenuTrigger className={cn(
+                                                    buttonVariants({ variant: 'ghost', size: 'icon' }),
+                                                    "h-8 w-8 p-0 rounded-lg hover:bg-violet-50 hover:text-violet-600 transition-all"
+                                                )}>
+                                                    <MoreHorizontal className="size-4" />
+                                                </DropdownMenuTrigger>
+                                                <DropdownMenuContent align="end" className="w-[180px] rounded-xl border-gray-100 shadow-xl p-1 bg-white">
+                                                    <DropdownMenuGroup>
+                                                        <DropdownMenuLabel className="text-[10px] font-bold text-gray-400 uppercase tracking-widest px-3 py-2">Actions</DropdownMenuLabel>
+                                                    </DropdownMenuGroup>
+                                                    <DropdownMenuItem 
+                                                        className="rounded-lg gap-2 font-bold text-gray-700 focus:bg-violet-50 focus:text-violet-700 cursor-pointer"
+                                                        onClick={() => {
+                                                            setEditingOrder(order);
+                                                            setCustomerName(order.customer_name || '');
+                                                            setGuideName(order.guide_name || '');
+                                                            setTourDate(order.tour_date || '');
+                                                            setPickupTime(order.pickup_time || '');
+                                                            setNotes(order.notes || '');
+                                                            setCompanyId(order.company_id || null);
+                                                            setEditItems(JSON.parse(JSON.stringify(order.order_items || [])));
+                                                            setIsEditDialogOpen(true);
+                                                        }}
+                                                    >
+                                                        <Pencil className="size-3.5" /> Edit Order
+                                                    </DropdownMenuItem>
+                                                    
+                                                    <DropdownMenuSub>
+                                                        <DropdownMenuSubTrigger className="rounded-lg gap-2 font-bold text-gray-700 focus:bg-violet-50 focus:text-violet-700 cursor-pointer">
+                                                            <ListFilter className="size-3.5" /> Change Status
+                                                        </DropdownMenuSubTrigger>
+                                                        <DropdownMenuSubContent className="rounded-xl border-gray-100 shadow-xl p-1 ml-1 bg-white">
+                                                            {Object.entries(STATUS_LABELS).map(([value, label]) => (
+                                                                <DropdownMenuItem
+                                                                    key={value}
+                                                                    className="rounded-lg gap-2 font-bold text-gray-700 focus:bg-violet-50 focus:text-violet-700 cursor-pointer"
+                                                                    onClick={() => handleStatus(order.id, value)}
+                                                                >
+                                                                    {order.status === value && <Check className="size-3 text-violet-600" />}
+                                                                    <span className={order.status === value ? 'text-violet-600 pl-0' : 'pl-5'}>{label}</span>
+                                                                </DropdownMenuItem>
+                                                            ))}
+                                                        </DropdownMenuSubContent>
+                                                    </DropdownMenuSub>
+
+                                                    <DropdownMenuSeparator className="bg-gray-100 my-1" />
+                                                    <DropdownMenuItem 
+                                                        className="rounded-lg gap-2 font-bold text-rose-600 focus:bg-rose-50 focus:text-rose-700 cursor-pointer"
+                                                        onClick={() => handleDelete(order.id)}
+                                                    >
+                                                        <Trash2 className="size-3.5" /> Delete Order
+                                                    </DropdownMenuItem>
+                                                </DropdownMenuContent>
+                                            </DropdownMenu>
+                                        </div>
+                                    </div>
+
+                                    <div className="flex items-center gap-1.5 text-xs text-gray-500 font-semibold">
+                                        <Building2 className="size-3.5 text-gray-400 shrink-0" />
+                                        <span className="truncate">{order.tour_companies?.name || 'Individual'}</span>
+                                    </div>
+
+                                    <div className="grid grid-cols-2 gap-3 pt-2 text-xs font-semibold text-gray-500 border-t border-gray-50">
+                                        <div className="flex flex-col">
+                                            <span className="text-[10px] text-gray-400 font-bold uppercase tracking-wider">Tour Date</span>
+                                            <span className="text-[12px] font-bold text-gray-900 leading-tight">{formatDateUS(order.tour_date)}</span>
+                                            <span className="text-[10px] text-gray-400 mt-0.5 truncate">{order.pickup_time || 'No time set'}</span>
+                                        </div>
+                                        <div className="flex flex-col">
+                                            <span className="text-[10px] text-gray-400 font-bold uppercase tracking-wider">Placed At</span>
+                                            <span className="text-[12px] font-bold text-gray-900 leading-tight">{isMounted ? formatDateUS(order.created_at) : ''}</span>
+                                            <span className="text-[10px] text-gray-400 mt-0.5 truncate">
+                                                {isMounted ? new Date(order.created_at).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }) : ''}
+                                            </span>
+                                        </div>
+                                    </div>
+
+                                    <div className="flex items-center justify-between pt-2 border-t border-gray-50">
+                                        <Badge variant="outline" className={cn(
+                                            "rounded-lg px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wider",
+                                            order.status === 'pending' ? 'bg-amber-50 text-amber-700 border-amber-200' : '',
+                                            order.status === 'ticket_created' ? 'bg-blue-50 text-blue-700 border-blue-200' : '',
+                                            order.status === 'fulfilled' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : '',
+                                            order.status === 'cancelled' ? 'bg-rose-50 text-rose-700 border-rose-200' : ''
+                                        )}>
+                                            {STATUS_LABELS[order.status] || order.status.replace('_', ' ')}
+                                        </Badge>
+                                        
+                                        <div className="text-right">
+                                            <span className="text-[10px] text-gray-400 font-bold uppercase block">Total Price</span>
+                                            <span className="text-[14px] font-black text-violet-600">
+                                                ${totalPrice.toFixed(2)}
+                                            </span>
+                                        </div>
+                                    </div>
+
+                                    <div className="bg-gray-50/50 rounded-xl p-3 space-y-1.5 border border-gray-100">
+                                        <div className="flex items-center gap-2 font-bold text-xs text-gray-800">
+                                            <div className="size-5 rounded bg-violet-100 flex items-center justify-center text-[10px] font-black text-violet-700">
+                                                {totalItems}
+                                            </div>
+                                            <span>Total Items</span>
+                                        </div>
+                                        <div className="space-y-1">
+                                            {order.order_items?.slice(0, 5).map((item: any, idx: number) => (
+                                                <p key={idx} className="text-[11px] font-medium text-gray-600 leading-tight truncate">
+                                                    <span className="font-bold text-violet-600">{item.quantity}x</span> {item.meal_name}
+                                                </p>
+                                            ))}
+                                            {order.order_items && order.order_items.length > 5 && (
+                                                <p className="text-[9px] font-bold text-violet-500 italic mt-0.5">
+                                                    {order.order_items.length - 5} more items
+                                                </p>
+                                            )}
+                                        </div>
+                                    </div>
+
+                                    <AnimatePresence>
+                                        {isExpanded && (
+                                            <motion.div 
+                                                initial={{ opacity: 0, height: 0 }}
+                                                animate={{ opacity: 1, height: 'auto' }}
+                                                exit={{ opacity: 0, height: 0 }}
+                                                className="overflow-hidden pt-4 border-t border-gray-100 space-y-4"
+                                                onClick={e => e.stopPropagation()}
+                                            >
+                                                <div className="space-y-3">
+                                                    <span className="text-[10px] font-black text-gray-400 uppercase tracking-widest block">Item Breakdown</span>
+                                                    <div className="divide-y divide-gray-100/70 border border-gray-100 rounded-xl bg-white overflow-hidden shadow-sm">
+                                                        {order.order_items?.map((item: any, i: number) => (
+                                                            <div key={i} className="p-3 hover:bg-gray-50/50 transition-colors flex items-start justify-between gap-4">
+                                                                <div className="space-y-0.5 min-w-0">
+                                                                    <p className="font-extrabold text-base text-gray-900 leading-tight truncate">
+                                                                        <span className="text-violet-600 font-black mr-1.5">{item.quantity}x</span>
+                                                                        {item.meal_name}
+                                                                    </p>
+                                                                    <OrderItemDetails item={item} />
+                                                                </div>
+                                                                <div className="text-right shrink-0">
+                                                                    <p className="font-bold text-base text-gray-900">${(Number(item.unit_price) * item.quantity).toFixed(2)}</p>
+                                                                    <p className="text-xs text-gray-400 font-semibold">${Number(item.unit_price).toFixed(2)} ea</p>
+                                                                </div>
+                                                            </div>
+                                                        ))}
+                                                    </div>
+                                                </div>
+
+                                                {order.notes && (
+                                                    <div className="bg-amber-50/40 p-3 rounded-xl border border-amber-100/50">
+                                                        <span className="text-[9px] font-black text-amber-700 uppercase tracking-widest block mb-1">KITCHEN NOTES</span>
+                                                        <p className="text-xs text-amber-900 font-bold italic leading-relaxed break-words">&ldquo;{order.notes}&rdquo;</p>
+                                                    </div>
+                                                )}
+                                            </motion.div>
+                                        )}
+                                    </AnimatePresence>
+                                </CardContent>
+                            </Card>
+                        );
+                    })}
+                </div>
+            )}
+
+            {/* Edit Order Dialog */}
+            <Dialog open={isEditDialogOpen} onOpenChange={setIsEditDialogOpen}>
+                <DialogContent className="sm:max-w-[600px] rounded-3xl border-none shadow-2xl p-0 overflow-hidden bg-white">
+                    <DialogHeader className="bg-gray-50/50 px-8 py-6 border-b border-gray-100">
+                        <DialogTitle className="text-xl font-bold text-gray-900 tracking-tight">Edit Order Details</DialogTitle>
+                        <DialogDescription className="text-gray-500 font-medium">
+                            Update order metadata and individual item details.
+                        </DialogDescription>
+                    </DialogHeader>
+                    <form onSubmit={handleEditSubmit}>
+                        <div className="px-8 py-8 space-y-6 max-h-[70vh] overflow-y-auto">
+                            {/* Metadata Section */}
+                            <div className="grid grid-cols-2 gap-6">
+                                <div className="space-y-2.5">
+                                    <Label htmlFor="customer_name" className="text-[11px] font-bold uppercase tracking-[0.1em] text-gray-400 ml-1">Customer Name</Label>
+                                    <Input id="customer_name" name="customer_name" value={customerName} onChange={(e) => setCustomerName(e.target.value)} required className="h-11 rounded-xl border-gray-200 font-semibold focus:ring-violet-500/20" />
+                                </div>
+                                <div className="space-y-2.5">
+                                    <Label htmlFor="guide_name" className="text-[11px] font-bold uppercase tracking-[0.1em] text-gray-400 ml-1">Guide Name</Label>
+                                    <Input id="guide_name" name="guide_name" value={guideName} onChange={(e) => setGuideName(e.target.value)} className="h-11 rounded-xl border-gray-200 font-semibold focus:ring-violet-500/20" />
+                                </div>
+                                <div className="space-y-2.5">
+                                    <Label htmlFor="tour_date" className="text-[11px] font-bold uppercase tracking-[0.1em] text-gray-400 ml-1">Tour Date</Label>
+                                    <Input id="tour_date" name="tour_date" type="date" value={tourDate} onChange={(e) => setTourDate(e.target.value)} required className="h-11 rounded-xl border-gray-200 font-semibold focus:ring-violet-500/20" />
+                                </div>
+                                <div className="space-y-2.5">
+                                    <Label htmlFor="pickup_time" className="text-[11px] font-bold uppercase tracking-[0.1em] text-gray-400 ml-1">Pickup Time</Label>
+                                    <Input id="pickup_time" name="pickup_time" placeholder="e.g. 07:30 AM" value={pickupTime} onChange={(e) => setPickupTime(e.target.value)} className="h-11 rounded-xl border-gray-200 font-semibold focus:ring-violet-500/20" />
+                                </div>
+                                <div className="col-span-2 space-y-2.5">
+                                    <Label className="text-[11px] font-bold uppercase tracking-[0.1em] text-gray-400 ml-1">Tour Company</Label>
+                                    <Select value={companyId || 'none'} onValueChange={(v) => setCompanyId(v === 'none' ? null : v)}>
+                                        <SelectTrigger className="h-11 rounded-xl border-gray-200 font-semibold focus:ring-violet-500/20">
+                                            <SelectValue>
+                                                {companyId 
+                                                    ? (companies.find(c => c.id === companyId)?.name || 'Unknown Company') 
+                                                    : 'Individual Order'}
+                                            </SelectValue>
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                            {companies
+                                                .filter(c => c.status === 'active' || c.id === editingOrder?.company_id)
+                                                .map(c => (
+                                                    <SelectItem key={c.id} value={c.id}>
+                                                        {c.name} {c.status !== 'active' ? `(${c.status.replace('_', ' ')})` : ''}
+                                                    </SelectItem>
+                                                ))
+                                            }
+                                        </SelectContent>
+                                    </Select>
+                                </div>
+                                <div className="col-span-2 space-y-2.5">
+                                    <Label htmlFor="notes" className="text-[11px] font-bold uppercase tracking-[0.1em] text-gray-400 ml-1">General Notes</Label>
+                                    <Input id="notes" name="notes" placeholder="General instructions for the whole order..." value={notes} onChange={(e) => setNotes(e.target.value)} className="h-11 rounded-xl border-gray-200 font-medium" />
+                                </div>
+                            </div>
+
+                            {/* Items Editing Section */}
+                            <div className="pt-6 border-t border-gray-100">
+                                <div className="flex items-center justify-between mb-5">
+                                    <Label className="text-xs font-bold uppercase tracking-widest text-violet-600">Order Items</Label>
+                                    <Badge variant="outline" className="bg-violet-50 text-violet-600 border-violet-100 font-bold text-[10px] px-2.5 py-0.5">
+                                        {editItems.length} {editItems.length === 1 ? 'Item' : 'Items'}
+                                    </Badge>
+                                </div>
+                                <div className="space-y-6">
+                                    {editItems.map((item) => (
+                                        <div key={item.id} className="p-5 rounded-2xl border border-gray-100 bg-gray-50/20 space-y-5 transition-all hover:border-violet-100/50 hover:bg-violet-50/5">
+                                            <div className="flex items-center justify-between border-b border-gray-100/50 pb-4">
+                                                <div className="flex flex-col gap-0.5">
+                                                    <span className="text-sm font-bold text-gray-900 tracking-tight">{item.meal_name}</span>
+                                                    <span className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider">Meal Configuration</span>
+                                                </div>
+                                                <div className="flex items-center gap-3">
+                                                    <Label className="text-[10px] font-bold text-gray-400 uppercase">Qty</Label>
+                                                    <Input 
+                                                        type="number" 
+                                                        min="1"
+                                                        value={item.quantity} 
+                                                        onChange={(e) => updateEditItem(item.id, { quantity: parseInt(e.target.value) || 1 })}
+                                                        className="w-14 h-8 rounded-lg border-gray-200 font-bold text-center focus:ring-violet-500/20"
+                                                    />
+                                                </div>
+                                            </div>
+
+                                            {/* Item Components Grid */}
+                                            <div className="grid grid-cols-3 gap-4">
+                                                <div className="space-y-1.5">
+                                                    <Label className="text-[10px] font-bold text-gray-400 uppercase tracking-wide">Type</Label>
+                                                    <Input 
+                                                        value={item.box_type || ''} 
+                                                        onChange={(e) => updateEditItem(item.id, { box_type: e.target.value })}
+                                                        placeholder="Box Lunch"
+                                                        className="h-9 rounded-lg border-gray-200 text-[12px] font-medium"
+                                                    />
+                                                </div>
+                                                <div className="space-y-1.5">
+                                                    <Label className="text-[10px] font-bold text-gray-400 uppercase tracking-wide">Bread / Style</Label>
+                                                    <Input 
+                                                        value={item.bread_type || ''} 
+                                                        onChange={(e) => updateEditItem(item.id, { bread_type: e.target.value })}
+                                                        placeholder="Sandwich"
+                                                        className="h-9 rounded-lg border-gray-200 text-[12px] font-medium"
+                                                    />
+                                                </div>
+                                                <div className="space-y-1.5">
+                                                    <Label className="text-[10px] font-bold text-gray-400 uppercase tracking-wide">Cookie Choice</Label>
+                                                    <Input 
+                                                        value={item.cookie_choice || ''} 
+                                                        onChange={(e) => updateEditItem(item.id, { cookie_choice: e.target.value })}
+                                                        placeholder="Cookie"
+                                                        className="h-9 rounded-lg border-gray-200 text-[12px] font-medium"
+                                                    />
+                                                </div>
+                                            </div>
+
+                                            <div className="grid grid-cols-2 gap-4">
+                                                <div className="space-y-1.5">
+                                                    <Label className="text-[10px] font-bold text-gray-400 uppercase tracking-wide">Guest Name</Label>
+                                                    <Input 
+                                                        value={item.guest_name || ''} 
+                                                        onChange={(e) => updateEditItem(item.id, { guest_name: e.target.value })}
+                                                        placeholder="Guest Name"
+                                                        className="h-9 rounded-lg border-gray-200 text-[12px] font-medium"
+                                                    />
+                                                </div>
+                                                <div className="space-y-1.5">
+                                                    <Label className="text-[10px] font-bold text-gray-400 uppercase tracking-wide">Item Notes / Customizations</Label>
+                                                    <Input 
+                                                        value={item.customizations || ''} 
+                                                        onChange={(e) => updateEditItem(item.id, { customizations: e.target.value })}
+                                                        placeholder="No onions, extra sauce..."
+                                                        className="h-9 rounded-lg border-gray-200 text-[12px] font-medium"
+                                                    />
+                                                </div>
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+                        </div>
+
+                        <DialogFooter className="bg-gray-50/50 px-8 py-6 border-t border-gray-100">
+                            <Button type="button" variant="ghost" className="rounded-xl font-bold text-gray-500" onClick={() => setIsEditDialogOpen(false)}>Cancel</Button>
+                            <Button type="submit" disabled={loading || !hasChanges} className="rounded-xl bg-violet-600 hover:bg-violet-700 font-bold px-10 shadow-lg shadow-violet-100">
+                                {loading ? 'Saving...' : 'Update Order'}
+                            </Button>
+                        </DialogFooter>
+                    </form>
+                </DialogContent>
+            </Dialog>
+        </div>
+            {/* Print Tickets Layout */}
+            <div className="print-only-section print-tickets-container">
+                <div className="p-4 print-tickets-grid">
+                    {ordersToPrint.flatMap((order) => {
+                        const items = order.order_items || [];
+                        if (items.length === 0) {
+                            return [
+                                <div 
+                                    key={`${order.id}-empty`} 
+                                    className="print-ticket-card border border-gray-400 p-6 rounded-2xl break-inside-avoid bg-white flex flex-col justify-between"
+                                    style={{ breakInside: 'avoid', pageBreakInside: 'avoid' }}
+                                >
+                                    <div>
+                                        {/* Brand Header with Logo */}
+                                        <div className="flex items-center justify-center gap-2 mb-2">
+                                            <img src="/icon.svg" alt="" className="w-7 h-7" />
+                                            <h1 className="text-xl font-black text-center text-[#1E3A8A] tracking-wider uppercase">
+                                                MOUNTAIN MAMA&apos;S CAFE
+                                            </h1>
+                                        </div>
+
+                                        {/* Dashed separator */}
+                                        <div className="border-t border-dashed border-gray-300 my-2" />
+
+                                        {/* Gray Rounded Meta Box */}
+                                        <div className="bg-[#F3F4F6] p-2.5 rounded-lg text-[11px] text-gray-800 font-medium border border-gray-200">
+                                            <div className="grid grid-cols-2 gap-x-3 gap-y-1">
+                                                <div className="break-words">
+                                                    <span className="font-bold text-gray-600">Name:</span>{' '}
+                                                    <span className="uppercase font-bold text-gray-900">{order.customer_name}</span>
+                                                </div>
+                                                <div className="break-words text-right">
+                                                    <span className="font-bold text-gray-600">Tour Date:</span>{' '}
+                                                    <span className="font-bold text-gray-900">{formatDateUS(order.tour_date)}</span>
+                                                </div>
+                                                <div className="break-words">
+                                                    <span className="font-bold text-gray-600">Group:</span>{' '}
+                                                    <span className="text-gray-900 font-bold">{order.tour_companies?.name || 'Individual'}</span>
+                                                </div>
+                                                <div className="break-words text-right">
+                                                    <span className="font-bold text-gray-600">Guide:</span>{' '}
+                                                    <span className="text-gray-900 font-bold">{order.guide_name || 'None'}</span>
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                        {/* Pickup Time */}
+                                        <div className="mt-2 flex items-center gap-1.5 text-[11px] font-bold text-gray-900">
+                                            <span>⏰ Pick-up:</span>
+                                            <span className="font-extrabold">{order.pickup_time || 'None'}</span>
+                                        </div>
+
+                                        {/* Order Details Header */}
+                                        <div className="mt-2 pb-0.5 border-b-2 border-black">
+                                            <p className="text-[10px] font-bold tracking-wider text-gray-900">Order Details</p>
+                                        </div>
+
+                                        {/* Order Items list */}
+                                        <div className="my-2">
+                                            <p className="text-xs text-gray-400 italic">No items found for this order</p>
+                                        </div>
+                                    </div>
+
+                                    {/* Footer block */}
+                                    <div>
+                                        <div className="text-center my-2">
+                                            <p className="text-lg font-bold text-amber-600 italic font-serif">Enjoy your meal!</p>
+                                            <p className="text-[7px] font-black text-gray-400 tracking-widest uppercase mt-0.5">
+                                                THANK YOU FOR SUPPORTING LOCAL BUSINESSES!
+                                            </p>
+                                        </div>
+
+                                        <div className="pt-2 border-t border-gray-100 flex justify-between text-[7px] text-gray-400 font-bold uppercase tracking-widest">
+                                            <span>Order ID: {order.id.includes('-') ? order.id.split('-')[0].toUpperCase() : order.id.toUpperCase()}</span>
+                                            <span>Printed: {isMounted ? formatDateTimeUS(new Date()) : ''}</span>
+                                        </div>
+                                    </div>
+                                </div>
+                            ];
+                        }
+
+                        // Expand each item of quantity Q into Q individual items of quantity 1
+                        const expandedItems = items.flatMap((item: any, itemIdx: number) => {
+                            const qty = item.quantity || 1;
+                            const singleItems = [];
+                            for (let k = 0; k < qty; k++) {
+                                singleItems.push({
+                                    ...item,
+                                    quantity: 1,
+                                    _itemIndex: k
+                                });
+                            }
+                            return singleItems;
+                        });
+
+                        return expandedItems.map((item: any, itemIdx: number) => {
+                            const ticketKey = `${order.id}-${item.id || itemIdx}-${item._itemIndex}`;
+                            return (
+                                <div 
+                                    key={ticketKey} 
+                                    className="print-ticket-card border border-gray-400 p-4 rounded-2xl break-inside-avoid bg-white flex flex-col justify-between"
+                                    style={{ breakInside: 'avoid', pageBreakInside: 'avoid' }}
+                                >
+                                    <div>
+                                        {/* Brand Header with Logo */}
+                                        <div className="flex items-center justify-center gap-2 mb-2">
+                                            <img src="/icon.svg" alt="" className="w-7 h-7" />
+                                            <h1 className="text-xl font-black text-center text-[#1E3A8A] tracking-wider uppercase">
+                                                MOUNTAIN MAMA&apos;S CAFE
+                                            </h1>
+                                        </div>
+
+                                        {/* Dashed separator */}
+                                        <div className="border-t border-dashed border-gray-300 my-2" />
+
+                                        {/* Gray Rounded Meta Box */}
+                                        <div className="bg-[#F3F4F6] p-2.5 rounded-lg text-[11px] text-gray-800 font-medium border border-gray-200">
+                                            <div className="grid grid-cols-2 gap-x-3 gap-y-1">
+                                                <div className="break-words">
+                                                    <span className="font-bold text-gray-600">Name:</span>{' '}
+                                                    <span className="uppercase font-bold text-gray-900">{order.customer_name}</span>
+                                                </div>
+                                                <div className="break-words text-right">
+                                                    <span className="font-bold text-gray-600">Tour Date:</span>{' '}
+                                                    <span className="font-bold text-gray-900">{formatDateUS(order.tour_date)}</span>
+                                                </div>
+                                                <div className="break-words">
+                                                    <span className="font-bold text-gray-600">Group:</span>{' '}
+                                                    <span className="text-gray-900 font-bold">{order.tour_companies?.name || 'Individual'}</span>
+                                                </div>
+                                                <div className="break-words text-right">
+                                                    <span className="font-bold text-gray-600">Guide:</span>{' '}
+                                                    <span className="text-gray-900 font-bold">{order.guide_name || 'None'}</span>
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                        {/* Pickup Time */}
+                                        <div className="mt-2 flex items-center gap-1.5 text-[11px] font-bold text-gray-900">
+                                            <span>⏰ Pick-up:</span>
+                                            <span className="font-extrabold">{order.pickup_time || 'None'}</span>
+                                        </div>
+
+                                        {/* Order Details Header */}
+                                        <div className="mt-2 pb-0.5 border-b-2 border-black">
+                                            <p className="text-[10px] font-bold tracking-wider text-gray-900">Order Details</p>
+                                        </div>
+
+                                        {/* Order Items list */}
+                                        <div className="my-2">
+                                            <p className="font-bold text-sm text-gray-900">
+                                                {item.quantity}x {item.meal_name}
+                                            </p>
+                                            <p className="text-xs text-gray-700 italic leading-snug">
+                                                {[
+                                                    formatBoxType(item.box_type),
+                                                    item.bread_type,
+                                                    item.cookie_choice,
+                                                    ...((item.custom_fields && typeof item.custom_fields === 'object')
+                                                        ? Object.entries(item.custom_fields)
+                                                            .filter(([key, val]) => val && !STANDARD_ITEM_KEYS.includes(key))
+                                                            .map(([key, val]) => `${formatFieldName(key)}: ${String(val)}`)
+                                                        : [])
+                                                ].filter(Boolean).join(' • ')}
+                                            </p>
+                                            {(item.guest_name || item.customizations) && (
+                                                <p className="text-xs text-gray-800 font-medium leading-snug mt-0.5">
+                                                    {item.guest_name && <span className="font-bold text-violet-700">{item.guest_name}</span>}
+                                                    {item.guest_name && item.customizations && ' '}
+                                                    {item.customizations && <span className="text-red-600 italic font-semibold">{item.customizations}</span>}
+                                                </p>
+                                            )}
+
+                                            {/* General order notes */}
+                                            {order.notes && (
+                                                <>
+                                                    <div className="w-10 border-t border-dashed border-gray-300 my-1.5" />
+                                                    <p className="font-bold text-xs text-gray-900">Notes</p>
+                                                    <p className="text-xs text-gray-800 italic leading-snug">
+                                                        {order.notes}
+                                                    </p>
+                                                </>
+                                            )}
+                                        </div>
+                                    </div>
+
+                                    {/* Footer block */}
+                                    <div>
+                                        <div className="text-center my-2">
+                                            <p className="text-lg font-bold text-amber-600 italic font-serif">Enjoy your meal!</p>
+                                            <p className="text-[7px] font-black text-gray-400 tracking-widest uppercase mt-0.5">
+                                                THANK YOU FOR SUPPORTING LOCAL BUSINESSES!
+                                            </p>
+                                        </div>
+
+                                        <div className="pt-2 border-t border-gray-100 flex justify-between text-[7px] text-gray-400 font-bold uppercase tracking-widest">
+                                            <span>Order ID: {order.id.includes('-') ? order.id.split('-')[0].toUpperCase() : order.id.toUpperCase()}</span>
+                                            <span>Printed: {isMounted ? formatDateTimeUS(new Date()) : ''}</span>
+                                        </div>
+                                    </div>
+                                </div>
+                            );
+                        });
+                    })}
+                </div>
+            </div>
+
+            {/* Print Table Layout */}
+            <div className="print-only-section print-table-container">
+                <div className="p-6">
+                    {/* Header Branding */}
+                    <div className="text-center mb-6">
+                        <h1 className="text-3xl font-black tracking-widest text-[#7C3AED] uppercase">MOUNTAIN MAMA'S CAFÉ</h1>
+                        <h2 className="text-lg font-bold text-gray-800 uppercase tracking-wide mt-0.5">Orders Dashboard</h2>
+                    </div>
+
+                    {/* Filters & Count Bar */}
+                    <div className="flex justify-between items-end pb-3 border-b-2 border-[#7C3AED] mb-4">
+                        <div className="text-[11px] font-bold text-gray-700 flex flex-wrap gap-x-4">
+                            {dateRange && (
+                                <div>
+                                    <span className="text-[#7C3AED]">Date Filter:</span> {getDateFilterLabel()}
+                                </div>
+                            )}
+                            {companyFilter && (
+                                <div>
+                                    <span className="text-[#7C3AED]">Company:</span> {getCompanyFilterLabel()}
+                                </div>
+                            )}
+                            {statusFilter && (
+                                <div>
+                                    <span className="text-[#7C3AED]">Status:</span> {getStatusFilterLabel()}
+                                </div>
+                            )}
+                            {!dateRange && !companyFilter && !statusFilter && (
+                                <div className="text-gray-400 italic font-medium">All Orders (No Filter)</div>
+                            )}
+                        </div>
+                        <div className="text-[11px] font-black text-gray-900">
+                            Total Orders: {ordersToPrint.length}
+                        </div>
+                    </div>
+
+                    {/* Table */}
+                    <table className="w-full border-collapse text-left text-xs">
+                        <thead>
+                            <tr className="bg-[#7C3AED] text-white font-bold text-[10.5px] tracking-wider border-none">
+                                <th className="p-3 w-[15%] rounded-l-md">Name</th>
+                                <th className="p-3 w-[10%]">Date</th>
+                                <th className="p-3 w-[15%]">Placed At</th>
+                                <th className="p-3 w-[18%]">Company / Guide</th>
+                                <th className="p-3 w-[27%]">Order Details</th>
+                                <th className="p-3 w-[15%] rounded-r-md">Notes</th>
+                            </tr>
+                        </thead>
+                        <tbody className="divide-y divide-purple-100/70">
+                            {ordersToPrint.map((order) => (
+                                <tr key={order.id} className="odd:bg-white even:bg-purple-50/5 break-inside-avoid">
+                                    {/* NAME */}
+                                    <td className="p-3 align-top font-bold text-gray-900">
+                                        {order.customer_name}
+                                    </td>
+                                    {/* DATE */}
+                                    <td className="p-3 align-top font-bold text-gray-800">
+                                        {formatDateUS(order.tour_date)}
+                                    </td>
+                                    {/* PLACED AT */}
+                                    <td className="p-3 align-top text-gray-700 font-medium">
+                                        {isMounted ? formatDateTimeUS(new Date(order.created_at)) : ''}
+                                    </td>
+                                    {/* COMPANY / GUIDE */}
+                                    <td className="p-3 align-top">
+                                        <p className="font-bold text-gray-900">
+                                            {order.tour_companies?.name || 'Individual'}
+                                        </p>
+                                        {order.guide_name && (
+                                            <p className="text-[10px] text-gray-500 font-medium mt-0.5">
+                                                Guide: {order.guide_name}
+                                            </p>
+                                        )}
+                                    </td>
+                                    {/* ORDER DETAILS */}
+                                    <td className="p-3 align-top">
+                                        <div className="space-y-2">
+                                            {order.order_items?.map((item, idx) => (
+                                                <div key={idx}>
+                                                    {idx > 0 && <div className="border-t border-dashed border-gray-200 my-2 w-16" />}
+                                                    <div>
+                                                        <p className="font-bold text-xs text-gray-900 tracking-tight">
+                                                            {item.quantity}x {item.meal_name}
+                                                        </p>
+                                                        <p className="text-[10px] text-gray-500 font-medium italic mt-0.5">
+                                                            {[
+                                                                formatBoxType(item.box_type), 
+                                                                item.bread_type, 
+                                                                item.cookie_choice
+                                                            ].filter(Boolean).join(' • ')}
+                                                        </p>
+                                                        {item.guest_name && (
+                                                            <p className="text-[10px] text-gray-600 font-medium mt-0.5">
+                                                                {item.guest_name}
+                                                            </p>
+                                                        )}
+                                                        {item.customizations && (
+                                                            <p className="text-[10px] text-amber-800 font-medium italic mt-0.5">
+                                                                Detail: {item.customizations}
+                                                            </p>
+                                                        )}
+                                                    </div>
+                                                </div>
+                                            ))}
+                                            {order.pickup_time && (
+                                                <p className="text-[9.5px] text-[#7C3AED] font-bold mt-2 pt-2 border-t border-dotted border-gray-200">
+                                                    ⏰ Time of pick-up: {order.pickup_time}
+                                                </p>
+                                            )}
+                                        </div>
+                                    </td>
+                                    {/* NOTES */}
+                                    <td className="p-3 align-top text-[10px] text-gray-600 italic leading-normal break-words">
+                                        {order.notes || ''}
+                                    </td>
+                                </tr>
+                            ))}
+                        </tbody>
+                    </table>
+
+                    <div className="mt-8 pt-4 border-t border-purple-200 flex justify-between text-[10px] font-black text-purple-400 uppercase tracking-widest">
+                        <span>Total Orders in Report: {filtered.length}</span>
+                        <span>Mountain Mama's Café Admin System</span>
+                    </div>
+                </div>
+            </div>
+
+            <style jsx global>{`
+                /* Hide print containers by default in screen view */
+                .print-only-section {
+                    display: none !important;
+                }
+
+                @media print {
+                    /* Hide EVERYTHING in the dashboard */
+                    nav,
+                    aside,
+                    header,
+                    .no-print,
+                    .dashboard-web-view,
+                    #impersonation-banner {
+                        display: none !important;
+                    }
+
+                    /* Reset body margins for print */
+                    body, html {
+                        margin: 0 !important;
+                        padding: 0 !important;
+                        background: white !important;
+                    }
+
+                    /* Only show the requested container */
+                    body.print-tickets-mode .print-tickets-container {
+                        display: block !important;
+                        position: absolute !important;
+                        top: 0; left: 0; width: 100%;
+                    }
+
+                    body.print-table-mode .print-table-container {
+                        display: block !important;
+                        position: absolute !important;
+                        top: 0; left: 0; width: 100%;
+                    }
+
+                    /* Tickets 2-column grid layout for print */
+                    body.print-tickets-mode .print-tickets-grid {
+                        display: grid !important;
+                        grid-template-columns: repeat(2, 1fr) !important;
+                        gap: 1.5rem !important;
+                        width: 100% !important;
+                    }
+
+                    /* Custom ticket styling for printing */
+                    .print-ticket-card {
+                        border: 1.5px solid #4b5563 !important;
+                        border-radius: 1rem !important;
+                        page-break-inside: avoid !important;
+                        break-inside: avoid !important;
+                    }
+
+                    @page {
+                        margin: 0.8cm !important;
+                        size: portrait;
+                    }
+
+                    /* Ensure background colors and borders print correctly */
+                    * {
+                        -webkit-print-color-adjust: exact !important;
+                        print-color-adjust: exact !important;
+                    }
+                }
+            `}</style>
+            {confirmState && (
+                <ConfirmDialog
+                    isOpen={confirmState.isOpen}
+                    title={confirmState.title}
+                    description={confirmState.description}
+                    variant={confirmState.variant}
+                    confirmText={confirmState.confirmText}
+                    onConfirm={() => {
+                        confirmState.resolve(true);
+                        setConfirmState(prev => prev ? { ...prev, isOpen: false } : null);
+                    }}
+                    onClose={() => {
+                        confirmState.resolve(false);
+                        setConfirmState(prev => prev ? { ...prev, isOpen: false } : null);
+                    }}
+                />
+            )}
+        </>
+    );
+}

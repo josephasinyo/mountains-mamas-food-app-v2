@@ -1,0 +1,399 @@
+.form {
+    margin-top: auto;
+    /* Push to bottom if needed, or just flow */
+    padding-bottom: 24px;
+}
+
+.imageWrapper {
+    border-radius: 20px;
+    overflow: hidden;
+    margin-bottom: 24px;
+    aspect-ratio: 4/3;
+    background-color: #eee;
+    position: relative;
+    width: 100%;
+}
+
+.image {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
+
+.headerRow {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 16px;
+}
+
+.title {
+    font-size: 24px;
+    font-weight: 700;
+    margin: 0;
+}
+
+.priceTag {
+    font-size: 20px;
+    font-weight: 700;
+    color: var(--primary);
+}
+
+.description {
+    font-size: 15px;
+    color: #64748b;
+    line-height: 1.6;
+    margin-top: -8px;
+    margin-bottom: 24px;
+}
+
+.ingredientsBox {
+    background-color: #f1f5f9;
+    padding: 16px;
+    border-radius: 12px;
+    font-size: 14px;
+    color: #475569;
+    margin-bottom: 24px;
+    line-height: 1.5;
+}
+
+.variantSelector {
+    display: flex;
+    gap: 12px;
+}
+
+.variantCard {
+    flex: 1;
+    border: 2px solid #e2e8f0;
+    border-radius: 12px;
+    padding: 16px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    background: white;
+    text-align: center;
+}
+
+.variantCard:hover {
+    border-color: #cbd5e1;
+}
+
+.activeVariant {
+    border-color: var(--primary);
+    background-color: #ecfdf5; /* Subtle green to match primary */
+}
+
+.variantName {
+    font-weight: 700;
+    font-size: 15px;
+    color: #1e293b;
+    margin-bottom: 4px;
+}
+
+.variantPrice {
+    font-size: 14px;
+    color: #64748b;
+}
+
+.section {
+    margin-bottom: 24px;
+}
+
+.label {
+    display: block;
+    font-weight: 600;
+    margin-bottom: 8px;
+    font-size: 14px;
+    color: #333;
+}
+
+.dropdown {
+    border: 1px solid #ddd;
+    border-radius: 8px;
+    position: relative;
+    cursor: pointer;
+    background: #f9f9f9;
+}
+
+.selected {
+    padding: 12px 16px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.chevron {
+    width: 16px;
+    height: 16px;
+    transition: transform 0.3s ease;
+    color: #666;
+}
+
+.rotate {
+    transform: rotate(180deg);
+}
+
+.options {
+    position: absolute;
+    top: 100%;
+    left: 0;
+    right: 0;
+    background: white;
+    border: 1px solid #ddd;
+    border-top: none;
+    border-radius: 0 0 8px 8px;
+    z-index: 5;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+}
+
+.option {
+    padding: 12px 16px;
+    display: flex;
+    justify-content: space-between;
+    border-bottom: 1px solid #eee;
+}
+
+.option:last-child {
+    border-bottom: none;
+}
+
+.option:hover {
+    background-color: #f0f0f0;
+}
+
+.quantityInput {
+    width: 100%;
+    padding: 12px 16px;
+    border: 1px solid #ddd;
+    border-radius: 8px;
+    font-size: 16px;
+    background: #f9f9f9;
+}
+
+.actions {
+    margin-top: 32px;
+    display: flex;
+    gap: 16px;
+}
+
+.addButton {
+    background-color: var(--primary);
+    font-size: 14px;
+    font-weight: 700;
+    letter-spacing: 1.2px;
+    text-transform: uppercase;
+    height: 56px !important;
+    padding: 0 24px !important;
+    flex: 1;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    border-radius: 12px !important;
+    transition: all 0.2s ease;
+}
+
+.continueButton {
+    background-color: white !important;
+    color: #333 !important;
+    border: 1px solid #cbd5e1 !important;
+    font-size: 14px;
+    font-weight: 700;
+    letter-spacing: 1.2px;
+    text-transform: uppercase;
+    height: 56px !important;
+    padding: 0 24px !important;
+    flex: 1;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    border-radius: 12px !important;
+    transition: all 0.2s ease;
+}
+
+/* Popup Container - Bottom Floating Card */
+.popup {
+    position: fixed;
+    bottom: 24px;
+    left: 24px;
+    right: 24px;
+    max-width: 400px;
+    margin: 0 auto;
+    /* Center on large screens */
+    background: white;
+    padding: 16px;
+    border-radius: 16px;
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.15);
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    z-index: 2000;
+    transform-origin: center bottom;
+    animation: springUp 0.6s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards;
+    border: 1px solid rgba(0, 0, 0, 0.05);
+}
+
+.popupText {
+    display: flex;
+    flex-direction: column;
+}
+
+.popupTitle {
+    font-size: 14px;
+    font-weight: 700;
+    color: #059669;
+    /* Success Green */
+    margin-bottom: 2px;
+}
+
+.popupDetail {
+    font-size: 13px;
+    color: #555;
+    font-weight: 500;
+}
+
+/* Animated Check Icon Circle */
+.iconCircle {
+    width: 36px;
+    height: 36px;
+    background-color: #ecfdf5;
+    /* Light Green */
+    border-radius: 50%;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    flex-shrink: 0;
+}
+
+.checkIcon {
+    width: 20px;
+    height: 20px;
+    color: #059669;
+    stroke-dasharray: 24;
+    stroke-dashoffset: 24;
+    animation: drawCheck 0.4s ease-out 0.3s forwards;
+}
+
+@keyframes springUp {
+    0% {
+        opacity: 0;
+        transform: translateY(100%) scale(0.9);
+    }
+
+    100% {
+        opacity: 1;
+        transform: translateY(0) scale(1);
+    }
+}
+
+@keyframes drawCheck {
+    to {
+        stroke-dashoffset: 0;
+    }
+}
+
+/* Exit Animation - Slide Down and Fade */
+.popup.leaving {
+    animation: slideOut 0.4s ease-in forwards;
+    pointer-events: none;
+}
+
+@keyframes slideOut {
+    0% {
+        opacity: 1;
+        transform: translateY(0);
+    }
+
+    100% {
+        opacity: 0;
+        transform: translateY(20px) scale(0.95);
+    }
+}
+
+.checkboxContainer {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    cursor: pointer;
+    user-select: none;
+    margin-bottom: 24px;
+    padding: 4px 0;
+}
+
+.checkbox {
+    width: 22px;
+    height: 22px;
+    border: 2px solid #cbd5e1;
+    border-radius: 6px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+    background: white;
+}
+
+.checkboxActive {
+    border-color: var(--primary);
+    background-color: var(--primary);
+}
+
+.checkMark {
+    color: white;
+    width: 14px;
+    height: 14px;
+}
+
+.checkboxLabel {
+    font-size: 15px;
+    font-weight: 500;
+    color: #334155;
+}
+
+.badge {
+    background-color: #dbeafe;
+    color: #1e40af;
+    padding: 4px 12px;
+    border-radius: 9999px;
+    font-size: 12px;
+    font-weight: 600;
+    white-space: nowrap;
+}
+
+.detailsWrapper {
+    display: flex;
+    flex-direction: column;
+    width: 100%;
+}
+
+@media (min-width: 1024px) {
+    .form {
+        display: grid !important;
+        grid-template-columns: 1fr 1.1fr !important;
+        gap: 48px !important;
+        align-items: start !important;
+        max-width: 1100px !important;
+        margin: 0 auto !important;
+        padding-top: 20px !important;
+        padding-bottom: 40px !important;
+    }
+    
+    .imageWrapper {
+        position: sticky !important;
+        top: 100px !important;
+        margin-bottom: 0 !important;
+        border-radius: 24px !important;
+        box-shadow: 0 10px 30px rgba(0,0,0,0.06) !important;
+    }
+}
+
+.singleOptionBanner {
+    background-color: #f5f3ff;
+    border: 1px solid #ddd6fe;
+    border-radius: 12px;
+    padding: 16px;
+    color: #5b21b6;
+    font-size: 15px;
+    font-weight: 600;
+    margin-bottom: 24px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
