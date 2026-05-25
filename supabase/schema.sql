@@ -107,7 +107,7 @@ CREATE TABLE order_items (
     meal_id UUID REFERENCES meals(id) ON DELETE SET NULL,
     meal_name TEXT NOT NULL,
     quantity INTEGER NOT NULL DEFAULT 1 CHECK (quantity > 0),
-    box_type TEXT CHECK (box_type IN ('Box Lunch', 'Junior Box Lunch')),
+    box_type TEXT CHECK (box_type IN ('Box Lunch', 'Junior Box Lunch', 'Bag Lunch', 'Junior Bag Lunch', 'Sandwich only', 'This is a box lunch', 'This is a junior box lunch', 'This is a bag lunch', 'This is a junior bag lunch', 'This is a standalone sandwich')),
     bread_type TEXT CHECK (bread_type IN ('Sandwich', 'Make it a wrap', 'Gluten-free bread', 'Fresh croissant')),
     cookie_choice TEXT,
     customizations TEXT,

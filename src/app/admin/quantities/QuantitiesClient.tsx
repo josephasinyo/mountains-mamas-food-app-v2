@@ -42,10 +42,20 @@ const DATE_RANGE_LABELS: Record<string, string> = {
     '': 'All Dates',
     'today': 'Today',
     'yesterday': 'Yesterday',
+    'tomorrow': 'Tomorrow',
     'this_week': 'This Week',
     'last_week': 'Last Week',
+    'next_week': 'Next Week',
     'this_month': 'This Month',
     'last_month': 'Last Month',
+    'next_month': 'Next Month',
+    'next_3_months': 'Next 3 Months',
+    'next_6_months': 'Next 6 Months',
+    'next_12_months': 'Next 12 Months',
+    'this_year': 'This Year',
+    'last_3_months': 'Last 3 Months',
+    'last_6_months': 'Last 6 Months',
+    'last_12_months': 'Last 12 Months'
 };
 
 const STATUS_LABELS: Record<string, string> = {
@@ -66,38 +76,95 @@ export function QuantitiesClient({ initialOrders, companies }: QuantitiesClientP
         // Date Filtering Logic
         if (dateRange) {
             const now = new Date();
-            const todayStr = now.toISOString().split('T')[0];
+            const getLocalDateStr = (d: Date) => {
+                const yyyy = d.getFullYear();
+                const mm = String(d.getMonth() + 1).padStart(2, '0');
+                const dd = String(d.getDate()).padStart(2, '0');
+                return `${yyyy}-${mm}-${dd}`;
+            };
+            const todayStr = getLocalDateStr(now);
             const targetDateStr = dateFilterMode === 'tour' ? o.tour_date : o.created_at.split('T')[0];
             
+            const parseLocalDate = (dateStr: string) => {
+                const parts = dateStr.split('-');
+                if (parts.length !== 3) return new Date();
+                const [yyyy, mm, dd] = parts.map(Number);
+                return new Date(yyyy, mm - 1, dd);
+            };
+
+            const orderDate = parseLocalDate(targetDateStr);
+            const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+
             if (dateRange === 'today') {
                 if (targetDateStr !== todayStr) return false;
             } else if (dateRange === 'yesterday') {
-                const yesterday = new Date(now);
-                yesterday.setDate(yesterday.getDate() - 1);
-                const yesterdayStr = yesterday.toISOString().split('T')[0];
+                const yesterday = new Date(today);
+                yesterday.setDate(today.getDate() - 1);
+                const yesterdayStr = getLocalDateStr(yesterday);
                 if (targetDateStr !== yesterdayStr) return false;
-            } else {
-                const orderDate = new Date(targetDateStr);
-                const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-
-                if (dateRange === 'this_week') {
-                    const startOfWeek = new Date(today);
-                    startOfWeek.setDate(today.getDate() - today.getDay());
-                    if (orderDate < startOfWeek) return false;
-                } else if (dateRange === 'last_week') {
-                    const startOfLastWeek = new Date(today);
-                    startOfLastWeek.setDate(today.getDate() - today.getDay() - 7);
-                    const endOfLastWeek = new Date(startOfLastWeek);
-                    endOfLastWeek.setDate(startOfLastWeek.getDate() + 6);
-                    if (orderDate < startOfLastWeek || orderDate > endOfLastWeek) return false;
-                } else if (dateRange === 'this_month') {
-                    if (orderDate.getMonth() !== today.getMonth() || orderDate.getFullYear() !== today.getFullYear()) return false;
-                } else if (dateRange === 'last_month') {
-                    const lastMonth = new Date(today.getFullYear(), today.getMonth() - 1, 1);
-                    if (orderDate.getMonth() !== lastMonth.getMonth() || orderDate.getFullYear() !== lastMonth.getFullYear()) return false;
-                } else if (dateRange.includes('-')) { // Custom date YYYY-MM-DD
-                    if (targetDateStr !== dateRange) return false;
-                }
+            } else if (dateRange === 'tomorrow') {
+                const tomorrow = new Date(today);
+                tomorrow.setDate(today.getDate() + 1);
+                const tomorrowStr = getLocalDateStr(tomorrow);
+                if (targetDateStr !== tomorrowStr) return false;
+            } else if (dateRange === 'this_week') {
+                const startOfWeek = new Date(today);
+                startOfWeek.setDate(today.getDate() - today.getDay());
+                if (orderDate < startOfWeek) return false;
+            } else if (dateRange === 'last_week') {
+                const startOfLastWeek = new Date(today);
+                startOfLastWeek.setDate(today.getDate() - today.getDay() - 7);
+                const endOfLastWeek = new Date(startOfLastWeek);
+                endOfLastWeek.setDate(startOfLastWeek.getDate() + 6);
+                if (orderDate < startOfLastWeek || orderDate > endOfLastWeek) return false;
+            } else if (dateRange === 'next_week') {
+                const startOfNextWeek = new Date(today);
+                startOfNextWeek.setDate(today.getDate() - today.getDay() + 7);
+                const endOfNextWeek = new Date(startOfNextWeek);
+                endOfNextWeek.setDate(startOfNextWeek.getDate() + 6);
+                if (orderDate < startOfNextWeek || orderDate > endOfNextWeek) return false;
+            } else if (dateRange === 'this_month') {
+                if (orderDate.getMonth() !== today.getMonth() || orderDate.getFullYear() !== today.getFullYear()) return false;
+            } else if (dateRange === 'last_month') {
+                const lastMonth = new Date(today.getFullYear(), today.getMonth() - 1, 1);
+                if (orderDate.getMonth() !== lastMonth.getMonth() || orderDate.getFullYear() !== lastMonth.getFullYear()) return false;
+            } else if (dateRange === 'next_month') {
+                const nextMonth = new Date(today.getFullYear(), today.getMonth() + 1, 1);
+                if (orderDate.getMonth() !== nextMonth.getMonth() || orderDate.getFullYear() !== nextMonth.getFullYear()) return false;
+            } else if (dateRange === 'next_3_months') {
+                const limit = new Date(today);
+                limit.setMonth(today.getMonth() + 3);
+                if (orderDate <= today || orderDate > limit) return false;
+            } else if (dateRange === 'next_6_months') {
+                const limit = new Date(today);
+                limit.setMonth(today.getMonth() + 6);
+                if (orderDate <= today || orderDate > limit) return false;
+            } else if (dateRange === 'next_12_months') {
+                const limit = new Date(today);
+                limit.setMonth(today.getMonth() + 12);
+                if (orderDate <= today || orderDate > limit) return false;
+            } else if (dateRange === 'this_year') {
+                if (orderDate.getFullYear() !== today.getFullYear()) return false;
+            } else if (dateRange === 'last_3_months') {
+                const limit = new Date(today);
+                limit.setMonth(today.getMonth() - 3);
+                const tomorrow = new Date(today);
+                tomorrow.setDate(today.getDate() + 1);
+                if (orderDate < limit || orderDate >= tomorrow) return false;
+            } else if (dateRange === 'last_6_months') {
+                const limit = new Date(today);
+                limit.setMonth(today.getMonth() - 6);
+                const tomorrow = new Date(today);
+                tomorrow.setDate(today.getDate() + 1);
+                if (orderDate < limit || orderDate >= tomorrow) return false;
+            } else if (dateRange === 'last_12_months') {
+                const limit = new Date(today);
+                limit.setMonth(today.getMonth() - 12);
+                const tomorrow = new Date(today);
+                tomorrow.setDate(today.getDate() + 1);
+                if (orderDate < limit || orderDate >= tomorrow) return false;
+            } else if (dateRange.includes('-')) { // Custom date YYYY-MM-DD
+                if (targetDateStr !== dateRange) return false;
             }
         }
 
@@ -229,10 +296,20 @@ export function QuantitiesClient({ initialOrders, companies }: QuantitiesClientP
                                 <SelectItem value="">All Dates</SelectItem>
                                 <SelectItem value="today">Today</SelectItem>
                                 <SelectItem value="yesterday">Yesterday</SelectItem>
+                                <SelectItem value="tomorrow">Tomorrow</SelectItem>
                                 <SelectItem value="this_week">This Week</SelectItem>
                                 <SelectItem value="last_week">Last Week</SelectItem>
+                                <SelectItem value="next_week">Next Week</SelectItem>
                                 <SelectItem value="this_month">This Month</SelectItem>
                                 <SelectItem value="last_month">Last Month</SelectItem>
+                                <SelectItem value="next_month">Next Month</SelectItem>
+                                <SelectItem value="next_3_months">Next 3 Months</SelectItem>
+                                <SelectItem value="next_6_months">Next 6 Months</SelectItem>
+                                <SelectItem value="next_12_months">Next 12 Months</SelectItem>
+                                <SelectItem value="this_year">This Year</SelectItem>
+                                <SelectItem value="last_3_months">Last 3 Months</SelectItem>
+                                <SelectItem value="last_6_months">Last 6 Months</SelectItem>
+                                <SelectItem value="last_12_months">Last 12 Months</SelectItem>
                             </SelectContent>
                         </Select>
 
@@ -302,29 +379,26 @@ export function QuantitiesClient({ initialOrders, companies }: QuantitiesClientP
                                     <Table>
                                         <TableHeader className="bg-violet-100/50">
                                             <TableRow className="hover:bg-transparent border-violet-100">
-                                            <TableHead className="w-24"></TableHead>
-                                            <TableHead className="font-bold text-gray-900 py-3 text-center w-36">Sandwich Only</TableHead>
+                                            <TableHead className="font-bold text-gray-900 py-3 pl-6 text-left">Sandwich</TableHead>
                                             <TableHead className="font-bold text-gray-900 py-3 text-center w-36">Junior Box</TableHead>
                                             <TableHead className="font-bold text-gray-900 py-3 text-center w-36">Standard Box</TableHead>
-                                            <TableHead className="font-bold text-gray-900 py-3 pl-6 text-left">Sandwich</TableHead>
+                                            <TableHead className="font-bold text-gray-900 py-3 text-center w-36">Sandwich Only</TableHead>
                                         </TableRow>
                                     </TableHeader>
                                     <TableBody>
                                         {aggregatedMeals.map((item, i) => (
                                             <TableRow key={i} className="hover:bg-gray-50/50 border-b border-gray-100 last:border-0 transition-colors">
-                                                <TableCell className="w-24"></TableCell>
-                                                <TableCell className="py-2.5 text-center text-gray-600 font-semibold">{item.sandwich || 0}</TableCell>
+                                                <TableCell className="font-semibold text-sm text-gray-900 py-2.5 pl-6">{item.name}</TableCell>
                                                 <TableCell className="py-2.5 text-center text-gray-600 font-semibold">{item.junior}</TableCell>
                                                 <TableCell className="py-2.5 text-center text-gray-600 font-semibold">{item.standard}</TableCell>
-                                                <TableCell className="font-semibold text-sm text-gray-900 py-2.5 pl-6">{item.name}</TableCell>
+                                                <TableCell className="py-2.5 text-center text-gray-600 font-semibold">{item.sandwich || 0}</TableCell>
                                             </TableRow>
                                         ))}
                                         <TableRow className="bg-violet-50/50 border-t-2 border-violet-200">
-                                            <TableCell className="font-black text-gray-900 pl-6 w-24">TOTAL</TableCell>
-                                            <TableCell className="py-3 text-center font-black text-violet-600 text-base">{mealsSandwichTotal}</TableCell>
+                                            <TableCell className="font-black text-gray-900 pl-6 py-3">TOTAL</TableCell>
                                             <TableCell className="py-3 text-center font-black text-violet-600 text-base">{mealsJuniorTotal}</TableCell>
                                             <TableCell className="py-3 text-center font-black text-violet-600 text-base">{mealsStandardTotal}</TableCell>
-                                            <TableCell></TableCell>
+                                            <TableCell className="py-3 text-center font-black text-violet-600 text-base">{mealsSandwichTotal}</TableCell>
                                         </TableRow>
                                     </TableBody>
                                 </Table>
@@ -342,26 +416,26 @@ export function QuantitiesClient({ initialOrders, companies }: QuantitiesClientP
                                     <Table>
                                         <TableHeader className="bg-violet-100/50">
                                             <TableRow className="hover:bg-transparent border-violet-100">
-                                            <TableHead className="w-24"></TableHead>
-                                            <TableHead className="font-bold text-gray-900 py-3 text-center w-40">Junior Box</TableHead>
-                                            <TableHead className="font-bold text-gray-900 py-3 text-center w-40">Standard Box</TableHead>
                                             <TableHead className="font-bold text-gray-900 py-3 pl-6 text-left">House-made Cookie</TableHead>
+                                            <TableHead className="font-bold text-gray-900 py-3 text-center w-36">Junior Box</TableHead>
+                                            <TableHead className="font-bold text-gray-900 py-3 text-center w-36">Standard Box</TableHead>
+                                            <TableHead className="w-36"></TableHead>
                                         </TableRow>
                                     </TableHeader>
                                     <TableBody>
                                         {aggregatedCookies.map((item, i) => (
                                             <TableRow key={i} className="hover:bg-gray-50/50 border-b border-gray-100 last:border-0 transition-colors">
-                                                <TableCell className="w-24"></TableCell>
+                                                <TableCell className="font-semibold text-sm text-amber-700 py-2.5 pl-6">{item.name}</TableCell>
                                                 <TableCell className="py-2.5 text-center text-gray-600 font-semibold">{item.junior}</TableCell>
                                                 <TableCell className="py-2.5 text-center text-gray-600 font-semibold">{item.standard}</TableCell>
-                                                <TableCell className="font-semibold text-sm text-amber-700 py-2.5 pl-6">{item.name}</TableCell>
+                                                <TableCell className="w-36"></TableCell>
                                             </TableRow>
                                         ))}
                                         <TableRow className="bg-violet-50/50 border-t-2 border-violet-200">
-                                            <TableCell className="font-black text-gray-900 pl-6 w-24">TOTAL</TableCell>
+                                            <TableCell className="font-black text-gray-900 pl-6 py-3">TOTAL</TableCell>
                                             <TableCell className="py-3 text-center font-black text-violet-600 text-base">{cookiesJuniorTotal}</TableCell>
                                             <TableCell className="py-3 text-center font-black text-violet-600 text-base">{cookiesStandardTotal}</TableCell>
-                                            <TableCell></TableCell>
+                                            <TableCell className="w-36"></TableCell>
                                         </TableRow>
                                     </TableBody>
                                 </Table>
@@ -415,31 +489,28 @@ export function QuantitiesClient({ initialOrders, companies }: QuantitiesClientP
                                 <table className="w-full border-collapse text-sm">
                                     <thead>
                                         <tr className="bg-gray-100 text-black">
-                                            <th className="p-1.5 px-3 border-b-2 border-gray-300 w-24"></th>
-                                            <th className="p-1.5 px-3 text-center font-bold border-b-2 border-gray-300 w-28">Sandwich Only</th>
+                                            <th className="p-1.5 px-3 text-left font-bold border-b-2 border-gray-300">Sandwich</th>
                                             <th className="p-1.5 px-3 text-center font-bold border-b-2 border-gray-300 w-28">Junior Box</th>
                                             <th className="p-1.5 px-3 text-center font-bold border-b-2 border-gray-300 w-28">Standard Box</th>
-                                            <th className="p-1.5 px-3 text-left font-bold border-b-2 border-gray-300">Sandwich</th>
+                                            <th className="p-1.5 px-3 text-center font-bold border-b-2 border-gray-300 w-28">Sandwich Only</th>
                                         </tr>
                                     </thead>
                                     <tbody>
                                         {aggregatedMeals.map((item, i) => (
                                             <tr key={i} className="border-b border-gray-200">
-                                                <td className="p-1.5 px-3"></td>
-                                                <td className="p-1.5 px-3 text-center font-semibold">{item.sandwich || 0}</td>
+                                                <td className="p-1.5 px-3 text-left font-semibold text-gray-800">{item.name}</td>
                                                 <td className="p-1.5 px-3 text-center font-semibold">{item.junior}</td>
                                                 <td className="p-1.5 px-3 text-center font-semibold">{item.standard}</td>
-                                                <td className="p-1.5 px-3 text-left font-semibold text-gray-800">{item.name}</td>
+                                                <td className="p-1.5 px-3 text-center font-semibold">{item.sandwich || 0}</td>
                                             </tr>
                                         ))}
                                     </tbody>
                                     <tfoot>
                                         <tr className="bg-gray-50 border-t-2 border-gray-300">
-                                            <td className="p-2 px-3 font-black text-left w-24 uppercase text-xs">Total</td>
-                                            <td className="p-2 px-3 text-center font-black text-base">{mealsSandwichTotal}</td>
+                                            <td className="p-2 px-3 font-black text-left uppercase text-xs">Total</td>
                                             <td className="p-2 px-3 text-center font-black text-base">{mealsJuniorTotal}</td>
                                             <td className="p-2 px-3 text-center font-black text-base">{mealsStandardTotal}</td>
-                                            <td className="p-2 px-3"></td>
+                                            <td className="p-2 px-3 text-center font-black text-base">{mealsSandwichTotal}</td>
                                         </tr>
                                     </tfoot>
                                 </table>
@@ -452,28 +523,28 @@ export function QuantitiesClient({ initialOrders, companies }: QuantitiesClientP
                                 <table className="w-full border-collapse text-sm">
                                     <thead>
                                         <tr className="bg-gray-100 text-black">
-                                            <th className="p-1.5 px-3 border-b-2 border-gray-300 w-24"></th>
-                                            <th className="p-1.5 px-3 text-center font-bold border-b-2 border-gray-300 w-32">Junior Box</th>
-                                            <th className="p-1.5 px-3 text-center font-bold border-b-2 border-gray-300 w-32">Standard Box</th>
                                             <th className="p-1.5 px-3 text-left font-bold border-b-2 border-gray-300">House-made Cookie</th>
+                                            <th className="p-1.5 px-3 text-center font-bold border-b-2 border-gray-300 w-28">Junior Box</th>
+                                            <th className="p-1.5 px-3 text-center font-bold border-b-2 border-gray-300 w-28">Standard Box</th>
+                                            <th className="p-1.5 px-3 border-b-2 border-gray-300 w-28"></th>
                                         </tr>
                                     </thead>
                                     <tbody>
                                         {aggregatedCookies.map((item, i) => (
                                             <tr key={i} className="border-b border-gray-200">
-                                                <td className="p-1.5 px-3"></td>
+                                                <td className="p-1.5 px-3 text-left font-semibold text-gray-800">{item.name}</td>
                                                 <td className="p-1.5 px-3 text-center font-semibold">{item.junior}</td>
                                                 <td className="p-1.5 px-3 text-center font-semibold">{item.standard}</td>
-                                                <td className="p-1.5 px-3 text-left font-semibold text-gray-800">{item.name}</td>
+                                                <td className="p-1.5 px-3 text-center font-semibold"></td>
                                             </tr>
                                         ))}
                                     </tbody>
                                     <tfoot>
                                         <tr className="bg-gray-50 border-t-2 border-gray-300">
-                                            <td className="p-2 px-3 font-black text-left w-24 uppercase text-xs">Total</td>
+                                            <td className="p-2 px-3 font-black text-left uppercase text-xs">Total</td>
                                             <td className="p-2 px-3 text-center font-black text-base">{cookiesJuniorTotal}</td>
                                             <td className="p-2 px-3 text-center font-black text-base">{cookiesStandardTotal}</td>
-                                            <td className="p-2 px-3"></td>
+                                            <td className="p-2 px-3 w-28"></td>
                                         </tr>
                                     </tfoot>
                                 </table>

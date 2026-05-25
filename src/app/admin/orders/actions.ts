@@ -165,13 +165,15 @@ export async function generateCompanyInvoice(orderIds: string[]) {
         const stripeCustomerId = await getOrCreateStripeCustomer(companyId, company.email, company.name);
 
         // 4. Create Stripe Invoice
+        const orderIdsStr = orderIds.join(',');
         const stripeInvoice = await stripe.invoices.create({
             customer: stripeCustomerId,
             collection_method: 'send_invoice',
             days_until_due: 7,
             metadata: {
                 company_id: companyId,
-                order_ids: orderIds.join(','),
+                order_ids: orderIdsStr.length > 450 ? orderIdsStr.slice(0, 450) + '...' : orderIdsStr,
+                order_count: String(orderIds.length)
             }
         });
 
@@ -229,7 +231,7 @@ export async function generateCompanyInvoice(orderIds: string[]) {
             .insert({
                 company_id: companyId,
                 total_amount: finalizedInvoice.total / 100,
-                status: 'created',
+                status: 'sent',
                 stripe_payment_link: finalizedInvoice.hosted_invoice_url,
                 pdf_url: finalizedInvoice.invoice_pdf,
                 stripe_invoice_id: finalizedInvoice.id,
@@ -240,6 +242,17 @@ export async function generateCompanyInvoice(orderIds: string[]) {
             .single();
 
         if (invError) throw invError;
+
+        // Update Stripe Invoice metadata with the database invoice_id
+        try {
+            await stripe.invoices.update(finalizedInvoice.id, {
+                metadata: {
+                    invoice_id: dbInvoice.id
+                }
+            });
+        } catch (metaErr) {
+            console.error('[generateCompanyInvoice] Failed to update Stripe invoice metadata:', metaErr);
+        }
 
         // 8. Update orders to 'invoiced' and link them to this invoice
         await supabase

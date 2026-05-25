@@ -98,7 +98,7 @@ export interface OrderItem {
     meal_id: string | null;
     meal_name: string;
     quantity: number;
-    box_type: 'Box Lunch' | 'Junior Box Lunch' | 'Sandwich only' | null;
+    box_type: 'Box Lunch' | 'Junior Box Lunch' | 'Bag Lunch' | 'Junior Bag Lunch' | 'Sandwich only' | 'This is a box lunch' | 'This is a junior box lunch' | 'This is a bag lunch' | 'This is a junior bag lunch' | 'This is a standalone sandwich' | null;
     bread_type: 'Sandwich' | 'Make it a wrap' | 'Gluten-free bread' | 'Fresh croissant' | null;
     cookie_choice: string | null;
     customizations: string | null;

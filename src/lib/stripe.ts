@@ -1,10 +1,8 @@
 import Stripe from 'stripe';
 
-if (!process.env.STRIPE_SECRET_KEY) {
-  throw new Error('STRIPE_SECRET_KEY is missing from environment variables');
-}
+const stripeKey = process.env.STRIPE_SECRET_KEY || '';
 
-export const stripe = new Stripe(process.env.STRIPE_SECRET_KEY, {
+export const stripe = new Stripe(stripeKey, {
   apiVersion: '2026-04-22.dahlia', // Use a stable version
   typescript: true,
 });

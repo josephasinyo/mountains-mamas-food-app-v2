@@ -104,12 +104,12 @@ export default function RecentOrdersTable({ initialOrders }: RecentOrdersTablePr
                                     <td className="pl-6 pr-4 py-4">
                                         <div className="flex items-center gap-3">
                                             <div className={`size-8 rounded-lg flex items-center justify-center text-[10px] font-black transition-all ${isExpanded ? 'bg-violet-600 text-white shadow-sm' : 'bg-gray-100 text-gray-400 group-hover:bg-violet-100 group-hover:text-violet-600'}`}>
-                                                {order.customer_name?.charAt(0) || '?'}
+                                                {(order.guide_name || order.customer_name)?.charAt(0).toUpperCase() || '?'}
                                             </div>
                                             <div className="min-w-0">
-                                                <p className="font-bold text-sm text-gray-900 truncate leading-tight">{order.customer_name}</p>
+                                                <p className="font-bold text-sm text-gray-900 truncate leading-tight">{order.guide_name || order.customer_name}</p>
                                                 <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-tighter truncate mt-0.5">
-                                                    {order.tour_companies?.name} {order.guide_name && `• Guide: ${order.guide_name}`}
+                                                    {order.tour_companies?.name}
                                                 </p>
                                             </div>
                                         </div>
@@ -119,7 +119,7 @@ export default function RecentOrdersTable({ initialOrders }: RecentOrdersTablePr
                                         <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-tighter mt-0.5">{order.pickup_time || 'No time'}</p>
                                     </td>
                                     <td className="px-4 py-4">
-                                        <p className="text-sm font-bold text-gray-900 leading-tight">{formatDateUS(order.created_at)}</p>
+                                        <p className="text-sm font-semibold text-gray-400 leading-tight">{formatDateUS(order.created_at)}</p>
                                         <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-tighter mt-0.5">{new Date(order.created_at).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}</p>
                                     </td>
                                     <td className="px-4 py-4">
@@ -214,12 +214,12 @@ export default function RecentOrdersTable({ initialOrders }: RecentOrdersTablePr
                             <div className="flex items-start justify-between">
                                 <div className="flex items-center gap-3">
                                     <div className={`size-9 rounded-xl flex items-center justify-center text-xs font-black transition-all ${isExpanded ? 'bg-violet-600 text-white shadow-sm' : 'bg-violet-50 text-violet-700'}`}>
-                                        {order.customer_name?.charAt(0) || '?'}
+                                        {(order.guide_name || order.customer_name)?.charAt(0).toUpperCase() || '?'}
                                     </div>
                                     <div>
-                                        <h4 className="font-bold text-sm text-gray-900 leading-tight">{order.customer_name}</h4>
+                                        <h4 className="font-bold text-sm text-gray-900 leading-tight">{order.guide_name || order.customer_name}</h4>
                                         <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-tighter mt-0.5">
-                                            {order.tour_companies?.name} {order.guide_name && `• Guide: ${order.guide_name}`}
+                                            {order.tour_companies?.name}
                                         </p>
                                     </div>
                                 </div>
@@ -242,7 +242,7 @@ export default function RecentOrdersTable({ initialOrders }: RecentOrdersTablePr
                                 </div>
                                 <div className="flex flex-col">
                                     <span className="text-[9px] text-gray-400 font-bold uppercase tracking-wider">Placed At</span>
-                                    <span className="text-gray-900 font-bold">{formatDateUS(order.created_at)}</span>
+                                    <span className="text-gray-400 font-semibold">{formatDateUS(order.created_at)}</span>
                                     <span className="text-[10px] text-gray-400 mt-0.5">
                                         {new Date(order.created_at).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}
                                     </span>

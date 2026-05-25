@@ -118,7 +118,19 @@ export async function POST(req: Request) {
         case 'invoice.paid': {
             const invoice = event.data.object as any;
             const companyId = invoice.customer_metadata?.company_id;
-            const invoiceId = invoice.metadata?.invoice_id; // Internal invoice ID
+            let invoiceId = invoice.metadata?.invoice_id; // Internal invoice ID
+
+            if (!invoiceId && invoice.id) {
+                // Fallback: look up in Supabase by stripe_invoice_id
+                const { data } = await supabase
+                    .from('invoices')
+                    .select('id')
+                    .eq('stripe_invoice_id', invoice.id)
+                    .single();
+                if (data) {
+                    invoiceId = data.id;
+                }
+            }
 
             if (invoiceId) {
                 console.log(`[Stripe Webhook] Invoice paid: ${invoiceId}`);

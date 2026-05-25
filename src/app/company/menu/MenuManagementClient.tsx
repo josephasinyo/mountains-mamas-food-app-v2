@@ -24,6 +24,7 @@ export default function MenuManagementClient({ initialData }: MenuManagementClie
     const [pendingId, setPendingId] = useState<string | null>(null);
     const [isPending, startTransition] = useTransition();
     const [viewMode, setViewMode] = useState<'table' | 'cards'>('cards');
+    const [activeImgIndexes, setActiveImgIndexes] = useState<Record<string, number>>({});
     
     // Map sort orders and selection status from selections
     const selectionSortMap = new Map<string, number>(
@@ -133,16 +134,25 @@ export default function MenuManagementClient({ initialData }: MenuManagementClie
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                     {filteredMeals.map((meal: any) => {
                         const isSelected = selectionMap.get(meal.id) ?? true;
+                        const availableImages = [
+                            { label: 'Main', url: meal.image_url },
+                            { label: 'Standard Box', url: meal.box_lunch_image_url },
+                            { label: 'Junior Box', url: meal.junior_box_lunch_image_url },
+                            { label: 'Sandwich Only', url: meal.sandwich_image_url },
+                        ].filter(img => !!img.url);
+
+                        const activeIndex = activeImgIndexes[meal.id] ?? 0;
+                        const activeImg = availableImages[activeIndex]?.url || meal.image_url;
                         
                         return (
                             <Card key={meal.id} className={`rounded-[32px] border-none shadow-sm transition-all duration-300 group ${
                                 isSelected ? 'bg-white ring-1 ring-gray-100 hover:ring-violet-500 hover:shadow-2xl hover:shadow-violet-100' : 'bg-gray-50/80 opacity-70 grayscale'
                             }`}>
                                 <CardContent className="p-6">
-                                    <div className="aspect-video rounded-2xl bg-gray-100 mb-5 overflow-hidden relative">
-                                        {meal.image_url ? (
+                                    <div className="aspect-[4/3] rounded-2xl bg-gray-100 mb-5 overflow-hidden relative">
+                                        {activeImg ? (
                                             <img 
-                                                src={meal.image_url} 
+                                                src={activeImg} 
                                                 alt={meal.name} 
                                                 className="size-full object-cover group-hover:scale-110 transition-transform duration-500" 
                                             />
@@ -151,6 +161,57 @@ export default function MenuManagementClient({ initialData }: MenuManagementClie
                                                 <UtensilsCrossed className="size-12" />
                                             </div>
                                         )}
+
+                                        {/* Image Pagination Dots */}
+                                        {availableImages.length > 1 && (
+                                            <div className="absolute bottom-3 left-1/2 -translate-x-1/2 flex gap-1.5 bg-black/50 backdrop-blur-md px-2.5 py-1.5 rounded-full z-10 border border-white/10">
+                                                {availableImages.map((img, idx) => {
+                                                    const isActive = activeIndex === idx;
+                                                    return (
+                                                        <button
+                                                            key={img.label}
+                                                            title={img.label}
+                                                            onClick={(e) => {
+                                                                e.stopPropagation();
+                                                                setActiveImgIndexes(prev => ({ ...prev, [meal.id]: idx }));
+                                                            }}
+                                                            className={`size-2 rounded-full transition-all ${
+                                                                isActive 
+                                                                    ? 'bg-white scale-125 shadow-sm' 
+                                                                    : 'bg-white/40 hover:bg-white/60'
+                                                            }`}
+                                                        />
+                                                    );
+                                                })}
+                                            </div>
+                                        )}
+
+                                        {/* Slide Navigation Arrows */}
+                                        {availableImages.length > 1 && (
+                                            <>
+                                                <button
+                                                    onClick={(e) => {
+                                                        e.stopPropagation();
+                                                        const prevIdx = (activeIndex - 1 + availableImages.length) % availableImages.length;
+                                                        setActiveImgIndexes(prev => ({ ...prev, [meal.id]: prevIdx }));
+                                                    }}
+                                                    className="absolute left-3 top-1/2 -translate-y-1/2 size-8 bg-black/40 hover:bg-black/60 text-white rounded-full flex items-center justify-center backdrop-blur-sm z-10 transition-all opacity-0 group-hover:opacity-100 hover:scale-110"
+                                                >
+                                                    <ChevronLeft className="size-4" />
+                                                </button>
+                                                <button
+                                                    onClick={(e) => {
+                                                        e.stopPropagation();
+                                                        const nextIdx = (activeIndex + 1) % availableImages.length;
+                                                        setActiveImgIndexes(prev => ({ ...prev, [meal.id]: nextIdx }));
+                                                    }}
+                                                    className="absolute right-3 top-1/2 -translate-y-1/2 size-8 bg-black/40 hover:bg-black/60 text-white rounded-full flex items-center justify-center backdrop-blur-sm z-10 transition-all opacity-0 group-hover:opacity-100 hover:scale-110"
+                                                >
+                                                    <ChevronRight className="size-4" />
+                                                </button>
+                                            </>
+                                        )}
+
                                         <div className="absolute top-3 right-3 flex gap-2">
                                             <div className="bg-white/90 backdrop-blur-md px-3 py-1 rounded-full text-[12px] font-black text-gray-900 shadow-sm border border-white/50 flex flex-col items-center">
                                                 <span>${Number(meal.price).toFixed(2)}</span>
@@ -163,21 +224,6 @@ export default function MenuManagementClient({ initialData }: MenuManagementClie
                                             }`}>
                                                 {isSelected ? 'Available' : 'Hidden'}
                                             </Badge>
-                                        </div>
-                                        
-                                        {/* Availability Overlay */}
-                                        <div className="absolute inset-0 bg-black/40 backdrop-blur-[2px] opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex flex-col items-center justify-center gap-4">
-                                            <div className="bg-white rounded-2xl p-4 shadow-xl flex items-center gap-3 scale-90 group-hover:scale-100 transition-transform duration-300">
-                                                <span className="text-xs font-black uppercase tracking-wider text-gray-900">
-                                                    {isSelected ? 'Available' : 'Hidden'}
-                                                </span>
-                                                <Switch 
-                                                    checked={isSelected} 
-                                                    onCheckedChange={() => handleToggle(meal.id, isSelected)}
-                                                    className="data-[state=checked]:bg-violet-600"
-                                                />
-                                            </div>
-                                            
                                         </div>
                                     </div>
 
@@ -243,14 +289,43 @@ export default function MenuManagementClient({ initialData }: MenuManagementClie
                         <TableBody>
                             {filteredMeals.map((meal: any, idx) => {
                                 const isSelected = selectionMap.get(meal.id) ?? true;
+                                const availableImages = [
+                                    { label: 'Main', url: meal.image_url },
+                                    { label: 'Standard Box', url: meal.box_lunch_image_url },
+                                    { label: 'Junior Box', url: meal.junior_box_lunch_image_url },
+                                    { label: 'Sandwich Only', url: meal.sandwich_image_url },
+                                ].filter(img => !!img.url);
+
+                                const activeIndex = activeImgIndexes[meal.id] ?? 0;
+                                const activeImg = availableImages[activeIndex]?.url || meal.image_url;
+
                                 return (
                                     <TableRow key={meal.id} className="border-gray-50 hover:bg-violet-50/10 transition-colors">
                                         <TableCell className="pl-6">
-                                            <div className="size-16 rounded-xl bg-gray-50 flex items-center justify-center overflow-hidden border border-gray-100 shadow-sm mx-auto">
-                                                {meal.image_url ? (
-                                                    <img src={meal.image_url} alt={meal.name} className="size-full object-cover" />
-                                                ) : (
-                                                    <UtensilsCrossed className="size-6 text-gray-200" />
+                                            <div className="flex flex-col items-center gap-1.5">
+                                                <div className="size-16 rounded-xl bg-gray-50 flex items-center justify-center overflow-hidden border border-gray-100 shadow-sm mx-auto relative">
+                                                    {activeImg ? (
+                                                        <img src={activeImg} alt={meal.name} className="size-full object-cover" />
+                                                    ) : (
+                                                        <UtensilsCrossed className="size-6 text-gray-200" />
+                                                    )}
+                                                </div>
+                                                {availableImages.length > 1 && (
+                                                    <div className="flex gap-1 bg-gray-100 p-0.5 rounded-full border border-gray-200">
+                                                        {availableImages.map((img, i) => {
+                                                            const isActive = activeIndex === i;
+                                                            return (
+                                                                <button
+                                                                    key={img.label}
+                                                                    title={img.label}
+                                                                    onClick={() => setActiveImgIndexes(prev => ({ ...prev, [meal.id]: i }))}
+                                                                    className={`size-2 rounded-full transition-all ${
+                                                                        isActive ? 'bg-violet-600 scale-110 shadow-sm' : 'bg-gray-300 hover:bg-gray-400'
+                                                                    }`}
+                                                                />
+                                                            );
+                                                        })}
+                                                    </div>
                                                 )}
                                             </div>
                                         </TableCell>

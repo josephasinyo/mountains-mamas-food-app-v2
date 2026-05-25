@@ -14,6 +14,26 @@ import {
 import { Button, buttonVariants } from '@/components/ui/button';
 import { cn, formatDateUS } from '@/lib/utils';
 import { OrderItemDetails } from '@/components/ui/OrderItemCustomFields';
+
+const DATE_RANGE_LABELS: Record<string, string> = {
+    '': 'All Dates',
+    'today': 'Today',
+    'yesterday': 'Yesterday',
+    'tomorrow': 'Tomorrow',
+    'this_week': 'This Week',
+    'last_week': 'Last Week',
+    'next_week': 'Next Week',
+    'this_month': 'This Month',
+    'last_month': 'Last Month',
+    'next_month': 'Next Month',
+    'next_3_months': 'Next 3 Months',
+    'next_6_months': 'Next 6 Months',
+    'next_12_months': 'Next 12 Months',
+    'this_year': 'This Year',
+    'last_3_months': 'Last 3 Months',
+    'last_6_months': 'Last 6 Months',
+    'last_12_months': 'Last 12 Months'
+};
 import { ConfirmDialog } from '@/components/ConfirmDialog';
 
 import {
@@ -101,29 +121,95 @@ export default function OrderHistoryClient({ initialData }: OrderHistoryClientPr
         // Date Filtering Logic
         if (dateRange) {
             const now = new Date();
-            const todayStr = now.toISOString().split('T')[0];
+            const getLocalDateStr = (d: Date) => {
+                const yyyy = d.getFullYear();
+                const mm = String(d.getMonth() + 1).padStart(2, '0');
+                const dd = String(d.getDate()).padStart(2, '0');
+                return `${yyyy}-${mm}-${dd}`;
+            };
+            const todayStr = getLocalDateStr(now);
             const targetDateStr = dateFilterMode === 'tour' ? order.tour_date : order.created_at.split('T')[0];
             
+            const parseLocalDate = (dateStr: string) => {
+                const parts = dateStr.split('-');
+                if (parts.length !== 3) return new Date();
+                const [yyyy, mm, dd] = parts.map(Number);
+                return new Date(yyyy, mm - 1, dd);
+            };
+
+            const orderDate = parseLocalDate(targetDateStr);
+            const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+
             if (dateRange === 'today') {
                 if (targetDateStr !== todayStr) return false;
             } else if (dateRange === 'yesterday') {
-                const yesterday = new Date(now);
-                yesterday.setDate(yesterday.getDate() - 1);
-                const yesterdayStr = yesterday.toISOString().split('T')[0];
+                const yesterday = new Date(today);
+                yesterday.setDate(today.getDate() - 1);
+                const yesterdayStr = getLocalDateStr(yesterday);
                 if (targetDateStr !== yesterdayStr) return false;
-            } else {
-                const orderDate = new Date(targetDateStr);
-                const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-
-                if (dateRange === 'this_week') {
-                    const startOfWeek = new Date(today);
-                    startOfWeek.setDate(today.getDate() - today.getDay());
-                    if (orderDate < startOfWeek) return false;
-                } else if (dateRange === 'this_month') {
-                    if (orderDate.getMonth() !== today.getMonth() || orderDate.getFullYear() !== today.getFullYear()) return false;
-                } else if (dateRange.includes('-')) { // Custom date YYYY-MM-DD
-                    if (targetDateStr !== dateRange) return false;
-                }
+            } else if (dateRange === 'tomorrow') {
+                const tomorrow = new Date(today);
+                tomorrow.setDate(today.getDate() + 1);
+                const tomorrowStr = getLocalDateStr(tomorrow);
+                if (targetDateStr !== tomorrowStr) return false;
+            } else if (dateRange === 'this_week') {
+                const startOfWeek = new Date(today);
+                startOfWeek.setDate(today.getDate() - today.getDay());
+                if (orderDate < startOfWeek) return false;
+            } else if (dateRange === 'last_week') {
+                const startOfLastWeek = new Date(today);
+                startOfLastWeek.setDate(today.getDate() - today.getDay() - 7);
+                const endOfLastWeek = new Date(startOfLastWeek);
+                endOfLastWeek.setDate(startOfLastWeek.getDate() + 6);
+                if (orderDate < startOfLastWeek || orderDate > endOfLastWeek) return false;
+            } else if (dateRange === 'next_week') {
+                const startOfNextWeek = new Date(today);
+                startOfNextWeek.setDate(today.getDate() - today.getDay() + 7);
+                const endOfNextWeek = new Date(startOfNextWeek);
+                endOfNextWeek.setDate(startOfNextWeek.getDate() + 6);
+                if (orderDate < startOfNextWeek || orderDate > endOfNextWeek) return false;
+            } else if (dateRange === 'this_month') {
+                if (orderDate.getMonth() !== today.getMonth() || orderDate.getFullYear() !== today.getFullYear()) return false;
+            } else if (dateRange === 'last_month') {
+                const lastMonth = new Date(today.getFullYear(), today.getMonth() - 1, 1);
+                if (orderDate.getMonth() !== lastMonth.getMonth() || orderDate.getFullYear() !== lastMonth.getFullYear()) return false;
+            } else if (dateRange === 'next_month') {
+                const nextMonth = new Date(today.getFullYear(), today.getMonth() + 1, 1);
+                if (orderDate.getMonth() !== nextMonth.getMonth() || orderDate.getFullYear() !== nextMonth.getFullYear()) return false;
+            } else if (dateRange === 'next_3_months') {
+                const limit = new Date(today);
+                limit.setMonth(today.getMonth() + 3);
+                if (orderDate <= today || orderDate > limit) return false;
+            } else if (dateRange === 'next_6_months') {
+                const limit = new Date(today);
+                limit.setMonth(today.getMonth() + 6);
+                if (orderDate <= today || orderDate > limit) return false;
+            } else if (dateRange === 'next_12_months') {
+                const limit = new Date(today);
+                limit.setMonth(today.getMonth() + 12);
+                if (orderDate <= today || orderDate > limit) return false;
+            } else if (dateRange === 'this_year') {
+                if (orderDate.getFullYear() !== today.getFullYear()) return false;
+            } else if (dateRange === 'last_3_months') {
+                const limit = new Date(today);
+                limit.setMonth(today.getMonth() - 3);
+                const tomorrow = new Date(today);
+                tomorrow.setDate(today.getDate() + 1);
+                if (orderDate < limit || orderDate >= tomorrow) return false;
+            } else if (dateRange === 'last_6_months') {
+                const limit = new Date(today);
+                limit.setMonth(today.getMonth() - 6);
+                const tomorrow = new Date(today);
+                tomorrow.setDate(today.getDate() + 1);
+                if (orderDate < limit || orderDate >= tomorrow) return false;
+            } else if (dateRange === 'last_12_months') {
+                const limit = new Date(today);
+                limit.setMonth(today.getMonth() - 12);
+                const tomorrow = new Date(today);
+                tomorrow.setDate(today.getDate() + 1);
+                if (orderDate < limit || orderDate >= tomorrow) return false;
+            } else if (dateRange.includes('-')) { // Custom date YYYY-MM-DD
+                if (targetDateStr !== dateRange) return false;
             }
         }
 
@@ -389,14 +475,28 @@ export default function OrderHistoryClient({ initialData }: OrderHistoryClientPr
 
                     <Select value={dateRange} onValueChange={(val) => setDateRange(val ?? '')}>
                         <SelectTrigger className="w-[180px] h-10 rounded-xl border-gray-200 font-semibold text-sm">
-                            <SelectValue placeholder="All Dates" />
+                            <SelectValue placeholder="All Dates">
+                                {DATE_RANGE_LABELS[dateRange] || dateRange || 'All Dates'}
+                            </SelectValue>
                         </SelectTrigger>
                         <SelectContent>
                             <SelectItem value="">All Dates</SelectItem>
                             <SelectItem value="today">Today</SelectItem>
                             <SelectItem value="yesterday">Yesterday</SelectItem>
+                            <SelectItem value="tomorrow">Tomorrow</SelectItem>
                             <SelectItem value="this_week">This Week</SelectItem>
+                            <SelectItem value="last_week">Last Week</SelectItem>
+                            <SelectItem value="next_week">Next Week</SelectItem>
                             <SelectItem value="this_month">This Month</SelectItem>
+                            <SelectItem value="last_month">Last Month</SelectItem>
+                            <SelectItem value="next_month">Next Month</SelectItem>
+                            <SelectItem value="next_3_months">Next 3 Months</SelectItem>
+                            <SelectItem value="next_6_months">Next 6 Months</SelectItem>
+                            <SelectItem value="next_12_months">Next 12 Months</SelectItem>
+                            <SelectItem value="this_year">This Year</SelectItem>
+                            <SelectItem value="last_3_months">Last 3 Months</SelectItem>
+                            <SelectItem value="last_6_months">Last 6 Months</SelectItem>
+                            <SelectItem value="last_12_months">Last 12 Months</SelectItem>
                         </SelectContent>
                     </Select>
 
@@ -501,13 +601,10 @@ export default function OrderHistoryClient({ initialData }: OrderHistoryClientPr
                                                                 ? 'bg-violet-600 text-white shadow-sm' 
                                                                 : 'bg-gray-100 text-gray-600 group-hover:bg-violet-100 group-hover:text-violet-700'
                                                         }`}>
-                                                            {order.customer_name?.charAt(0).toUpperCase() || '?'}
+                                                            {(order.guide_name || order.customer_name)?.charAt(0).toUpperCase() || '?'}
                                                         </div>
                                                         <div>
-                                                            <p className="font-bold text-[13.5px] text-gray-900">{order.customer_name}</p>
-                                                            {order.guide_name && (
-                                                                <p className="text-[11px] font-semibold text-violet-600/70 uppercase tracking-wider mt-0.5">Guide: {order.guide_name}</p>
-                                                            )}
+                                                            <p className="font-bold text-[13.5px] text-gray-900">{order.guide_name || order.customer_name}</p>
                                                         </div>
                                                     </div>
                                                 </TableCell>
@@ -519,7 +616,7 @@ export default function OrderHistoryClient({ initialData }: OrderHistoryClientPr
                                                 </TableCell>
                                                 <TableCell className="py-3">
                                                     <div className="flex flex-col">
-                                                        <span className="text-[13px] font-bold text-gray-900">
+                                                        <span className="text-[13px] font-semibold text-gray-400">
                                                             {isMounted ? formatDateUS(order.created_at) : ''}
                                                         </span>
                                                         <span className="text-[10px] font-semibold text-gray-400 uppercase tracking-tight">
@@ -731,13 +828,10 @@ export default function OrderHistoryClient({ initialData }: OrderHistoryClientPr
                                                         ? "bg-violet-600 text-white shadow-sm" 
                                                         : "bg-violet-50 text-violet-700"
                                                 )}>
-                                                    {order.customer_name?.charAt(0).toUpperCase() || '?'}
+                                                    {(order.guide_name || order.customer_name)?.charAt(0).toUpperCase() || '?'}
                                                 </div>
                                                 <div>
-                                                    <h3 className="font-bold text-[15px] text-gray-900 leading-tight">{order.customer_name}</h3>
-                                                    {order.guide_name && (
-                                                        <p className="text-[11px] font-semibold text-violet-600/70 uppercase tracking-wider mt-0.5">Guide: {order.guide_name}</p>
-                                                    )}
+                                                    <h3 className="font-bold text-[15px] text-gray-900 leading-tight">{order.guide_name || order.customer_name}</h3>
                                                 </div>
                                             </div>
                                             
@@ -829,7 +923,7 @@ export default function OrderHistoryClient({ initialData }: OrderHistoryClientPr
                                             
                                             <div className="text-right">
                                                 <span className="text-[10px] text-gray-400 font-bold uppercase block">Placed At</span>
-                                                <span className="text-[12px] font-bold text-gray-700">
+                                                <span className="text-[12px] font-semibold text-gray-400">
                                                     {isMounted ? formatDateUS(order.created_at) : ''}
                                                 </span>
                                             </div>
