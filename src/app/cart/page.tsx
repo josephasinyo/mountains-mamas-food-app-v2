@@ -3,7 +3,7 @@
 import { useCart } from '@/hooks/useCart';
 import { Button } from '@/components/ui/button';
 import Link from 'next/link';
-import Image from 'next/image';
+
 import styles from './cart.module.css';
 import { useRouter } from 'next/navigation';
 import { useState, useEffect } from 'react';
@@ -30,12 +30,11 @@ const CartGroup = ({
         <div className={styles.imageWrapper}>
           <Link href={`/product/${itemGroup.foodId}`} className={styles.imageLink}>
             {/* eslint-disable-next-line @next/next/no-img-element */}
-            <Image 
+            <img 
               src={itemGroup.image || '/placeholder.png'} 
               alt={itemGroup.name} 
               className={styles.itemImage} 
-              fill
-              sizes="70px"
+              loading="lazy"
             />
           </Link>
         </div>

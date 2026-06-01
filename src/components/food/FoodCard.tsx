@@ -1,7 +1,7 @@
 import { FoodItem } from '@/lib/types';
 import styles from './FoodCard.module.css';
 import Link from 'next/link';
-import Image from 'next/image';
+
 import { useCompany } from '@/components/context/CompanyProvider';
 
 interface FoodCardProps {
@@ -14,12 +14,12 @@ export default function FoodCard({ item }: FoodCardProps) {
   return (
     <Link href={`/product/${item.id}`} className={styles.card}>
       <div className={styles.imageWrapper}>
-        <Image 
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img 
           src={item.image_url || '/placeholder.png'} 
           alt={item.name} 
-          fill
           className={styles.image}
-          sizes="(max-width: 768px) 100vw, (max-width: 1200px) 50vw, 33vw"
+          loading="lazy"
         />
       </div>
       <h3 className={styles.name}>{item.name}</h3>
