@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useRef, useEffect, useMemo } from 'react';
-import Image from 'next/image';
+
 import { FoodItem } from '@/lib/types';
 import { useCart } from '@/hooks/useCart';
 import { Button } from '@/components/ui/button';
@@ -336,13 +336,11 @@ export default function AddToCartForm({ item }: Props) {
 
       {/* Reactive Image Header */}
       <div className={styles.imageWrapper}>
-          <Image 
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img 
               src={activeImage || '/placeholder.png'} 
               alt={item.name} 
               className={styles.image} 
-              fill
-              priority
-              sizes="(max-width: 768px) 100vw, (max-width: 1200px) 50vw, 33vw"
           />
       </div>      <div className={styles.detailsWrapper}>
         <div className={styles.headerRow}>
