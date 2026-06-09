@@ -13,6 +13,7 @@ import {
 import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { createClient } from '@/lib/supabase/client';
+import { toast } from 'sonner';
 
 const ALL_NAV_SECTIONS = [
     {
@@ -116,6 +117,87 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
     useEffect(() => {
         setMobileOpen(false);
     }, [pathname]);
+
+    // Subscribe to realtime order notifications for sound alerts
+    useEffect(() => {
+        if (!userRole) return;
+
+        const channel = supabase
+            .channel('admin-orders-sound-alerts')
+            .on(
+                'postgres_changes',
+                {
+                    event: 'INSERT',
+                    schema: 'public',
+                    table: 'orders',
+                },
+                (payload) => {
+                    const newOrder = payload.new;
+                    const customer = newOrder.guide_name || newOrder.customer_name || 'Customer';
+
+                    const isMuted = localStorage.getItem('admin_new_order_sound_muted') === 'true';
+                    if (!isMuted) {
+                        try {
+                            const AudioContext = window.AudioContext || (window as any).webkitAudioContext;
+                            if (!AudioContext) return;
+                            const ctx = new AudioContext();
+                            const now = ctx.currentTime;
+                            
+                            const osc1 = ctx.createOscillator();
+                            const gain1 = ctx.createGain();
+                            osc1.type = 'sine';
+                            osc1.frequency.setValueAtTime(783.99, now); // G5
+                            gain1.gain.setValueAtTime(0, now);
+                            gain1.gain.linearRampToValueAtTime(0.15, now + 0.05);
+                            gain1.gain.exponentialRampToValueAtTime(0.001, now + 0.4);
+                            osc1.connect(gain1);
+                            gain1.connect(ctx.destination);
+                            
+                            const osc2 = ctx.createOscillator();
+                            const gain2 = ctx.createGain();
+                            osc2.type = 'sine';
+                            osc2.frequency.setValueAtTime(1046.50, now + 0.12); // C6
+                            gain2.gain.setValueAtTime(0, now + 0.12);
+                            gain2.gain.linearRampToValueAtTime(0.2, now + 0.17);
+                            gain2.gain.exponentialRampToValueAtTime(0.001, now + 0.6);
+                            osc2.connect(gain2);
+                            gain2.connect(ctx.destination);
+                            
+                            osc1.start(now);
+                            osc1.stop(now + 0.4);
+                            osc2.start(now + 0.12);
+                            osc2.stop(now + 0.7);
+                        } catch (e) {
+                            console.error('Audio play failed:', e);
+                        }
+                    }
+
+                    // Show visual toast notification with a print ticket action
+                    const tourDateStr = newOrder.tour_date 
+                        ? new Date(newOrder.tour_date + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) 
+                        : '';
+                    const guideInfo = newOrder.guide_name ? ` (Guide: ${newOrder.guide_name})` : '';
+                    const pickupTime = newOrder.pickup_time ? ` @ ${newOrder.pickup_time}` : '';
+                    const noteSnippet = newOrder.notes ? ` | Notes: "${newOrder.notes}"` : '';
+
+                    toast.success('New Order Received! 🛍️', {
+                        description: `Customer: ${newOrder.customer_name}${guideInfo} | Date: ${tourDateStr}${pickupTime}${noteSnippet}`,
+                        duration: 15000,
+                        action: {
+                            label: 'Print Ticket',
+                            onClick: () => {
+                                window.open(`/admin/orders?print=${newOrder.id}`, '_blank');
+                            }
+                        }
+                    });
+                }
+            )
+            .subscribe();
+
+        return () => {
+            supabase.removeChannel(channel);
+        };
+    }, [supabase, userRole]);
 
     // Login page or contract pages — standalone, no sidebar
     if (pathname === '/admin/login' || pathname === '/admin/reset-password' || pathname.includes('/contracts/')) {

@@ -1,11 +1,11 @@
 'use client';
 
-import React, { useState, useTransition } from 'react';
+import React, { useState, useTransition, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
-import { Settings, Save, Loader2, Plus, Trash2, Cookie, Utensils, Layout, FileText, Edit2, ArrowUp, ArrowDown } from 'lucide-react';
+import { Settings, Save, Loader2, Plus, Trash2, Cookie, Utensils, Layout, FileText, Edit2, ArrowUp, ArrowDown, Volume2, VolumeX } from 'lucide-react';
 import { saveAllSettings } from './actions';
 import { toast } from 'sonner';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -36,6 +36,61 @@ export default function AppSettingsClient({ initialSettings, initialFields }: Ap
     
     const [newBread, setNewBread] = useState('');
     const [newCookie, setNewCookie] = useState('');
+
+    const [isSoundMuted, setIsSoundMuted] = useState(false);
+
+    useEffect(() => {
+        const stored = localStorage.getItem('admin_new_order_sound_muted');
+        setIsSoundMuted(stored === 'true');
+    }, []);
+
+    const playNewOrderSound = () => {
+        try {
+            const AudioContext = window.AudioContext || (window as any).webkitAudioContext;
+            if (!AudioContext) return;
+            const ctx = new AudioContext();
+            const now = ctx.currentTime;
+            
+            const osc1 = ctx.createOscillator();
+            const gain1 = ctx.createGain();
+            osc1.type = 'sine';
+            osc1.frequency.setValueAtTime(783.99, now); // G5
+            gain1.gain.setValueAtTime(0, now);
+            gain1.gain.linearRampToValueAtTime(0.15, now + 0.05);
+            gain1.gain.exponentialRampToValueAtTime(0.001, now + 0.4);
+            osc1.connect(gain1);
+            gain1.connect(ctx.destination);
+            
+            const osc2 = ctx.createOscillator();
+            const gain2 = ctx.createGain();
+            osc2.type = 'sine';
+            osc2.frequency.setValueAtTime(1046.50, now + 0.12); // C6
+            gain2.gain.setValueAtTime(0, now + 0.12);
+            gain2.gain.linearRampToValueAtTime(0.2, now + 0.17);
+            gain2.gain.exponentialRampToValueAtTime(0.001, now + 0.6);
+            osc2.connect(gain2);
+            gain2.connect(ctx.destination);
+            
+            osc1.start(now);
+            osc1.stop(now + 0.4);
+            
+            osc2.start(now + 0.12);
+            osc2.stop(now + 0.7);
+        } catch (e) {
+            console.error('Audio play failed:', e);
+        }
+    };
+
+    const toggleSoundMute = (muted: boolean) => {
+        setIsSoundMuted(muted);
+        localStorage.setItem('admin_new_order_sound_muted', String(muted));
+        if (muted) {
+            toast.info('New order sound alerts muted.');
+        } else {
+            toast.success('New order sound alerts enabled!');
+            playNewOrderSound();
+        }
+    };
 
     // Original references for change detection
     const [originalSettings, setOriginalSettings] = useState(initialSettings);
@@ -411,6 +466,46 @@ export default function AppSettingsClient({ initialSettings, initialFields }: Ap
             </div>
 
             <div className="grid grid-cols-1 gap-8">
+                {/* Sound Notification Settings */}
+                <Card className="rounded-[32px] border-none shadow-xl shadow-gray-200/50 overflow-hidden bg-white">
+                    <CardHeader className="p-8 border-b border-gray-50 flex flex-row items-center justify-between gap-4 flex-wrap">
+                        <div className="flex items-center gap-4">
+                            <div className={`size-10 rounded-xl flex items-center justify-center transition-all ${isSoundMuted ? 'bg-rose-50 text-rose-600' : 'bg-green-50 text-green-600'}`}>
+                                {isSoundMuted ? <VolumeX className="size-5" /> : <Volume2 className="size-5" />}
+                            </div>
+                            <div>
+                                <CardTitle className="text-xl font-bold">New Order Sound Alert</CardTitle>
+                                <CardDescription>Play an audible sound notification when a new customer order is placed.</CardDescription>
+                            </div>
+                        </div>
+                        <div className="flex items-center gap-3">
+                            <Switch 
+                                id="sound_muted"
+                                checked={!isSoundMuted}
+                                onCheckedChange={(checked) => toggleSoundMute(!checked)}
+                            />
+                            <Label htmlFor="sound_muted" className="cursor-pointer font-bold text-gray-800 text-sm">
+                                {isSoundMuted ? 'Muted' : 'Enabled'}
+                            </Label>
+                        </div>
+                    </CardHeader>
+                    <CardContent className="p-8 flex items-center justify-between gap-4 flex-wrap bg-gray-50/10">
+                        <p className="text-sm text-gray-500 font-medium max-w-xl">
+                            When enabled, staff will hear a chime sound whenever a new order is received in the dashboard realtime stream. This setting is saved locally in this browser.
+                        </p>
+                        <Button 
+                            variant="outline" 
+                            size="sm" 
+                            type="button"
+                            disabled={isSoundMuted}
+                            onClick={playNewOrderSound}
+                            className="rounded-xl border-gray-200 font-bold gap-1.5 h-10 px-4 bg-white"
+                        >
+                            <Volume2 className="size-4 text-violet-600" /> Test Sound Alert
+                        </Button>
+                    </CardContent>
+                </Card>
+
                 {/* Bread Options */}
                 <Card className="rounded-[32px] border-none shadow-xl shadow-gray-200/50 overflow-hidden bg-white">
                     <CardHeader className="p-8 border-b border-gray-50">

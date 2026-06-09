@@ -333,7 +333,7 @@ export default function InvoicePayPage() {
 
                     {/* Quick Tip Buttons */}
                     <div style={styles.tipButtons}>
-                        {[25, 50, 100, 250].map((amount) => (
+                        {[75, 125, 175, 200].map((amount) => (
                             <button
                                 key={amount}
                                 onClick={() => setTipInput(amount.toString())}

@@ -191,6 +191,26 @@ export function OrdersClient({ initialOrders, companies }: OrdersClientProps) {
         setIsMounted(true);
     }, []);
 
+    useEffect(() => {
+        if (!isMounted) return;
+        const queryParams = new URLSearchParams(window.location.search);
+        const printId = queryParams.get('print');
+        if (printId) {
+            setSelected(new Set([printId]));
+            // Wait slightly for rendering to settle
+            setTimeout(() => {
+                document.body.classList.add('print-tickets-mode');
+                window.print();
+                document.body.classList.remove('print-tickets-mode');
+                
+                const matchedOrder = orders.find(o => o.id === printId);
+                if (matchedOrder) {
+                    markOrdersAsPrintedAndFulfilled([matchedOrder]);
+                }
+            }, 600);
+        }
+    }, [isMounted, orders]);
+
     // Form States
     const [customerName, setCustomerName] = useState('');
     const [guideName, setGuideName] = useState('');
@@ -347,6 +367,22 @@ export function OrdersClient({ initialOrders, companies }: OrdersClientProps) {
             setSelected(new Set());
         } else {
             setSelected(new Set(filtered.map(o => o.id)));
+        }
+    }
+
+    async function markOrdersAsPrintedAndFulfilled(ordersList: Order[]) {
+        const orderIds = ordersList.map(o => o.id);
+        if (orderIds.length === 0) return;
+        
+        // Optimistic update locally
+        setOrders(prev => prev.map(o => orderIds.includes(o.id) ? { ...o, status: 'fulfilled' } : o));
+        
+        // Update database
+        const result = await bulkUpdateStatus(orderIds, 'fulfilled');
+        if (!result.success) {
+            toast.error(result.error || 'Failed to automatically mark orders as fulfilled in database.');
+        } else {
+            toast.success(`Successfully marked ${orderIds.length} order(s) as fulfilled.`);
         }
     }
 
@@ -532,14 +568,26 @@ export function OrdersClient({ initialOrders, companies }: OrdersClientProps) {
                     </div>
 
                     {/* Print & Export buttons row */}
-                    <div className="grid grid-cols-3 md:flex items-center gap-2 w-full md:w-auto">
+                    <div className="grid grid-cols-2 sm:grid-cols-4 md:flex items-center gap-2 w-full md:w-auto">
+                        <Button 
+                            variant="outline" 
+                            className="gap-2 h-11 px-2 md:px-4 rounded-xl border-gray-200 hover:border-violet-200 hover:bg-violet-50 transition-all font-bold no-print text-[11px] md:text-sm" 
+                            onClick={toggleAll}
+                        >
+                            <Checkbox
+                                checked={allSelected}
+                                className="rounded-md border-gray-300 data-[state=checked]:bg-violet-600 data-[state=checked]:border-violet-600 shrink-0 pointer-events-none"
+                            />
+                            <span className="truncate">Select All ({filtered.length})</span>
+                        </Button>
                         <Button 
                             variant="outline" 
                             className="gap-1.5 h-11 px-2 md:px-4 rounded-xl border-gray-200 hover:border-violet-200 hover:bg-violet-50 transition-all font-bold no-print text-[11px] md:text-sm" 
-                            onClick={() => {
+                            onClick={async () => {
                                 document.body.classList.add('print-table-mode');
                                 window.print();
                                 document.body.classList.remove('print-table-mode');
+                                await markOrdersAsPrintedAndFulfilled(ordersToPrint);
                             }}
                         >
                             <Printer className="size-4 shrink-0" />
@@ -550,10 +598,11 @@ export function OrdersClient({ initialOrders, companies }: OrdersClientProps) {
                         <Button 
                             variant="outline" 
                             className="gap-1.5 h-11 px-2 md:px-4 rounded-xl border-gray-200 hover:border-violet-200 hover:bg-violet-50 transition-all font-bold no-print text-[11px] md:text-sm" 
-                            onClick={() => {
+                            onClick={async () => {
                                 document.body.classList.add('print-tickets-mode');
                                 window.print();
                                 document.body.classList.remove('print-tickets-mode');
+                                await markOrdersAsPrintedAndFulfilled(ordersToPrint);
                             }}
                         >
                             <Ticket className="size-4 text-violet-600 shrink-0" />
