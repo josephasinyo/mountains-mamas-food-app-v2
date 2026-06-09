@@ -273,7 +273,12 @@ export default function CheckoutPage() {
           })}
 
         <div className={styles.footer}>
-          <Button fullWidth type="submit" disabled={isLoading}>
+          <Button 
+            fullWidth
+            type="submit" 
+            disabled={isLoading}
+            className="h-12 rounded-xl text-sm md:text-base font-extrabold tracking-wider shadow-lg shadow-violet-100 hover:shadow-xl transition-all duration-200 transform active:scale-[0.99] bg-gradient-to-r from-violet-600 to-indigo-600 text-white border-0 hover:bg-violet-700"
+          >
             {isLoading ? (
               <span style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}>
                 PLACING ORDER 

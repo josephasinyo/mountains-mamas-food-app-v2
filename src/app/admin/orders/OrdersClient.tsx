@@ -196,6 +196,9 @@ export function OrdersClient({ initialOrders, companies }: OrdersClientProps) {
         const queryParams = new URLSearchParams(window.location.search);
         const printId = queryParams.get('print');
         if (printId) {
+            // Remove the print query param from URL immediately to prevent infinite loop on orders state update
+            window.history.replaceState(null, '', window.location.pathname);
+            
             setSelected(new Set([printId]));
             // Wait slightly for rendering to settle
             setTimeout(() => {

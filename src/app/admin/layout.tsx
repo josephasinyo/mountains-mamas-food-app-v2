@@ -14,6 +14,12 @@ import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { createClient } from '@/lib/supabase/client';
 import { toast } from 'sonner';
+import {
+    Dialog, DialogContent, DialogHeader, DialogTitle,
+    DialogDescription, DialogFooter,
+} from '@/components/ui/dialog';
+import { Button } from '@/components/ui/button';
+import { OrderItemDetails } from '@/components/ui/OrderItemCustomFields';
 
 const ALL_NAV_SECTIONS = [
     {
@@ -61,6 +67,11 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
     const [loadingSession, setLoadingSession] = useState(true);
 
     const supabase = createClient();
+
+    // Toast Dialog State
+    const [selectedOrderForToast, setSelectedOrderForToast] = useState<any | null>(null);
+    const [toastOrderItems, setToastOrderItems] = useState<any[]>([]);
+    const [isToastDialogOpen, setIsToastDialogOpen] = useState(false);
 
     // Initialize Supabase client and fetch session
     useEffect(() => {
@@ -131,9 +142,8 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
                     schema: 'public',
                     table: 'orders',
                 },
-                (payload) => {
+                async (payload) => {
                     const newOrder = payload.new;
-                    const customer = newOrder.guide_name || newOrder.customer_name || 'Customer';
 
                     const isMuted = localStorage.getItem('admin_new_order_sound_muted') === 'true';
                     if (!isMuted) {
@@ -172,21 +182,42 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
                         }
                     }
 
-                    // Show visual toast notification with a print ticket action
+                    // Fetch order items to display details in toast
+                    const { data: items } = await supabase
+                        .from('order_items')
+                        .select('meal_name, quantity, box_type, bread_type, cookie_choice, guest_name, customizations, unit_price, custom_fields')
+                        .eq('order_id', newOrder.id);
+
+                    const totalItems = items ? items.reduce((sum, item) => sum + (item.quantity || 1), 0) : 0;
+                    const first3 = items ? items.slice(0, 3) : [];
+                    const hasMore = items && items.length > 3;
+
                     const tourDateStr = newOrder.tour_date 
                         ? new Date(newOrder.tour_date + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) 
-                        : '';
-                    const guideInfo = newOrder.guide_name ? ` (Guide: ${newOrder.guide_name})` : '';
-                    const pickupTime = newOrder.pickup_time ? ` @ ${newOrder.pickup_time}` : '';
-                    const noteSnippet = newOrder.notes ? ` | Notes: "${newOrder.notes}"` : '';
+                        : 'N/A';
 
+                    // Show visual toast notification with a View action
                     toast.success('New Order Received! 🛍️', {
-                        description: `Customer: ${newOrder.customer_name}${guideInfo} | Date: ${tourDateStr}${pickupTime}${noteSnippet}`,
+                        description: (
+                            <div className="mt-1 text-xs text-gray-500 space-y-1 font-sans">
+                                <div><strong>Guide:</strong> {newOrder.guide_name || 'N/A'}</div>
+                                <div><strong>Tour Date:</strong> {tourDateStr}</div>
+                                <div><strong>Total Items:</strong> {totalItems}</div>
+                                <div className="mt-1 pl-2 border-l-2 border-violet-100 space-y-0.5">
+                                    {first3.map((item, idx) => (
+                                        <div key={idx}>• {item.quantity}x {item.meal_name}</div>
+                                    ))}
+                                    {hasMore && <div className="text-violet-600 font-semibold">(more)</div>}
+                                </div>
+                            </div>
+                        ),
                         duration: 15000,
                         action: {
-                            label: 'Print Ticket',
+                            label: 'View',
                             onClick: () => {
-                                window.open(`/admin/orders?print=${newOrder.id}`, '_blank');
+                                setToastOrderItems(items || []);
+                                setSelectedOrderForToast(newOrder);
+                                setIsToastDialogOpen(true);
                             }
                         }
                     });
@@ -402,6 +433,131 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
                         )}
                     </div>
                 </main>
+
+                {/* Realtime Order Details Dialog */}
+                <Dialog open={isToastDialogOpen} onOpenChange={setIsToastDialogOpen}>
+                    <DialogContent className="sm:max-w-[650px] bg-white rounded-2xl border-gray-150">
+                        <DialogHeader>
+                            <DialogTitle className="flex items-center gap-2 text-xl font-extrabold text-gray-900">
+                                <ShoppingCart className="size-5 text-violet-600" />
+                                New Order Details
+                            </DialogTitle>
+                            <DialogDescription className="text-sm text-gray-500 font-medium">
+                                Real-time order details received for this tour.
+                            </DialogDescription>
+                        </DialogHeader>
+
+                        {selectedOrderForToast && (
+                            <div className="space-y-4 my-2 text-sm text-gray-700">
+                                {/* Metadata grid */}
+                                <div className="grid grid-cols-2 gap-4 bg-gray-50/50 p-4 rounded-2xl border border-gray-100">
+                                    <div>
+                                        <span className="block text-[10px] font-bold uppercase tracking-wider text-gray-400">Customer</span>
+                                        <span className="font-bold text-gray-900">{selectedOrderForToast.customer_name}</span>
+                                    </div>
+                                    <div>
+                                        <span className="block text-[10px] font-bold uppercase tracking-wider text-gray-400">Guide</span>
+                                        <span className="font-bold text-gray-900">{selectedOrderForToast.guide_name || 'N/A'}</span>
+                                    </div>
+                                    <div>
+                                        <span className="block text-[10px] font-bold uppercase tracking-wider text-gray-400">Tour Date</span>
+                                        <span className="font-bold text-gray-900">
+                                            {selectedOrderForToast.tour_date 
+                                                ? new Date(selectedOrderForToast.tour_date + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) 
+                                                : 'N/A'}
+                                        </span>
+                                    </div>
+                                    <div>
+                                        <span className="block text-[10px] font-bold uppercase tracking-wider text-gray-400">Pickup Time</span>
+                                        <span className="font-bold text-gray-900">{selectedOrderForToast.pickup_time || 'N/A'}</span>
+                                    </div>
+                                </div>
+
+                                {/* Order details matching expanded orders page design */}
+                                <div className="bg-white rounded-[24px] border border-gray-200 shadow-sm overflow-hidden divide-y divide-gray-100">
+                                    {/* Section 1: Items List */}
+                                    <div className="divide-y divide-gray-100/70 max-h-[260px] overflow-y-auto">
+                                        {toastOrderItems.map((item: any, i: number) => (
+                                            <div key={i} className="flex items-center justify-between p-4 hover:bg-gray-50/50 transition-colors">
+                                                <div className="flex items-center gap-4">
+                                                    <div className="font-black text-violet-600 text-base w-8">
+                                                        {item.quantity}x
+                                                    </div>
+                                                    <div className="space-y-0.5">
+                                                        <p className="font-extrabold text-base text-gray-900 leading-tight">{item.meal_name}</p>
+                                                        <OrderItemDetails item={item} />
+                                                    </div>
+                                                </div>
+                                                <div className="text-right ml-8">
+                                                    <p className="font-bold text-base text-gray-900 tracking-tight">
+                                                        ${((item.unit_price || 0) * item.quantity).toFixed(2)}
+                                                    </p>
+                                                    <p className="text-xs text-gray-400 font-semibold uppercase tracking-wider">
+                                                        ${(item.unit_price || 0).toFixed(2)} ea
+                                                    </p>
+                                                </div>
+                                            </div>
+                                        ))}
+                                    </div>
+
+                                    {selectedOrderForToast.notes && (
+                                        <div className="bg-amber-50/30 p-6">
+                                            <span className="text-[11px] font-black text-amber-700 uppercase tracking-[0.2em] block mb-2">KITCHEN NOTES</span>
+                                            <p className="text-[15px] text-amber-900 font-black italic leading-relaxed">&ldquo;{selectedOrderForToast.notes}&rdquo;</p>
+                                        </div>
+                                    )}
+
+                                    <div className="flex flex-wrap items-center justify-between p-6 bg-gray-50/30 gap-4">
+                                        <div className="flex items-center gap-6 sm:gap-10">
+                                            <div className="flex flex-col">
+                                                <span className="text-[11px] font-bold text-gray-400 uppercase tracking-wider">Pickup</span>
+                                                <span className="text-[14px] font-black text-gray-900">{selectedOrderForToast.pickup_time || 'N/A'}</span>
+                                            </div>
+                                            <div className="flex flex-col">
+                                                <span className="text-[11px] font-bold text-gray-400 uppercase tracking-wider">Payment</span>
+                                                <span className="text-[14px] font-black text-gray-900 capitalize">{selectedOrderForToast.payment_status?.replace('_', ' ') || 'N/A'}</span>
+                                            </div>
+                                            <div className="flex flex-col">
+                                                <span className="text-[11px] font-bold text-gray-400 uppercase tracking-wider">Placed At</span>
+                                                <span className="text-[14px] font-black text-gray-900">
+                                                    {new Date(selectedOrderForToast.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                                                </span>
+                                            </div>
+                                        </div>
+                                        
+                                        <div className="text-right flex items-center gap-4">
+                                            <span className="text-[12px] font-bold text-gray-400 uppercase tracking-widest">TOTAL AMOUNT</span>
+                                            <span className="text-[20px] font-black text-violet-600 tracking-tighter">
+                                                ${toastOrderItems.reduce((acc: number, item: any) => acc + (Number(item.unit_price || 0) * item.quantity), 0).toFixed(2)}
+                                            </span>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        )}
+
+                        <DialogFooter className="flex flex-row items-center gap-3 w-full mt-4 sm:space-x-0">
+                            <Button 
+                                variant="outline" 
+                                onClick={() => setIsToastDialogOpen(false)}
+                                className="flex-1 rounded-xl font-bold h-11 border-gray-200 text-gray-700 hover:bg-gray-50"
+                            >
+                                Close
+                            </Button>
+                            <Button 
+                                onClick={() => {
+                                    if (selectedOrderForToast) {
+                                        window.location.href = `/admin/orders?print=${selectedOrderForToast.id}`;
+                                    }
+                                }}
+                                className="flex-1 bg-violet-600 hover:bg-violet-700 text-white rounded-xl font-bold h-11 gap-1.5"
+                            >
+                                <Ticket className="size-4" />
+                                Print Ticket
+                            </Button>
+                        </DialogFooter>
+                    </DialogContent>
+                </Dialog>
             </motion.div>
         </div>
     );
