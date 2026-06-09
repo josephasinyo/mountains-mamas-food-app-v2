@@ -56,4 +56,5 @@ export interface TourCompany {
     status: 'pending_approval' | 'active' | 'suspended';
     representative_name?: string | null;
     representative_title?: string | null;
+    discount_percentage?: number;
 }

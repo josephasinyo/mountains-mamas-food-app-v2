@@ -37,6 +37,7 @@ export async function createCompany(formData: FormData) {
         payment_method: paymentMethod,
         representative_name: representativeName,
         representative_title: representativeTitle,
+        discount_percentage: parseFloat(formData.get('discount_percentage') as string) || 0,
         status: 'active' as const,
         is_active: true,
     };
@@ -226,6 +227,7 @@ export async function updateCompany(id: string, formData: FormData) {
         payment_method: formData.get('payment_method') as string,
         representative_name: formData.get('representative_name') as string || null,
         representative_title: formData.get('representative_title') as string || null,
+        discount_percentage: parseFloat(formData.get('discount_percentage') as string) || 0,
     };
 
     const { data, error } = await supabase

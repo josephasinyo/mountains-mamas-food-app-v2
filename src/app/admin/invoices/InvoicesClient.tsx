@@ -16,10 +16,10 @@ import {
 } from '@/components/ui/table';
 import {
     Building2, Calendar, ClipboardList, CreditCard, ExternalLink, 
-    FileText, Loader2, RefreshCw, ScrollText, CheckCircle2, ChevronRight, Trash2, Search
+    FileText, Loader2, RefreshCw, ScrollText, CheckCircle2, ChevronRight, Trash2, Search, Mail
 } from 'lucide-react';
 import { cn, formatDateUS } from '@/lib/utils';
-import { fetchOrdersForInvoicing, fetchInvoicesHistory } from './actions';
+import { fetchOrdersForInvoicing, fetchInvoicesHistory, sendInvoiceToCompany } from './actions';
 import { generateCompanyInvoice } from '../orders/actions';
 import { deleteInvoice } from '../companies/actions';
 
@@ -123,6 +123,27 @@ export function InvoicesClient({ companies, initialInvoices }: InvoicesClientPro
     const [fetching, setFetching] = useState<boolean>(false);
     const [generating, setGenerating] = useState<boolean>(false);
     const [deletingInvoice, setDeletingInvoice] = useState<boolean>(false);
+    const [sendingInvoiceId, setSendingInvoiceId] = useState<string | null>(null);
+
+    // Per-Lunch Discount State
+    const [applyPerLunchDiscount, setApplyPerLunchDiscount] = useState<boolean>(false);
+    const [perLunchDiscountRate, setPerLunchDiscountRate] = useState<string>('0');
+    const [perLunchDiscountCount, setPerLunchDiscountCount] = useState<string>('0');
+
+    // Calculate total lunches from selected orders
+    const totalLunches = orders
+        .filter(order => selectedOrderIds.has(order.id))
+        .reduce((sum, order) => {
+            return sum + order.order_items.reduce((itemSum: number, item: any) => itemSum + item.quantity, 0);
+        }, 0);
+
+    // Auto-clamp discount count when totalLunches changes and exceeds the limit
+    useEffect(() => {
+        const countVal = parseInt(perLunchDiscountCount) || 0;
+        if (countVal > totalLunches) {
+            setPerLunchDiscountCount(totalLunches.toString());
+        }
+    }, [totalLunches, perLunchDiscountCount]);
 
     // Sync presets to date strings in draft state
     useEffect(() => {
@@ -225,11 +246,23 @@ export function InvoicesClient({ companies, initialInvoices }: InvoicesClientPro
             });
         });
         
-        const resortTax = subtotal * 0.04;
-        const processingFee = (subtotal + resortTax) * 0.029 + 0.30;
-        const total = subtotal + resortTax + processingFee;
+        const discountPct = selectedCompany?.discount_percentage ?? 0;
+        const discountAmount = subtotal * (discountPct / 100);
+        const discountedSubtotalPercentage = subtotal - discountAmount;
+
+        let perLunchDiscount = 0;
+        if (applyPerLunchDiscount) {
+            const rate = parseFloat(perLunchDiscountRate) || 0;
+            const count = parseInt(perLunchDiscountCount) || 0;
+            perLunchDiscount = rate * count;
+        }
+
+        const discountedSubtotal = discountedSubtotalPercentage - perLunchDiscount;
+        const resortTax = discountedSubtotal * 0.04;
+        const processingFee = (discountedSubtotal + resortTax) * 0.029 + 0.30;
+        const total = discountedSubtotal + resortTax + processingFee;
         
-        return { subtotal, resortTax, processingFee, total };
+        return { subtotal, discountPct, discountAmount, perLunchDiscount, discountedSubtotal, resortTax, processingFee, total };
     };
 
     const handleCreateInvoice = async () => {
@@ -239,18 +272,29 @@ export function InvoicesClient({ companies, initialInvoices }: InvoicesClientPro
         }
 
         setGenerating(true);
-        const toastId = toast.loading('Generating invoice and billing on Stripe...');
+        const toastId = toast.loading('Generating invoice draft on Stripe...');
 
         try {
-            const res = await generateCompanyInvoice(Array.from(selectedOrderIds));
+            const discountRateNum = applyPerLunchDiscount ? (parseFloat(perLunchDiscountRate) || 0) : 0;
+            const discountCountNum = applyPerLunchDiscount ? (parseInt(perLunchDiscountCount) || 0) : 0;
+
+            const res = await generateCompanyInvoice(
+                Array.from(selectedOrderIds),
+                discountRateNum,
+                discountCountNum
+            );
             if (res.success) {
-                toast.success('Invoice generated successfully! View under history or on Stripe.', { id: toastId });
+                toast.success('Invoice draft created! Send it to the company using the Send button in the ledger below.', { id: toastId });
                 
                 // Refresh local history & reload orders
                 const historyRes = await fetchInvoicesHistory();
                 if (historyRes.success) {
                     setInvoices(historyRes.invoices);
                 }
+                // Reset state
+                setApplyPerLunchDiscount(false);
+                setPerLunchDiscountRate('0');
+                setPerLunchDiscountCount('0');
                 loadEligibleOrders(activeCompanyId, activeStartDate, activeEndDate);
             } else {
                 toast.error(res.error || 'Failed to generate invoice', { id: toastId });
@@ -259,6 +303,27 @@ export function InvoicesClient({ companies, initialInvoices }: InvoicesClientPro
             toast.error('Invoice creation crashed. Check Stripe credentials.', { id: toastId });
         } finally {
             setGenerating(false);
+        }
+    };
+
+    const handleSendInvoice = async (invoiceId: string) => {
+        setSendingInvoiceId(invoiceId);
+        const toastId = toast.loading('Finalizing Stripe invoice and sending email...');
+        try {
+            const res = await sendInvoiceToCompany(invoiceId);
+            if (res.success) {
+                toast.success('Invoice sent to company email successfully!', { id: toastId });
+                const historyRes = await fetchInvoicesHistory();
+                if (historyRes.success) {
+                    setInvoices(historyRes.invoices);
+                }
+            } else {
+                toast.error(res.error || 'Failed to send invoice.', { id: toastId });
+            }
+        } catch (err: any) {
+            toast.error('An unexpected error occurred while sending invoice.', { id: toastId });
+        } finally {
+            setSendingInvoiceId(null);
         }
     };
 
@@ -289,9 +354,9 @@ export function InvoicesClient({ companies, initialInvoices }: InvoicesClientPro
         }
     };
 
+    const selectedCompany = companies.find(c => c.id === activeCompanyId);
     const aggregatedMeals = getAggregatedMeals();
     const pricing = getEstimatedTotal();
-    const selectedCompany = companies.find(c => c.id === activeCompanyId);
 
     // Filter invoices in the history ledger
     const filteredInvoices = (activeCompanyId && activeCompanyId !== 'all')
@@ -572,6 +637,82 @@ export function InvoicesClient({ companies, initialInvoices }: InvoicesClientPro
                                             <span>Subtotal</span>
                                             <span className="font-bold text-gray-700">${pricing.subtotal.toFixed(2)}</span>
                                         </div>
+
+                                        {/* Per-lunch discount selector */}
+                                        <div className="flex items-center gap-2 pt-2 border-t border-violet-50/50">
+                                            <input
+                                                type="checkbox"
+                                                id="apply-per-lunch-discount"
+                                                checked={applyPerLunchDiscount}
+                                                onChange={(e) => {
+                                                    setApplyPerLunchDiscount(e.target.checked);
+                                                    if (e.target.checked && (parseInt(perLunchDiscountCount) || 0) === 0) {
+                                                        setPerLunchDiscountCount(totalLunches.toString());
+                                                    }
+                                                }}
+                                                className="rounded border-gray-300 text-violet-600 focus:ring-violet-500 size-4 cursor-pointer"
+                                            />
+                                            <label htmlFor="apply-per-lunch-discount" className="text-xs font-bold text-gray-700 cursor-pointer">
+                                                Apply discount on some lunches
+                                            </label>
+                                        </div>
+
+                                        {applyPerLunchDiscount && (
+                                            <div className="grid grid-cols-2 gap-2 bg-violet-50/50 p-2.5 rounded-xl border border-violet-100 transition-all">
+                                                <div className="space-y-1">
+                                                    <Label htmlFor="discount-rate" className="text-[10px] font-bold text-gray-500 uppercase">
+                                                        Rate ($ off / lunch)
+                                                    </Label>
+                                                    <Input
+                                                        id="discount-rate"
+                                                        type="number"
+                                                        step="0.01"
+                                                        min="0"
+                                                        value={perLunchDiscountRate}
+                                                        onChange={(e) => setPerLunchDiscountRate(e.target.value)}
+                                                        className="h-8 text-xs font-bold bg-white border-gray-200 focus:ring-violet-500 focus:border-violet-500 rounded-lg w-full"
+                                                        placeholder="e.g. 0.50"
+                                                    />
+                                                </div>
+                                                <div className="space-y-1">
+                                                    <Label htmlFor="discount-count" className="text-[10px] font-bold text-gray-500 uppercase">
+                                                        No. of lunches (max {totalLunches})
+                                                    </Label>
+                                                    <Input
+                                                        id="discount-count"
+                                                        type="number"
+                                                        step="1"
+                                                        min="0"
+                                                        max={totalLunches}
+                                                        value={perLunchDiscountCount}
+                                                        onChange={(e) => {
+                                                            const val = parseInt(e.target.value) || 0;
+                                                            if (val > totalLunches) {
+                                                                setPerLunchDiscountCount(totalLunches.toString());
+                                                            } else {
+                                                                setPerLunchDiscountCount(e.target.value);
+                                                            }
+                                                        }}
+                                                        className="h-8 text-xs font-bold bg-white border-gray-200 focus:ring-violet-500 focus:border-violet-500 rounded-lg w-full"
+                                                        placeholder={`max ${totalLunches}`}
+                                                    />
+                                                </div>
+                                            </div>
+                                        )}
+
+                                        {applyPerLunchDiscount && pricing.perLunchDiscount > 0 && (
+                                            <div className="flex justify-between text-xs text-emerald-600 font-bold bg-emerald-50/50 -mx-2 px-2 py-1.5 rounded-lg">
+                                                <span>Per-Lunch Discount</span>
+                                                <span>-${pricing.perLunchDiscount.toFixed(2)}</span>
+                                            </div>
+                                        )}
+
+                                        {pricing.discountPct > 0 && (
+                                            <div className="flex justify-between text-xs text-emerald-600 font-bold bg-emerald-50/50 -mx-2 px-2 py-1.5 rounded-lg">
+                                                <span className="flex items-center gap-1">Company Discount ({pricing.discountPct}%)</span>
+                                                <span>-${pricing.discountAmount.toFixed(2)}</span>
+                                            </div>
+                                        )}
                                         <div className="flex justify-between text-xs text-gray-500 font-medium">
                                             <span>Resort Tax (4%)</span>
                                             <span className="font-bold text-gray-700">${pricing.resortTax.toFixed(2)}</span>
@@ -655,11 +796,30 @@ export function InvoicesClient({ companies, initialInvoices }: InvoicesClientPro
                                                 href={invoice.stripe_payment_link} 
                                                 target="_blank" 
                                                 rel="noopener noreferrer"
-                                                className="size-8 rounded-lg bg-white border border-gray-100 flex items-center justify-center text-gray-400 hover:text-emerald-600 hover:border-emerald-200 transition-all cursor-pointer"
-                                                title="Open Stripe Payment Link"
+                                                className={cn(
+                                                    "size-8 rounded-lg bg-white border border-gray-100 flex items-center justify-center transition-all cursor-pointer",
+                                                    invoice.status === 'draft' 
+                                                        ? "text-blue-500 hover:text-blue-600 hover:border-blue-200" 
+                                                        : "text-emerald-600 hover:text-emerald-700 hover:border-emerald-200"
+                                                )}
+                                                title={invoice.status === 'draft' ? "Open Invoice Draft" : "Open Stripe Payment Link"}
                                             >
                                                 <ExternalLink className="size-3.5" />
                                             </a>
+                                        )}
+                                        {invoice.status === 'draft' && (
+                                            <button 
+                                                onClick={() => handleSendInvoice(invoice.id)}
+                                                disabled={sendingInvoiceId !== null}
+                                                className="size-8 rounded-lg bg-violet-50 border border-violet-100 flex items-center justify-center text-violet-600 hover:bg-violet-600 hover:text-white transition-all cursor-pointer disabled:opacity-50"
+                                                title="Finalize & Send Invoice Email"
+                                            >
+                                                {sendingInvoiceId === invoice.id ? (
+                                                    <Loader2 className="size-3.5 animate-spin" />
+                                                ) : (
+                                                    <Mail className="size-3.5" />
+                                                )}
+                                            </button>
                                         )}
                                         <button 
                                             onClick={() => setInvoiceToDelete({ id: invoice.id, amount: invoice.total_amount, companyId: invoice.company_id })}
@@ -746,7 +906,14 @@ export function InvoicesClient({ companies, initialInvoices }: InvoicesClientPro
                                             {formatDateUS(invoice.created_at)}
                                         </TableCell>
                                         <TableCell className="font-black text-gray-900 text-xs">
-                                            ${invoice.total_amount.toFixed(2)}
+                                            <div className="flex items-center gap-1.5">
+                                                ${invoice.total_amount.toFixed(2)}
+                                                {invoice.discount_percentage > 0 && (
+                                                    <Badge className="bg-emerald-50 text-emerald-700 hover:bg-emerald-50 border border-emerald-100 rounded-full font-bold text-[8px] px-1.5 py-0 tracking-wider">
+                                                        -{invoice.discount_percentage}%
+                                                    </Badge>
+                                                )}
+                                            </div>
                                         </TableCell>
                                         <TableCell>
                                             <Badge className={cn(
@@ -776,11 +943,30 @@ export function InvoicesClient({ companies, initialInvoices }: InvoicesClientPro
                                                         href={invoice.stripe_payment_link} 
                                                         target="_blank" 
                                                         rel="noopener noreferrer"
-                                                        className="size-8 rounded-lg bg-white border border-gray-100 flex items-center justify-center text-gray-400 hover:text-emerald-600 hover:border-emerald-200 transition-all cursor-pointer"
-                                                        title="Open Stripe Payment Link"
+                                                        className={cn(
+                                                            "size-8 rounded-lg bg-white border border-gray-100 flex items-center justify-center transition-all cursor-pointer",
+                                                            invoice.status === 'draft' 
+                                                                ? "text-blue-500 hover:text-blue-600 hover:border-blue-200" 
+                                                                : "text-emerald-600 hover:text-emerald-700 hover:border-emerald-200"
+                                                        )}
+                                                        title={invoice.status === 'draft' ? "Open Invoice Draft" : "Open Stripe Payment Link"}
                                                     >
                                                         <ExternalLink className="size-3.5" />
                                                     </a>
+                                                )}
+                                                {invoice.status === 'draft' && (
+                                                    <button 
+                                                        onClick={() => handleSendInvoice(invoice.id)}
+                                                        disabled={sendingInvoiceId !== null}
+                                                        className="size-8 rounded-lg bg-violet-50 border border-violet-100 flex items-center justify-center text-violet-600 hover:bg-violet-600 hover:text-white transition-all cursor-pointer disabled:opacity-50"
+                                                        title="Finalize & Send Invoice Email"
+                                                    >
+                                                        {sendingInvoiceId === invoice.id ? (
+                                                            <Loader2 className="size-3.5 animate-spin" />
+                                                        ) : (
+                                                            <Mail className="size-3.5" />
+                                                        )}
+                                                    </button>
                                                 )}
                                                 <button 
                                                     onClick={() => setInvoiceToDelete({ id: invoice.id, amount: invoice.total_amount, companyId: invoice.company_id })}

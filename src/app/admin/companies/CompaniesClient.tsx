@@ -28,7 +28,7 @@ import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import {
     Plus, MoreHorizontal, Pencil, CheckCircle, XCircle, Trash2,
     Building2, CreditCard, FileText, Copy, ChevronRight, ChevronDown,
-    Phone, Mail, Globe, ExternalLink, Clock, LayoutGrid, List, Send, User
+    Phone, Mail, Globe, ExternalLink, Clock, LayoutGrid, List, Send, User, Percent
 } from 'lucide-react';
 import { cn, formatDateUS } from '@/lib/utils';
 
@@ -59,6 +59,7 @@ export function CompaniesClient({ initialCompanies }: CompaniesClientProps) {
     const [paymentMethod, setPaymentMethod] = useState('direct_pay');
     const [representativeName, setRepresentativeName] = useState('');
     const [representativeTitle, setRepresentativeTitle] = useState('');
+    const [discountPercentage, setDiscountPercentage] = useState('0');
 
     const filtered = filter === 'all' ? companies : companies.filter(c => c.status === filter);
 
@@ -68,7 +69,8 @@ export function CompaniesClient({ initialCompanies }: CompaniesClientProps) {
         phone !== (editingCompany.phone || '') ||
         paymentMethod !== editingCompany.payment_method ||
         representativeName !== (editingCompany.representative_name || '') ||
-        representativeTitle !== (editingCompany.representative_title || '')
+        representativeTitle !== (editingCompany.representative_title || '') ||
+        discountPercentage !== String(editingCompany.discount_percentage ?? 0)
     ) : (
         name.length > 0 || email.length > 0
     );
@@ -123,6 +125,7 @@ export function CompaniesClient({ initialCompanies }: CompaniesClientProps) {
         setPaymentMethod('direct_pay');
         setRepresentativeName('');
         setRepresentativeTitle('');
+        setDiscountPercentage('0');
         setOpen(true);
     }
 
@@ -134,6 +137,7 @@ export function CompaniesClient({ initialCompanies }: CompaniesClientProps) {
         setPaymentMethod(company.payment_method);
         setRepresentativeName(company.representative_name || '');
         setRepresentativeTitle(company.representative_title || '');
+        setDiscountPercentage(String(company.discount_percentage ?? 0));
         setOpen(true);
     }
 
@@ -148,6 +152,7 @@ export function CompaniesClient({ initialCompanies }: CompaniesClientProps) {
             formData.set('payment_method', paymentMethod);
             formData.set('representative_name', representativeName);
             formData.set('representative_title', representativeTitle);
+            formData.set('discount_percentage', discountPercentage);
 
             const result = editingCompany
                 ? await updateCompany(editingCompany.id, formData)
@@ -793,6 +798,29 @@ export function CompaniesClient({ initialCompanies }: CompaniesClientProps) {
                                     ? 'Guests will see prices and pay securely during checkout.'
                                     : 'No prices shown to guests. Orders are tracked for monthly billing.'}
                             </div>
+                        </div>
+                        <div className="space-y-2">
+                            <Label htmlFor="discount_percentage">Company Discount (%)</Label>
+                            <div className="relative">
+                                <Input 
+                                    id="discount_percentage" 
+                                    name="discount_percentage" 
+                                    type="number" 
+                                    min="0" 
+                                    max="100" 
+                                    step="0.5"
+                                    placeholder="0"
+                                    value={discountPercentage}
+                                    onChange={(e) => setDiscountPercentage(e.target.value)}
+                                    className="pr-8"
+                                />
+                                <Percent className="absolute right-3 top-1/2 -translate-y-1/2 size-3.5 text-gray-400" />
+                            </div>
+                            {Number(discountPercentage) > 0 && (
+                                <div className="p-3 rounded-lg border bg-amber-50/50 border-amber-100 text-xs text-amber-800">
+                                    A {discountPercentage}% discount will be automatically applied to all future invoices generated for this company.
+                                </div>
+                            )}
                         </div>
                         <DialogFooter className="pt-4">
                             <Button type="button" variant="outline" onClick={() => setOpen(false)}>Cancel</Button>

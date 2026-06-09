@@ -12,9 +12,10 @@ export default function ConditionalLayout({ children }: { children: React.ReactN
     const isOnboardRoute = pathname?.startsWith('/onboard');
 
     const isPublicMealRoute = pathname?.startsWith('/public-meal');
+    const isInvoiceRoute = pathname?.startsWith('/invoice');
 
-    // Admin, company dashboard, onboarding, public meal showcase, and root pages get a clean layout (no cart/header)
-    if (isAdminRoute || isCompanyDashRoute || isOnboardRoute || pathname === '/' || isPublicMealRoute) {
+    // Admin, company dashboard, onboarding, public meal showcase, invoice pages, and root pages get a clean layout (no cart/header)
+    if (isAdminRoute || isCompanyDashRoute || isOnboardRoute || pathname === '/' || isPublicMealRoute || isInvoiceRoute) {
         return <>{children}</>;
     }
 

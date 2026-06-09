@@ -135,7 +135,7 @@ export async function deleteOrder(orderId: string) {
     }
 }
 
-export async function generateCompanyInvoice(orderIds: string[]) {
+export async function generateCompanyInvoice(orderIds: string[], perLunchDiscountRate: number = 0, perLunchDiscountCount: number = 0) {
     try {
         const supabase = createAdminClient();
         const { stripe, getOrCreateStripeCustomer } = await import('@/lib/stripe');
@@ -168,8 +168,7 @@ export async function generateCompanyInvoice(orderIds: string[]) {
         const orderIdsStr = orderIds.join(',');
         const stripeInvoice = await stripe.invoices.create({
             customer: stripeCustomerId,
-            collection_method: 'send_invoice',
-            days_until_due: 7,
+            collection_method: 'charge_automatically',
             metadata: {
                 company_id: companyId,
                 order_ids: orderIdsStr.length > 450 ? orderIdsStr.slice(0, 450) + '...' : orderIdsStr,
@@ -199,8 +198,40 @@ export async function generateCompanyInvoice(orderIds: string[]) {
             }
         }
 
+        // Apply company discount (% based) if applicable
+        const discountPercentage = company.discount_percentage ?? 0;
+        let percentageDiscountAmount = 0;
+        if (discountPercentage > 0) {
+            percentageDiscountAmount = subtotal * (discountPercentage / 100);
+            await stripe.invoiceItems.create({
+                customer: stripeCustomerId,
+                invoice: stripeInvoice.id,
+                amount: -Math.round(percentageDiscountAmount * 100), // Negative amount for discount
+                currency: 'usd',
+                description: `Company Discount (${discountPercentage}%) - Applied to ${company.name}`,
+                metadata: { type: 'percentage_discount' }
+            });
+        }
+
+        // Apply custom per-lunch discount if applicable
+        let perLunchDiscountAmount = 0;
+        if (perLunchDiscountRate > 0 && perLunchDiscountCount > 0) {
+            perLunchDiscountAmount = perLunchDiscountRate * perLunchDiscountCount;
+            await stripe.invoiceItems.create({
+                customer: stripeCustomerId,
+                invoice: stripeInvoice.id,
+                amount: -Math.round(perLunchDiscountAmount * 100), // Negative amount for discount
+                currency: 'usd',
+                description: `Per-Lunch Discount ($${perLunchDiscountRate.toFixed(2)} off on ${perLunchDiscountCount} lunches)`,
+                metadata: { type: 'per_lunch_discount' }
+            });
+        }
+
+        const totalDiscountAmount = percentageDiscountAmount + perLunchDiscountAmount;
+        const discountedSubtotal = subtotal - totalDiscountAmount;
+
         // Add 4% Resort Tax
-        const resortTax = subtotal * 0.04;
+        const resortTax = discountedSubtotal * 0.04;
         await stripe.invoiceItems.create({
             customer: stripeCustomerId,
             invoice: stripeInvoice.id,
@@ -211,7 +242,7 @@ export async function generateCompanyInvoice(orderIds: string[]) {
         });
 
         // Add 2.9% + $0.30 Credit Card Processing Fee
-        const subtotalWithTax = subtotal + resortTax;
+        const subtotalWithTax = discountedSubtotal + resortTax;
         const processingFee = (subtotalWithTax * 0.029) + 0.30;
         await stripe.invoiceItems.create({
             customer: stripeCustomerId,
@@ -222,19 +253,21 @@ export async function generateCompanyInvoice(orderIds: string[]) {
             metadata: { type: 'fee' }
         });
 
-        // 6. Finalize invoice to get the payment URL
-        const finalizedInvoice = await stripe.invoices.finalizeInvoice(stripeInvoice.id);
-
-        // 7. Create record in Supabase invoices table
+        // 6. Delete finalizedInvoice step (keep as draft)
+        // 7. Create record in Supabase invoices table as 'draft'
         const { data: dbInvoice, error: invError } = await supabase
             .from('invoices')
             .insert({
                 company_id: companyId,
-                total_amount: finalizedInvoice.total / 100,
-                status: 'sent',
-                stripe_payment_link: finalizedInvoice.hosted_invoice_url,
-                pdf_url: finalizedInvoice.invoice_pdf,
-                stripe_invoice_id: finalizedInvoice.id,
+                total_amount: subtotalWithTax + processingFee, // Pre-calculation of total for draft display
+                discount_percentage: discountPercentage,
+                discount_amount: totalDiscountAmount,
+                per_lunch_discount_rate: perLunchDiscountRate,
+                per_lunch_discount_count: perLunchDiscountCount,
+                status: 'draft',
+                stripe_payment_link: `https://dashboard.stripe.com/invoices/${stripeInvoice.id}`, // Temporary dashboard link for draft status
+                pdf_url: null,
+                stripe_invoice_id: stripeInvoice.id,
                 period_start: orders.reduce((min: string, o: any) => o.tour_date < min ? o.tour_date : min, orders[0].tour_date),
                 period_end: orders.reduce((max: string, o: any) => o.tour_date > max ? o.tour_date : max, orders[0].tour_date),
             })
@@ -245,7 +278,7 @@ export async function generateCompanyInvoice(orderIds: string[]) {
 
         // Update Stripe Invoice metadata with the database invoice_id
         try {
-            await stripe.invoices.update(finalizedInvoice.id, {
+            await stripe.invoices.update(stripeInvoice.id, {
                 metadata: {
                     invoice_id: dbInvoice.id
                 }
@@ -271,7 +304,7 @@ export async function generateCompanyInvoice(orderIds: string[]) {
             details: { order_count: orderIds.length, amount: dbInvoice.total_amount }
         });
 
-        return { success: true, invoiceUrl: finalizedInvoice.hosted_invoice_url };
+        return { success: true, invoiceId: dbInvoice.id };
     } catch (e: any) {
         console.error('[generateCompanyInvoice] Error:', e);
         return { success: false, error: e.message || String(e) };

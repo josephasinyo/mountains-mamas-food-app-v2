@@ -15,6 +15,7 @@ export interface TourCompany {
     contract_pdf_url: string | null;
     representative_name?: string | null;
     representative_title?: string | null;
+    discount_percentage: number;
     is_active: boolean;
     status: 'pending_approval' | 'active' | 'suspended';
     timezone: string;
@@ -112,9 +113,13 @@ export interface Invoice {
     period_start: string;
     period_end: string;
     total_amount: number;
+    discount_percentage: number;
+    discount_amount: number;
+    tip_amount: number;
     status: 'draft' | 'sent' | 'paid' | 'overdue';
     pdf_url: string | null;
     stripe_payment_link: string | null;
+    stripe_invoice_id?: string | null;
     sent_at: string | null;
     paid_at: string | null;
     created_at: string;
