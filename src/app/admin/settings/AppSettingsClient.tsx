@@ -18,6 +18,7 @@ import {
     Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from '@/components/ui/select';
 import { Switch } from '@/components/ui/switch';
+import { playSoundAlert } from '@/lib/sound-alerts';
 import { ConfirmDialog } from '@/components/ConfirmDialog';
 
 interface AppSettingsClientProps {
@@ -46,36 +47,10 @@ export default function AppSettingsClient({ initialSettings, initialFields }: Ap
 
     const playNewOrderSound = () => {
         try {
-            const AudioContext = window.AudioContext || (window as any).webkitAudioContext;
-            if (!AudioContext) return;
-            const ctx = new AudioContext();
-            const now = ctx.currentTime;
-            
-            const osc1 = ctx.createOscillator();
-            const gain1 = ctx.createGain();
-            osc1.type = 'sine';
-            osc1.frequency.setValueAtTime(783.99, now); // G5
-            gain1.gain.setValueAtTime(0, now);
-            gain1.gain.linearRampToValueAtTime(0.15, now + 0.05);
-            gain1.gain.exponentialRampToValueAtTime(0.001, now + 0.4);
-            osc1.connect(gain1);
-            gain1.connect(ctx.destination);
-            
-            const osc2 = ctx.createOscillator();
-            const gain2 = ctx.createGain();
-            osc2.type = 'sine';
-            osc2.frequency.setValueAtTime(1046.50, now + 0.12); // C6
-            gain2.gain.setValueAtTime(0, now + 0.12);
-            gain2.gain.linearRampToValueAtTime(0.2, now + 0.17);
-            gain2.gain.exponentialRampToValueAtTime(0.001, now + 0.6);
-            osc2.connect(gain2);
-            gain2.connect(ctx.destination);
-            
-            osc1.start(now);
-            osc1.stop(now + 0.4);
-            
-            osc2.start(now + 0.12);
-            osc2.stop(now + 0.7);
+            const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
+            if (!AudioCtx) return;
+            const ctx = new AudioCtx();
+            playSoundAlert(ctx);
         } catch (e) {
             console.error('Audio play failed:', e);
         }
@@ -489,20 +464,22 @@ export default function AppSettingsClient({ initialSettings, initialFields }: Ap
                             </Label>
                         </div>
                     </CardHeader>
-                    <CardContent className="p-8 flex items-center justify-between gap-4 flex-wrap bg-gray-50/10">
-                        <p className="text-sm text-gray-500 font-medium max-w-xl">
-                            When enabled, staff will hear a chime sound whenever a new order is received in the dashboard realtime stream. This setting is saved locally in this browser.
-                        </p>
-                        <Button 
-                            variant="outline" 
-                            size="sm" 
-                            type="button"
-                            disabled={isSoundMuted}
-                            onClick={playNewOrderSound}
-                            className="rounded-xl border-gray-200 font-bold gap-1.5 h-10 px-4 bg-white"
-                        >
-                            <Volume2 className="size-4 text-violet-600" /> Test Sound Alert
-                        </Button>
+                    <CardContent className="p-8 space-y-6 bg-gray-50/10">
+                        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-6">
+                            <p className="text-sm text-gray-500 font-medium max-w-xl">
+                                When enabled, staff will hear a chime sound whenever a new order is received in the dashboard realtime stream. This setting is saved locally in this browser.
+                            </p>
+                            <Button 
+                                variant="outline" 
+                                size="sm" 
+                                type="button"
+                                disabled={isSoundMuted}
+                                onClick={() => playNewOrderSound()}
+                                className="rounded-xl border-gray-200 font-bold gap-1.5 h-10 px-4 bg-white shrink-0"
+                            >
+                                <Volume2 className="size-4 text-violet-600" /> Test Sound Alert
+                            </Button>
+                        </div>
                     </CardContent>
                 </Card>
 

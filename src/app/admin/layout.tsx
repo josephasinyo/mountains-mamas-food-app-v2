@@ -8,9 +8,10 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import {
     LayoutDashboard, ShoppingCart, ClipboardList, UtensilsCrossed,
     Building2, FileText, ScrollText, BarChart3, Activity,
-    LogOut, Ticket, Mountain, PanelLeftClose, PanelLeft, Settings, UserCog
+    LogOut, Ticket, Mountain, PanelLeftClose, PanelLeft, Settings, UserCog,
+    BellRing, X, Eye
 } from 'lucide-react';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { createClient } from '@/lib/supabase/client';
 import { toast } from 'sonner';
@@ -20,6 +21,7 @@ import {
 } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { OrderItemDetails } from '@/components/ui/OrderItemCustomFields';
+import { playSoundAlert } from '@/lib/sound-alerts';
 
 const ALL_NAV_SECTIONS = [
     {
@@ -54,6 +56,23 @@ const ALL_NAV_SECTIONS = [
     },
 ];
 
+function formatRelativeTime(dateInput: string | Date): string {
+    const date = new Date(dateInput);
+    const now = new Date();
+    const diffMs = now.getTime() - date.getTime();
+    const diffMins = Math.floor(diffMs / 60000);
+    
+    if (diffMins < 1) return 'just now';
+    if (diffMins < 60) return `${diffMins}min ago`;
+    
+    const diffHours = Math.floor(diffMins / 60);
+    if (diffHours < 24) return `${diffHours}h ago`;
+    
+    const diffDays = Math.floor(diffHours / 24);
+    if (diffDays === 1) return 'yesterday';
+    return `${diffDays}d ago`;
+}
+
 export default function AdminLayout({ children }: { children: React.ReactNode }) {
     const pathname = usePathname();
     const [collapsed, setCollapsed] = useState(false);
@@ -72,6 +91,54 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
     const [selectedOrderForToast, setSelectedOrderForToast] = useState<any | null>(null);
     const [toastOrderItems, setToastOrderItems] = useState<any[]>([]);
     const [isToastDialogOpen, setIsToastDialogOpen] = useState(false);
+
+    // Audio Context Ref to handle autoplay security policy
+    const audioContextRef = useRef<AudioContext | null>(null);
+    const [isAudioSuspended, setIsAudioSuspended] = useState(false);
+    const [orderNotifications, setOrderNotifications] = useState<any[]>([]);
+    const [showNotifSidebar, setShowNotifSidebar] = useState(false);
+
+    // Initialize and unlock AudioContext on first user interaction
+    useEffect(() => {
+        const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
+        let ctx: AudioContext | null = null;
+        if (AudioCtx) {
+            ctx = new AudioCtx();
+            audioContextRef.current = ctx;
+            if (ctx.state === 'suspended') {
+                setIsAudioSuspended(true);
+            }
+            ctx.onstatechange = () => {
+                if (ctx) {
+                    setIsAudioSuspended(ctx.state === 'suspended');
+                }
+            };
+        }
+
+        const initAudio = () => {
+            if (!audioContextRef.current && AudioCtx) {
+                audioContextRef.current = new AudioCtx();
+            }
+            const currentCtx = audioContextRef.current;
+            if (currentCtx && currentCtx.state === 'suspended') {
+                currentCtx.resume()
+                    .then(() => setIsAudioSuspended(false))
+                    .catch((err) => console.warn('Could not resume AudioContext:', err));
+            } else if (currentCtx && currentCtx.state === 'running') {
+                setIsAudioSuspended(false);
+            }
+        };
+
+        window.addEventListener('click', initAudio, { capture: true });
+        window.addEventListener('keydown', initAudio, { capture: true });
+        return () => {
+            window.removeEventListener('click', initAudio, { capture: true });
+            window.removeEventListener('keydown', initAudio, { capture: true });
+            if (ctx) {
+                ctx.onstatechange = null;
+            }
+        };
+    }, []);
 
     // Initialize Supabase client and fetch session
     useEffect(() => {
@@ -129,6 +196,45 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
         setMobileOpen(false);
     }, [pathname]);
 
+    // Fetch today's orders on load
+    useEffect(() => {
+        if (!userRole) return;
+        async function fetchTodaysOrders() {
+            try {
+                const today = new Date();
+                today.setHours(0, 0, 0, 0);
+
+                const { data: orders, error } = await supabase
+                    .from('orders')
+                    .select('*, tour_companies(name), order_items(meal_name, quantity, box_type, bread_type, cookie_choice, guest_name, customizations, unit_price, custom_fields)')
+                    .gte('created_at', today.toISOString())
+                    .order('created_at', { ascending: false });
+
+                if (orders) {
+                    const formatted = orders.map((order: any) => {
+                        const totalItems = order.order_items 
+                            ? order.order_items.reduce((sum: number, item: any) => sum + (item.quantity || 1), 0) 
+                            : 0;
+                        const tourDateStr = order.tour_date 
+                            ? new Date(order.tour_date + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) 
+                            : 'N/A';
+                        return {
+                            ...order,
+                            company_name: order.tour_companies?.name || 'N/A',
+                            items: order.order_items || [],
+                            totalItems,
+                            tourDateStr
+                        };
+                    });
+                    setOrderNotifications(formatted);
+                }
+            } catch (err) {
+                console.error("Error loading today's orders:", err);
+            }
+        }
+        fetchTodaysOrders();
+    }, [supabase, userRole]);
+
     // Subscribe to realtime order notifications for sound alerts
     useEffect(() => {
         if (!userRole) return;
@@ -148,35 +254,19 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
                     const isMuted = localStorage.getItem('admin_new_order_sound_muted') === 'true';
                     if (!isMuted) {
                         try {
-                            const AudioContext = window.AudioContext || (window as any).webkitAudioContext;
-                            if (!AudioContext) return;
-                            const ctx = new AudioContext();
-                            const now = ctx.currentTime;
-                            
-                            const osc1 = ctx.createOscillator();
-                            const gain1 = ctx.createGain();
-                            osc1.type = 'sine';
-                            osc1.frequency.setValueAtTime(783.99, now); // G5
-                            gain1.gain.setValueAtTime(0, now);
-                            gain1.gain.linearRampToValueAtTime(0.15, now + 0.05);
-                            gain1.gain.exponentialRampToValueAtTime(0.001, now + 0.4);
-                            osc1.connect(gain1);
-                            gain1.connect(ctx.destination);
-                            
-                            const osc2 = ctx.createOscillator();
-                            const gain2 = ctx.createGain();
-                            osc2.type = 'sine';
-                            osc2.frequency.setValueAtTime(1046.50, now + 0.12); // C6
-                            gain2.gain.setValueAtTime(0, now + 0.12);
-                            gain2.gain.linearRampToValueAtTime(0.2, now + 0.17);
-                            gain2.gain.exponentialRampToValueAtTime(0.001, now + 0.6);
-                            osc2.connect(gain2);
-                            gain2.connect(ctx.destination);
-                            
-                            osc1.start(now);
-                            osc1.stop(now + 0.4);
-                            osc2.start(now + 0.12);
-                            osc2.stop(now + 0.7);
+                            if (!audioContextRef.current) {
+                                const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
+                                if (AudioCtx) {
+                                    audioContextRef.current = new AudioCtx();
+                                }
+                            }
+                            const ctx = audioContextRef.current;
+                            if (ctx) {
+                                if (ctx.state === 'suspended') {
+                                    ctx.resume().catch(() => {});
+                                }
+                                playSoundAlert(ctx);
+                            }
                         } catch (e) {
                             console.error('Audio play failed:', e);
                         }
@@ -196,31 +286,110 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
                         ? new Date(newOrder.tour_date + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) 
                         : 'N/A';
 
-                    // Show visual toast notification with a View action
-                    toast.success('New Order Received! 🛍️', {
-                        description: (
-                            <div className="mt-1 text-xs text-gray-500 space-y-1 font-sans">
-                                <div><strong>Guide:</strong> {newOrder.guide_name || 'N/A'}</div>
-                                <div><strong>Tour Date:</strong> {tourDateStr}</div>
-                                <div><strong>Total Items:</strong> {totalItems}</div>
-                                <div className="mt-1 pl-2 border-l-2 border-violet-100 space-y-0.5">
-                                    {first3.map((item, idx) => (
-                                        <div key={idx}>• {item.quantity}x {item.meal_name}</div>
-                                    ))}
-                                    {hasMore && <div className="text-violet-600 font-semibold">(more)</div>}
+                    // Fetch company name
+                    let companyName = 'N/A';
+                    if (newOrder.company_id) {
+                        const { data: compData } = await supabase
+                            .from('tour_companies')
+                            .select('name')
+                            .eq('id', newOrder.company_id)
+                            .single();
+                        if (compData) {
+                            companyName = compData.name;
+                        }
+                    }
+
+                    const itemsSummary = items && items.length > 0
+                        ? items.map((i: any) => `${i.quantity}x ${i.meal_name}`).join(', ')
+                        : '';
+
+                    // Show custom visual toast notification that does not auto-close
+                    toast.custom(
+                        (t) => (
+                            <div className="w-[360px] bg-white/95 backdrop-blur-md border border-violet-100 rounded-[18px] shadow-[0_15px_30px_-5px_rgba(109,40,217,0.08),0_10px_20px_-10px_rgba(109,40,217,0.04)] p-4.5 flex flex-col gap-2.5 relative overflow-hidden pointer-events-auto border-t-4 border-t-violet-600">
+                                {/* Close Button */}
+                                <button 
+                                    onClick={() => toast.dismiss(t)}
+                                    className="absolute top-3.5 right-3.5 text-gray-400 hover:text-gray-600 hover:bg-gray-100/80 p-1 rounded-lg transition-all"
+                                >
+                                    <X className="size-4" />
+                                </button>
+
+                                {/* Header */}
+                                <div className="flex flex-col gap-0.5">
+                                    <span className="text-[11px] font-black text-violet-600 uppercase tracking-widest flex items-center gap-1.5">
+                                        🧺 New Order
+                                    </span>
+                                    <span className="text-[14px] font-extrabold text-gray-900 leading-snug pr-6">
+                                        {companyName} — {tourDateStr}
+                                    </span>
+                                </div>
+
+                                {/* Inline Meta Info */}
+                                <div className="flex items-center gap-2.5 text-xs text-gray-500 font-semibold mt-1">
+                                    <span className="flex items-center gap-1">
+                                        <span className="text-gray-400">Guide:</span>
+                                        <span className="text-gray-800 font-bold">{newOrder.guide_name || 'N/A'}</span>
+                                    </span>
+                                    <span className="h-3 w-px bg-gray-200" />
+                                    <span className="flex items-center gap-1">
+                                        <span className="text-violet-600 font-black">{totalItems} {totalItems === 1 ? 'Lunch' : 'Lunches'}</span>
+                                    </span>
+                                </div>
+
+                                {/* Footer Summary & Action */}
+                                <div className="flex justify-between items-center mt-2.5 pt-2 border-t border-gray-100/60">
+                                    <span className="text-[10px] text-gray-400 font-semibold truncate max-w-[200px]" title={itemsSummary}>
+                                        {itemsSummary}
+                                    </span>
+                                    <button
+                                        onClick={() => {
+                                            const formattedOrder = { 
+                                                ...newOrder, 
+                                                company_name: companyName, 
+                                                items, 
+                                                totalItems, 
+                                                tourDateStr 
+                                            };
+                                            setSelectedOrderForToast(formattedOrder);
+                                            setToastOrderItems(items || []);
+                                            setIsToastDialogOpen(true);
+                                            toast.dismiss(t);
+                                        }}
+                                        className="inline-flex items-center gap-1 text-[11px] font-bold text-violet-600 hover:text-violet-700 transition-colors shrink-0"
+                                    >
+                                        View Details <Eye className="size-3" />
+                                    </button>
                                 </div>
                             </div>
                         ),
-                        duration: 15000,
-                        action: {
-                            label: 'View',
-                            onClick: () => {
-                                setToastOrderItems(items || []);
-                                setSelectedOrderForToast(newOrder);
-                                setIsToastDialogOpen(true);
-                            }
+                        {
+                            duration: Infinity, // keep toast open until manually dismissed
                         }
-                    });
+                    );
+                    // store notification for sidebar
+                    setOrderNotifications(prev => [
+                        { ...newOrder, company_name: companyName, items, totalItems, tourDateStr },
+                        ...prev
+                    ]);
+                }
+            )
+            .on(
+                'postgres_changes',
+                {
+                    event: 'UPDATE',
+                    schema: 'public',
+                    table: 'orders',
+                },
+                async (payload) => {
+                    const updatedOrder = payload.new;
+                    setOrderNotifications(prev => 
+                        prev.map(notif => 
+                            notif.id === updatedOrder.id 
+                                ? { ...notif, status: updatedOrder.status } 
+                                : notif
+                        )
+                    );
                 }
             )
             .subscribe();
@@ -249,6 +418,10 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
                    accessiblePages.some(page => page !== '/admin' && item.href.startsWith(page));
         })
     })).filter(section => section.items.length > 0);
+
+    const pendingNotificationsCount = orderNotifications.filter(
+        notif => new Date(notif.created_at).toDateString() === new Date().toDateString() && notif.status === 'pending'
+    ).length;
 
     return (
         <div className="flex min-h-screen bg-[#fafafa] overflow-x-hidden">
@@ -294,6 +467,8 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
                         )}
                     </AnimatePresence>
                 </div>
+                
+
 
                 {/* Nav */}
                 <ScrollArea className="flex-1 py-4">
@@ -375,12 +550,129 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
                 </div>
             </motion.aside>
 
+            {/* Notification Sidebar (moved outside main sidebar to avoid stacking context blur bugs) */}
+            <AnimatePresence>
+                {showNotifSidebar && (
+                    <motion.aside
+                        initial={{ x: 300 }}
+                        animate={{ x: 0 }}
+                        exit={{ x: 300 }}
+                        className="fixed inset-y-0 right-0 z-[60] w-80 bg-white/95 backdrop-blur-lg border-l rounded-l-2xl shadow-2xl p-4 overflow-y-auto"
+                    >
+                        <div className="flex justify-between items-center mb-4 border-b pb-2 border-gray-100">
+                            <h2 className="text-lg font-black text-gray-900 uppercase tracking-wider flex items-center gap-2">
+                                🔔 Today's Orders
+                            </h2>
+                            <button
+                                onClick={() => setShowNotifSidebar(false)}
+                                className="text-gray-400 hover:text-gray-600 transition-colors p-1 rounded-lg hover:bg-gray-100"
+                            >
+                                <X className="size-5" />
+                            </button>
+                        </div>
+                        <div className="space-y-3 mt-4">
+                            {orderNotifications
+                                .filter(notif => new Date(notif.created_at).toDateString() === new Date().toDateString() && notif.status === 'pending')
+                                .map((notif, idx) => {
+                                    const isSelected = isToastDialogOpen && selectedOrderForToast?.id === notif.id;
+                                    return (
+                                        <div
+                                            key={idx}
+                                            className={cn(
+                                                "p-4 rounded-2xl border cursor-pointer transition-all duration-200 group shadow-sm",
+                                                isSelected 
+                                                    ? "border-violet-600 bg-violet-50/30 shadow-md shadow-violet-100/50 ring-2 ring-violet-600/10"
+                                                    : "bg-white border-gray-100 hover:border-violet-300 hover:bg-violet-50/15 hover:shadow-md hover:shadow-violet-100/50"
+                                            )}
+                                            onClick={() => {
+                                                setSelectedOrderForToast(notif);
+                                                setToastOrderItems(notif.items || []);
+                                                setIsToastDialogOpen(true);
+                                            }}
+                                        >
+                                            <div className="flex justify-between items-start gap-2 mb-2">
+                                                <span className={cn(
+                                                    "font-extrabold text-[14px] leading-tight transition-colors",
+                                                    isSelected ? "text-violet-700" : "text-gray-900 group-hover:text-violet-700"
+                                                )}>
+                                                    {notif.company_name || 'Tour Company'}
+                                                </span>
+                                                <span className={cn(
+                                                    "inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-black shrink-0 transition-colors",
+                                                    isSelected 
+                                                        ? "bg-violet-600 text-white" 
+                                                        : "bg-violet-50 text-violet-700 group-hover:bg-violet-100/70"
+                                                )}>
+                                                    {notif.totalItems} {notif.totalItems === 1 ? 'Lunch' : 'Lunches'}
+                                                </span>
+                                            </div>
+                                            
+                                            <div className="space-y-1 text-xs font-semibold text-gray-500">
+                                                <div className="flex items-center gap-1.5">
+                                                    <span className="text-gray-400">Tour Date:</span>
+                                                    <span className={cn(
+                                                        "transition-colors",
+                                                        isSelected ? "text-violet-900" : "text-gray-700"
+                                                    )}>{notif.tourDateStr || new Date(notif.tour_date).toLocaleDateString()}</span>
+                                                </div>
+                                                <div className="flex items-center gap-1.5">
+                                                    <span className="text-gray-400">Guide:</span>
+                                                    <span className={cn(
+                                                        "transition-colors",
+                                                        isSelected ? "text-violet-900" : "text-gray-700"
+                                                    )}>{notif.guide_name || 'N/A'}</span>
+                                                </div>
+                                                <div className="flex items-center justify-between gap-1.5 pt-0.5">
+                                                    <div className="flex items-center gap-1.5 min-w-0">
+                                                        <span className="text-gray-400 shrink-0">Guest Name:</span>
+                                                        <span className={cn(
+                                                            "transition-colors truncate",
+                                                            isSelected ? "text-violet-900" : "text-gray-700"
+                                                        )}>{notif.customer_name || 'N/A'}</span>
+                                                    </div>
+                                                    <span className={cn(
+                                                        "text-[10px] font-extrabold tracking-tight shrink-0 transition-colors",
+                                                        isSelected ? "text-violet-600" : "text-gray-400 group-hover:text-gray-500"
+                                                    )}>
+                                                        {formatRelativeTime(notif.created_at)}
+                                                    </span>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    );
+                                })}
+                            {orderNotifications.filter(notif => new Date(notif.created_at).toDateString() === new Date().toDateString() && notif.status === 'pending').length === 0 && (
+                                <div className="text-center py-8 text-sm text-gray-400 font-medium">
+                                    No pending orders received today.
+                                </div>
+                            )}
+                        </div>
+                    </motion.aside>
+                )}
+            </AnimatePresence>
+
             {/* Main area */}
             <motion.div 
                 animate={isMobile ? { marginLeft: 0 } : { marginLeft: collapsed ? 70 : 260 }}
                 transition={{ type: 'spring', damping: 26, stiffness: 220 }}
                 className="flex-1 flex flex-col min-w-0"
             >
+                {/* Autoplay Warning Banner */}
+                {isAudioSuspended && (
+                    <div 
+                        onClick={() => {
+                            if (audioContextRef.current) {
+                                audioContextRef.current.resume().then(() => {
+                                    setIsAudioSuspended(false);
+                                });
+                            }
+                        }}
+                        className="bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600 text-white text-xs font-bold py-2.5 px-4 text-center cursor-pointer flex items-center justify-center gap-2 transition-all duration-150 animate-in fade-in select-none shrink-0 shadow-md"
+                    >
+                        <span>🔔 Sound alerts are paused. Click anywhere on this page to enable order notification sounds.</span>
+                    </div>
+                )}
+
                 {/* Top bar */}
                 <header className="sticky top-0 z-30 flex h-16 items-center gap-4 border-b border-gray-100 bg-white/80 backdrop-blur-xl px-4 sm:px-8">
                     <button
@@ -393,6 +685,8 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
                             collapsed ? <PanelLeft className="size-[18px]" /> : <PanelLeftClose className="size-[18px]" />
                         )}
                     </button>
+                    {/* Notification ring icon */}
+                    
                     
                     <div className="h-6 w-px bg-gray-200" />
 
@@ -407,6 +701,18 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
                             {ALL_NAV_SECTIONS.flatMap(s => s.items).find(i => i.href === pathname)?.title || 'Dashboard'}
                         </motion.span>
                     </div>
+
+                    <button
+                        onClick={() => setShowNotifSidebar(true)}
+                        className="relative flex items-center justify-center size-9 rounded-xl text-gray-400 hover:text-gray-900 hover:bg-gray-100 transition-all"
+                    >
+                        <BellRing className="size-[18px]" />
+                        {pendingNotificationsCount > 0 && (
+                            <span className="absolute -top-1 -right-1 flex h-4.5 min-w-[18px] items-center justify-center rounded-full bg-red-500 px-1 text-[9px] font-black text-white ring-2 ring-white animate-pulse">
+                                {pendingNotificationsCount}
+                            </span>
+                        )}
+                    </button>
 
                     {/* User */}
                     <div className="flex items-center gap-4 pl-4 border-l border-gray-100">
