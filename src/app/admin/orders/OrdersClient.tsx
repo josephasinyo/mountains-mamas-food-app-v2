@@ -61,7 +61,115 @@ const DATE_RANGE_LABELS: Record<string, string> = {
     'this_year': 'This Year',
     'last_3_months': 'Last 3 Months',
     'last_6_months': 'Last 6 Months',
-    'last_12_months': 'Last 12 Months'
+    'last_12_months': 'Last 12 Months',
+    'custom': 'Custom Range'
+};
+
+const getPresetDates = (range: string): { start: string; end: string } => {
+    const now = new Date();
+    const getLocalDateStr = (d: Date) => {
+        const yyyy = d.getFullYear();
+        const mm = String(d.getMonth() + 1).padStart(2, '0');
+        const dd = String(d.getDate()).padStart(2, '0');
+        return `${yyyy}-${mm}-${dd}`;
+    };
+    const todayStr = getLocalDateStr(now);
+    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+
+    switch (range) {
+        case 'today':
+            return { start: todayStr, end: todayStr };
+        case 'yesterday': {
+            const yesterday = new Date(today);
+            yesterday.setDate(today.getDate() - 1);
+            return { start: getLocalDateStr(yesterday), end: getLocalDateStr(yesterday) };
+        }
+        case 'tomorrow': {
+            const tomorrow = new Date(today);
+            tomorrow.setDate(today.getDate() + 1);
+            return { start: getLocalDateStr(tomorrow), end: getLocalDateStr(tomorrow) };
+        }
+        case 'this_week': {
+            const startOfWeek = new Date(today);
+            startOfWeek.setDate(today.getDate() - today.getDay());
+            return { start: getLocalDateStr(startOfWeek), end: '' };
+        }
+        case 'last_week': {
+            const startOfLastWeek = new Date(today);
+            startOfLastWeek.setDate(today.getDate() - today.getDay() - 7);
+            const endOfLastWeek = new Date(startOfLastWeek);
+            endOfLastWeek.setDate(startOfLastWeek.getDate() + 6);
+            return { start: getLocalDateStr(startOfLastWeek), end: getLocalDateStr(endOfLastWeek) };
+        }
+        case 'next_week': {
+            const startOfNextWeek = new Date(today);
+            startOfNextWeek.setDate(today.getDate() - today.getDay() + 7);
+            const endOfNextWeek = new Date(startOfNextWeek);
+            endOfNextWeek.setDate(startOfNextWeek.getDate() + 6);
+            return { start: getLocalDateStr(startOfNextWeek), end: getLocalDateStr(endOfNextWeek) };
+        }
+        case 'this_month': {
+            const startOfMonth = new Date(today.getFullYear(), today.getMonth(), 1);
+            const endOfMonth = new Date(today.getFullYear(), today.getMonth() + 1, 0);
+            return { start: getLocalDateStr(startOfMonth), end: getLocalDateStr(endOfMonth) };
+        }
+        case 'last_month': {
+            const startOfLastMonth = new Date(today.getFullYear(), today.getMonth() - 1, 1);
+            const endOfLastMonth = new Date(today.getFullYear(), today.getMonth(), 0);
+            return { start: getLocalDateStr(startOfLastMonth), end: getLocalDateStr(endOfLastMonth) };
+        }
+        case 'next_month': {
+            const startOfNextMonth = new Date(today.getFullYear(), today.getMonth() + 1, 1);
+            const endOfNextMonth = new Date(today.getFullYear(), today.getMonth() + 2, 0);
+            return { start: getLocalDateStr(startOfNextMonth), end: getLocalDateStr(endOfNextMonth) };
+        }
+        case 'next_3_months': {
+            const tomorrow = new Date(today);
+            tomorrow.setDate(today.getDate() + 1);
+            const limit = new Date(today);
+            limit.setMonth(today.getMonth() + 3);
+            return { start: getLocalDateStr(tomorrow), end: getLocalDateStr(limit) };
+        }
+        case 'next_6_months': {
+            const tomorrow = new Date(today);
+            tomorrow.setDate(today.getDate() + 1);
+            const limit = new Date(today);
+            limit.setMonth(today.getMonth() + 6);
+            return { start: getLocalDateStr(tomorrow), end: getLocalDateStr(limit) };
+        }
+        case 'next_12_months': {
+            const tomorrow = new Date(today);
+            tomorrow.setDate(today.getDate() + 1);
+            const limit = new Date(today);
+            limit.setMonth(today.getMonth() + 12);
+            return { start: getLocalDateStr(tomorrow), end: getLocalDateStr(limit) };
+        }
+        case 'this_year': {
+            const startOfYear = new Date(today.getFullYear(), 0, 1);
+            const endOfYear = new Date(today.getFullYear(), 11, 31);
+            return { start: getLocalDateStr(startOfYear), end: getLocalDateStr(endOfYear) };
+        }
+        case 'last_3_months': {
+            const limit = new Date(today);
+            limit.setMonth(today.getMonth() - 3);
+            return { start: getLocalDateStr(limit), end: todayStr };
+        }
+        case 'last_6_months': {
+            const limit = new Date(today);
+            limit.setMonth(today.getMonth() - 6);
+            return { start: getLocalDateStr(limit), end: todayStr };
+        }
+        case 'last_12_months': {
+            const limit = new Date(today);
+            limit.setMonth(today.getMonth() - 12);
+            return { start: getLocalDateStr(limit), end: todayStr };
+        }
+        default:
+            if (range && range.includes('-')) {
+                return { start: range, end: range };
+            }
+            return { start: '', end: '' };
+    }
 };
 
 interface OrderItem {
@@ -122,6 +230,8 @@ export function OrdersClient({ initialOrders, companies }: OrdersClientProps) {
     const [selected, setSelected] = useState<Set<string>>(new Set());
     const [expanded, setExpanded] = useState<string | null>(null);
     const [dateRange, setDateRange] = useState('');
+    const [startDate, setStartDate] = useState('');
+    const [endDate, setEndDate] = useState('');
     const [dateFilterMode, setDateFilterMode] = useState<'tour' | 'order'>('tour');
     const [companyFilter, setCompanyFilter] = useState('');
     const [statusFilter, setStatusFilter] = useState('');
@@ -130,6 +240,15 @@ export function OrdersClient({ initialOrders, companies }: OrdersClientProps) {
     const [editItems, setEditItems] = useState<OrderItem[]>([]);
     const [loading, setLoading] = useState(false);
     const [isMounted, setIsMounted] = useState(false);
+
+    const handleDateRangeChange = (range: string) => {
+        setDateRange(range);
+        if (range !== 'custom') {
+            const { start, end } = getPresetDates(range);
+            setStartDate(start);
+            setEndDate(end);
+        }
+    };
     const [viewMode, setViewMode] = useState<'table' | 'cards'>('cards');
     const [sortConfig, setSortConfig] = useState<{ key: 'created_at' | 'tour_date', direction: 'asc' | 'desc' }>({ 
         key: 'created_at', 
@@ -166,6 +285,9 @@ export function OrdersClient({ initialOrders, companies }: OrdersClientProps) {
     };
 
     const getDateFilterLabel = () => {
+        if (dateRange === 'custom') {
+            return `${startDate || 'START'} TO ${endDate || 'END'}`;
+        }
         if (!dateRange) return 'ALL';
         if (dateRange === 'today') return 'TODAY';
         if (dateRange === 'yesterday') return 'YESTERDAY';
@@ -173,7 +295,7 @@ export function OrdersClient({ initialOrders, companies }: OrdersClientProps) {
         if (dateRange === 'last_week') return 'LAST WEEK';
         if (dateRange === 'this_month') return 'THIS MONTH';
         if (dateRange === 'last_month') return 'LAST MONTH';
-        return dateRange;
+        return dateRange.toUpperCase();
     };
 
     const getCompanyFilterLabel = () => {
@@ -234,99 +356,10 @@ export function OrdersClient({ initialOrders, companies }: OrdersClientProps) {
 
     const filtered = orders.filter(o => {
         // Date Filtering Logic
-        if (dateRange) {
-            const now = new Date();
-            const getLocalDateStr = (d: Date) => {
-                const yyyy = d.getFullYear();
-                const mm = String(d.getMonth() + 1).padStart(2, '0');
-                const dd = String(d.getDate()).padStart(2, '0');
-                return `${yyyy}-${mm}-${dd}`;
-            };
-            const todayStr = getLocalDateStr(now);
-            const targetDateStr = dateFilterMode === 'tour' ? o.tour_date : o.created_at.split('T')[0];
-            
-            const parseLocalDate = (dateStr: string) => {
-                const parts = dateStr.split('-');
-                if (parts.length !== 3) return new Date();
-                const [yyyy, mm, dd] = parts.map(Number);
-                return new Date(yyyy, mm - 1, dd);
-            };
-
-            const orderDate = parseLocalDate(targetDateStr);
-            const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-
-            if (dateRange === 'today') {
-                if (targetDateStr !== todayStr) return false;
-            } else if (dateRange === 'yesterday') {
-                const yesterday = new Date(today);
-                yesterday.setDate(today.getDate() - 1);
-                const yesterdayStr = getLocalDateStr(yesterday);
-                if (targetDateStr !== yesterdayStr) return false;
-            } else if (dateRange === 'tomorrow') {
-                const tomorrow = new Date(today);
-                tomorrow.setDate(today.getDate() + 1);
-                const tomorrowStr = getLocalDateStr(tomorrow);
-                if (targetDateStr !== tomorrowStr) return false;
-            } else if (dateRange === 'this_week') {
-                const startOfWeek = new Date(today);
-                startOfWeek.setDate(today.getDate() - today.getDay());
-                if (orderDate < startOfWeek) return false;
-            } else if (dateRange === 'last_week') {
-                const startOfLastWeek = new Date(today);
-                startOfLastWeek.setDate(today.getDate() - today.getDay() - 7);
-                const endOfLastWeek = new Date(startOfLastWeek);
-                endOfLastWeek.setDate(startOfLastWeek.getDate() + 6);
-                if (orderDate < startOfLastWeek || orderDate > endOfLastWeek) return false;
-            } else if (dateRange === 'next_week') {
-                const startOfNextWeek = new Date(today);
-                startOfNextWeek.setDate(today.getDate() - today.getDay() + 7);
-                const endOfNextWeek = new Date(startOfNextWeek);
-                endOfNextWeek.setDate(startOfNextWeek.getDate() + 6);
-                if (orderDate < startOfNextWeek || orderDate > endOfNextWeek) return false;
-            } else if (dateRange === 'this_month') {
-                if (orderDate.getMonth() !== today.getMonth() || orderDate.getFullYear() !== today.getFullYear()) return false;
-            } else if (dateRange === 'last_month') {
-                const lastMonth = new Date(today.getFullYear(), today.getMonth() - 1, 1);
-                if (orderDate.getMonth() !== lastMonth.getMonth() || orderDate.getFullYear() !== lastMonth.getFullYear()) return false;
-            } else if (dateRange === 'next_month') {
-                const nextMonth = new Date(today.getFullYear(), today.getMonth() + 1, 1);
-                if (orderDate.getMonth() !== nextMonth.getMonth() || orderDate.getFullYear() !== nextMonth.getFullYear()) return false;
-            } else if (dateRange === 'next_3_months') {
-                const limit = new Date(today);
-                limit.setMonth(today.getMonth() + 3);
-                if (orderDate <= today || orderDate > limit) return false;
-            } else if (dateRange === 'next_6_months') {
-                const limit = new Date(today);
-                limit.setMonth(today.getMonth() + 6);
-                if (orderDate <= today || orderDate > limit) return false;
-            } else if (dateRange === 'next_12_months') {
-                const limit = new Date(today);
-                limit.setMonth(today.getMonth() + 12);
-                if (orderDate <= today || orderDate > limit) return false;
-            } else if (dateRange === 'this_year') {
-                if (orderDate.getFullYear() !== today.getFullYear()) return false;
-            } else if (dateRange === 'last_3_months') {
-                const limit = new Date(today);
-                limit.setMonth(today.getMonth() - 3);
-                const tomorrow = new Date(today);
-                tomorrow.setDate(today.getDate() + 1);
-                if (orderDate < limit || orderDate >= tomorrow) return false;
-            } else if (dateRange === 'last_6_months') {
-                const limit = new Date(today);
-                limit.setMonth(today.getMonth() - 6);
-                const tomorrow = new Date(today);
-                tomorrow.setDate(today.getDate() + 1);
-                if (orderDate < limit || orderDate >= tomorrow) return false;
-            } else if (dateRange === 'last_12_months') {
-                const limit = new Date(today);
-                limit.setMonth(today.getMonth() - 12);
-                const tomorrow = new Date(today);
-                tomorrow.setDate(today.getDate() + 1);
-                if (orderDate < limit || orderDate >= tomorrow) return false;
-            } else if (dateRange.includes('-')) { // Custom date YYYY-MM-DD
-                if (targetDateStr !== dateRange) return false;
-            }
-        }
+        const targetDateStr = dateFilterMode === 'tour' ? o.tour_date : o.created_at.split('T')[0];
+        
+        if (startDate && targetDateStr < startDate) return false;
+        if (endDate && targetDateStr > endDate) return false;
 
         if (companyFilter && o.company_id !== companyFilter) return false;
         if (statusFilter && o.status !== statusFilter) return false;
@@ -479,7 +512,8 @@ export function OrdersClient({ initialOrders, companies }: OrdersClientProps) {
 
     async function handleExport() {
         const result = await exportOrdersCSV({
-            dateFrom: dateRange.includes('-') ? dateRange : undefined,
+            dateFrom: startDate || undefined,
+            dateTo: endDate || undefined,
             companyId: companyFilter || undefined,
             status: statusFilter || undefined,
         });
@@ -495,7 +529,7 @@ export function OrdersClient({ initialOrders, companies }: OrdersClientProps) {
     }
 
     const pendingCount = filtered.filter(o => o.status === 'pending').length;
-    const hasFilters = !!(dateRange || companyFilter || statusFilter);
+    const hasFilters = !!(dateRange || companyFilter || statusFilter || startDate || endDate);
     const allSelected = filtered.length > 0 && selected.size === filtered.length;
 
     return (
@@ -655,7 +689,7 @@ export function OrdersClient({ initialOrders, companies }: OrdersClientProps) {
                         </Button>
                     </div>
 
-                    <Select value={dateRange} onValueChange={(val) => setDateRange(val ?? '')}>
+                    <Select value={dateRange} onValueChange={(val) => handleDateRangeChange(val ?? '')}>
                         <SelectTrigger className="w-[180px] h-10 rounded-xl border-gray-200 font-semibold text-sm">
                             <SelectValue placeholder="All Dates">
                                 {DATE_RANGE_LABELS[dateRange] || dateRange || 'All Dates'}
@@ -663,6 +697,7 @@ export function OrdersClient({ initialOrders, companies }: OrdersClientProps) {
                         </SelectTrigger>
                         <SelectContent>
                             <SelectItem value="">All Dates</SelectItem>
+                            <SelectItem value="custom">Custom Range</SelectItem>
                             <SelectItem value="today">Today</SelectItem>
                             <SelectItem value="yesterday">Yesterday</SelectItem>
                             <SelectItem value="tomorrow">Tomorrow</SelectItem>
@@ -682,12 +717,27 @@ export function OrdersClient({ initialOrders, companies }: OrdersClientProps) {
                         </SelectContent>
                     </Select>
 
-                    <Input 
-                        type="date" 
-                        value={dateRange.includes('-') ? dateRange : ''} 
-                        onChange={e => setDateRange(e.target.value)}
-                        className="w-[160px] h-10 rounded-xl border-gray-200 text-sm font-semibold" 
-                    />
+                    <div className="flex items-center gap-2">
+                        <Input 
+                            type="date" 
+                            value={startDate} 
+                            onChange={e => {
+                                setStartDate(e.target.value);
+                                setDateRange('custom');
+                            }}
+                            className="w-[160px] h-10 rounded-xl border-gray-200 text-sm font-semibold" 
+                        />
+                        <span className="text-gray-400 text-sm font-medium">to</span>
+                        <Input 
+                            type="date" 
+                            value={endDate} 
+                            onChange={e => {
+                                setEndDate(e.target.value);
+                                setDateRange('custom');
+                            }}
+                            className="w-[160px] h-10 rounded-xl border-gray-200 text-sm font-semibold" 
+                        />
+                    </div>
 
                     <Select value={companyFilter} onValueChange={(val) => setCompanyFilter(val ?? '')}>
                         <SelectTrigger className="w-[180px] h-10 rounded-xl border-gray-200 font-semibold text-sm">
@@ -723,7 +773,18 @@ export function OrdersClient({ initialOrders, companies }: OrdersClientProps) {
                     </Select>
 
                     {hasFilters && (
-                        <Button variant="ghost" size="sm" onClick={() => { setDateRange(''); setCompanyFilter(''); setStatusFilter(''); }} className="gap-2 text-xs font-bold h-10 px-4 text-gray-400 hover:text-gray-900 transition-colors">
+                        <Button 
+                            variant="ghost" 
+                            size="sm" 
+                            onClick={() => { 
+                                setDateRange(''); 
+                                setStartDate('');
+                                setEndDate('');
+                                setCompanyFilter(''); 
+                                setStatusFilter(''); 
+                            }} 
+                            className="gap-2 text-xs font-bold h-10 px-4 text-gray-400 hover:text-gray-900 transition-colors"
+                        >
                             <X className="size-3.5" /> Clear
                         </Button>
                     )}
