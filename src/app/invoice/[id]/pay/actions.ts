@@ -26,15 +26,16 @@ export async function fetchInvoiceForPayment(invoiceId: string) {
 
         if (invoice.stripe_invoice_id) {
             try {
-                const stripeInvoice = await stripe.invoices.retrieve(invoice.stripe_invoice_id, {
-                    expand: ['lines.data'],
-                });
-                lineItems = stripeInvoice.lines.data.map((line: any) => ({
-                    description: line.description || 'Item',
-                    amount: line.amount / 100, // Convert cents to dollars
-                    metadata: line.metadata,
-                }));
-            } catch {
+                // Fetch all line items using Stripe listLineItems endpoint to support more than 10 items
+                for await (const line of stripe.invoices.listLineItems(invoice.stripe_invoice_id, { limit: 100 })) {
+                    lineItems.push({
+                        description: line.description || 'Item',
+                        amount: line.amount / 100, // Convert cents to dollars
+                        metadata: line.metadata,
+                    });
+                }
+            } catch (err) {
+                console.error('[fetchInvoiceForPayment] Failed to fetch line items from Stripe:', err);
                 // If Stripe retrieval fails, we'll show just the total
             }
         }
