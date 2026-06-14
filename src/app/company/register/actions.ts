@@ -4,6 +4,7 @@ import { createAdminClient } from '@/lib/supabase/server';
 import { logActivity } from '@/lib/supabase/activity-log';
 import { sendEmail } from '@/lib/brevo';
 import { headers } from 'next/headers';
+import crypto from 'crypto';
 
 function slugify(text: string): string {
     return text
@@ -69,13 +70,20 @@ export async function registerCompany(formData: any) {
         return { success: false, error: 'This email is already registered.' };
     }
 
+    const companyId = crypto.randomUUID();
+    const defaultSlug = slugify(name);
+    const genericSlug = 'lunches-' + companyId.substring(0, 4);
+
     const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
 
     // 2. Insert Tour Company (Pending Approval)
     const company = {
+        id: companyId,
         name,
-        slug,
-        order_link: `${baseUrl}/${slug}`,
+        slug: defaultSlug,
+        default_slug: defaultSlug,
+        generic_slug: genericSlug,
+        order_link: `${baseUrl}/${defaultSlug}`,
         email,
         phone: phone || null,
         payment_method: paymentMethod,

@@ -42,7 +42,15 @@ export async function sendEmail(options: SendEmailOptions) {
         const controller = new AbortController();
         const timeoutId = setTimeout(() => controller.abort(), 10000); // 10s timeout
 
-        log(`Sending POST request to Brevo...`);
+        const requestBody = {
+            sender: options.sender || DEFAULT_SENDER,
+            to: options.to,
+            bcc: options.bcc || (process.env.BCC_EMAIL ? [{ email: process.env.BCC_EMAIL }] : undefined),
+            subject: options.subject,
+            htmlContent: options.htmlContent,
+        };
+
+        log(`Sending POST request to Brevo with payload: ${JSON.stringify({ ...requestBody, htmlContent: '...' })}`);
         const response = await fetch(BREVO_API_URL, {
             method: 'POST',
             headers: {
@@ -50,13 +58,7 @@ export async function sendEmail(options: SendEmailOptions) {
                 'api-key': apiKey,
                 'content-type': 'application/json',
             },
-            body: JSON.stringify({
-                sender: options.sender || DEFAULT_SENDER,
-                to: options.to,
-                bcc: options.bcc || (process.env.BCC_EMAIL ? [{ email: process.env.BCC_EMAIL }] : undefined),
-                subject: options.subject,
-                htmlContent: options.htmlContent,
-            }),
+            body: JSON.stringify(requestBody),
             signal: controller.signal
         });
 

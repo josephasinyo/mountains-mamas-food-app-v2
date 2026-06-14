@@ -283,6 +283,31 @@ export async function updateAppConfig(updates: any) {
 
         if (error) throw error;
 
+        // Automatically swap active slug when branding option changes
+        if (updates.use_mountain_mamas_branding !== undefined) {
+            const { data: company, error: fetchError } = await supabase
+                .from('tour_companies')
+                .select('default_slug, generic_slug')
+                .eq('id', companyId)
+                .single();
+
+            if (!fetchError && company) {
+                const activeSlug = updates.use_mountain_mamas_branding
+                    ? (company.generic_slug || 'lunches-' + companyId.substring(0, 4))
+                    : (company.default_slug || 'company-slug');
+                
+                const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
+
+                await supabase
+                    .from('tour_companies')
+                    .update({
+                        slug: activeSlug,
+                        order_link: `${baseUrl}/${activeSlug}`
+                    })
+                    .eq('id', companyId);
+            }
+        }
+
         await logActivity({
             action: 'app_config_updated',
             entityType: 'config',

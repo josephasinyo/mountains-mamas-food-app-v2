@@ -18,7 +18,7 @@ export const viewport = {
 };
 
 export const metadata: Metadata = {
-  title: "Mountains Mama's Cafe",
+  title: "Mountain Mama's Café",
   description: 'Order your favorite food',
   icons: {
     icon: '/icon.svg',

@@ -14,7 +14,12 @@ export async function getCompanyBySlug(slug: string) {
             .eq('slug', slug)
             .single();
 
-        if (error) throw error;
+        if (error) {
+            if (error.code === 'PGRST116') {
+                return { success: false, error: 'Company not found' };
+            }
+            throw error;
+        }
 
         // Fetch global fields and company overrides
         const [globalRes, companyFieldsRes] = await Promise.all([
@@ -41,8 +46,11 @@ export async function getCompanyBySlug(slug: string) {
         console.log(`[getCompanyBySlug] slug: ${slug}, fields: ${formFields.length}`);
         return { success: true, company, formFields };
     } catch (error: any) {
+        if (error?.code === 'PGRST116') {
+            return { success: false, error: 'Company not found' };
+        }
         console.error(`Error fetching company ${slug}:`, error);
-        return { success: false, error: error.message };
+        return { success: false, error: error?.message || 'Unknown error' };
     }
 }
 

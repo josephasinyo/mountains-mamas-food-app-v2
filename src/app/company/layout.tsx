@@ -227,7 +227,7 @@ export default function CompanyLayout({ children }: { children: React.ReactNode 
                                 exit={{ opacity: 0, x: -10 }}
                                 className="flex flex-col leading-tight min-w-0"
                             >
-                                <span className="font-bold text-[14px] text-gray-900 truncate tracking-tight">Mountain Mama&apos;s</span>
+                                <span className="font-bold text-[14px] text-gray-900 truncate tracking-tight">Mountain Mama&apos;s Café</span>
                                 <span className="text-[10px] text-gray-400 font-semibold uppercase tracking-wider">Company Portal</span>
                             </motion.div>
                         )}

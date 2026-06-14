@@ -21,6 +21,9 @@ export interface TourCompany {
     timezone: string;
     order_link: string | null;
     needs_password_change: boolean;
+    prep_instructions?: string | null;
+    default_slug?: string | null;
+    generic_slug?: string | null;
     created_at: string;
     updated_at: string;
 }
@@ -37,6 +40,7 @@ export interface CompanyAppConfig {
     meal_page_options: Record<string, any>;
     confirmation_page_fields: Record<string, any>;
     custom_welcome_message: string | null;
+    use_mountain_mamas_branding: boolean;
     created_at: string;
     updated_at: string;
 }

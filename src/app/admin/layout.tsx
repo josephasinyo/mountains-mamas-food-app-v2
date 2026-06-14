@@ -9,7 +9,7 @@ import {
     LayoutDashboard, ShoppingCart, ClipboardList, UtensilsCrossed,
     Building2, FileText, ScrollText, BarChart3, Activity,
     LogOut, Ticket, Mountain, PanelLeftClose, PanelLeft, Settings, UserCog,
-    BellRing, X, Eye
+    BellRing, X, Eye, Mail
 } from 'lucide-react';
 import { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -45,6 +45,12 @@ const ALL_NAV_SECTIONS = [
             { title: 'Companies', href: '/admin/companies', icon: Building2 },
             { title: 'App Settings', href: '/admin/settings', icon: Settings },
             { title: 'Staff', href: '/admin/staff', icon: UserCog, adminOnly: true },
+        ],
+    },
+    {
+        label: 'Marketing',
+        items: [
+            { title: 'Outreach', href: '/admin/outreach', icon: Mail },
         ],
     },
     {
@@ -461,7 +467,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
                                 exit={{ opacity: 0, x: -10 }}
                                 className="flex flex-col leading-tight min-w-0"
                             >
-                                <span className="font-bold text-[14px] text-gray-900 truncate tracking-tight">Mountain Mama&apos;s</span>
+                                <span className="font-bold text-[14px] text-gray-900 truncate tracking-tight">Mountain Mama&apos;s Café</span>
                                 <span className="text-[10px] text-gray-400 font-semibold uppercase tracking-wider">Admin Portal</span>
                             </motion.div>
                         )}

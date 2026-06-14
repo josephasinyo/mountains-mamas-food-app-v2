@@ -6,6 +6,7 @@ import { sendInvitationEmail, sendActivationEmail } from '@/lib/brevo';
 import fs from 'fs';
 import path from 'path';
 import { cookies } from 'next/headers';
+import crypto from 'crypto';
 
 
 function slugify(text: string): string {
@@ -25,19 +26,30 @@ export async function createCompany(formData: FormData) {
     const paymentMethod = formData.get('payment_method') as string;
     const representativeName = formData.get('representative_name') as string || null;
     const representativeTitle = formData.get('representative_title') as string || null;
+    const prepInstructions = formData.get('prep_instructions') as string || null;
 
     const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
-    const slug = slugify(name);
+    const useMountainMamasBranding = formData.get('use_mountain_mamas_branding') === 'true';
+    
+    const companyId = crypto.randomUUID();
+    const defaultSlug = slugify(name);
+    const genericSlug = 'lunches-' + companyId.substring(0, 4);
+    const activeSlug = useMountainMamasBranding ? genericSlug : defaultSlug;
+
     const company = {
+        id: companyId,
         name,
-        slug,
-        order_link: `${baseUrl}/${slug}`,
+        slug: activeSlug,
+        default_slug: defaultSlug,
+        generic_slug: genericSlug,
+        order_link: `${baseUrl}/${activeSlug}`,
         email: company_email_val,
         phone: (formData.get('phone') as string) || null,
         payment_method: paymentMethod,
         representative_name: representativeName,
         representative_title: representativeTitle,
         discount_percentage: parseFloat(formData.get('discount_percentage') as string) || 0,
+        prep_instructions: prepInstructions,
         status: 'active' as const,
         is_active: true,
     };
@@ -83,22 +95,25 @@ export async function createCompany(formData: FormData) {
             log(`Initialized menu selections for ${allMeals.length} meals.`);
         }
 
-        // 2. Initialize App Config with Global Defaults (Bread & Cookies)
+        // 2. Initialize App Config with Global Defaults (Bread & Cookies) and Branding Settings
         const { data: globalSettings } = await supabase
             .from('app_settings')
             .select('*')
             .eq('id', '00000000-0000-0000-0000-000000000001')
             .single();
 
-        if (globalSettings) {
-            await supabase.from('company_app_config').update({
-                meal_page_options: {
-                    breads: globalSettings.bread_options || [],
-                    cookies: globalSettings.cookie_options || []
-                }
-            }).eq('company_id', data.id);
-            log(`Synced global bread/cookie defaults to company config.`);
-        }
+        const useMountainMamasBranding = formData.get('use_mountain_mamas_branding') === 'true';
+        const customWelcomeMessage = formData.get('custom_welcome_message') as string || null;
+
+        await supabase.from('company_app_config').update({
+            use_mountain_mamas_branding: useMountainMamasBranding,
+            custom_welcome_message: customWelcomeMessage,
+            meal_page_options: {
+                breads: globalSettings?.bread_options || [],
+                cookies: globalSettings?.cookie_options || []
+            }
+        }).eq('company_id', data.id);
+        log(`Synced global defaults and custom branding to company config.`);
 
         // 3. Initialize core or auto-add form fields for the company
         const { data: eligibleFields } = await supabase
@@ -215,19 +230,26 @@ export async function updateCompany(id: string, formData: FormData) {
     const supabase = createAdminClient();
 
     const name = formData.get('name') as string;
-    const slug = slugify(name);
+    const useMountainMamasBranding = formData.get('use_mountain_mamas_branding') === 'true';
+    
+    const defaultSlug = slugify(name);
+    const genericSlug = 'lunches-' + id.substring(0, 4);
+    const activeSlug = useMountainMamasBranding ? genericSlug : defaultSlug;
     const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
     
     const updates = {
         name,
-        slug,
-        order_link: `${baseUrl}/${slug}`,
+        slug: activeSlug,
+        default_slug: defaultSlug,
+        generic_slug: genericSlug,
+        order_link: `${baseUrl}/${activeSlug}`,
         email: formData.get('email') as string,
         phone: (formData.get('phone') as string) || null,
         payment_method: formData.get('payment_method') as string,
         representative_name: formData.get('representative_name') as string || null,
         representative_title: formData.get('representative_title') as string || null,
         discount_percentage: parseFloat(formData.get('discount_percentage') as string) || 0,
+        prep_instructions: formData.get('prep_instructions') as string || null,
     };
 
     const { data, error } = await supabase
@@ -241,13 +263,17 @@ export async function updateCompany(id: string, formData: FormData) {
         return { success: false, error: error.message };
     }
 
-    // Update app config based on payment method
+    // Update app config based on payment method and custom branding settings
     const showPrices = updates.payment_method === 'direct_pay';
+    const customWelcomeMessage = formData.get('custom_welcome_message') as string || null;
+
     await supabase
         .from('company_app_config')
         .update({
             show_prices: showPrices,
             show_stripe_checkout: showPrices,
+            use_mountain_mamas_branding: useMountainMamasBranding,
+            custom_welcome_message: customWelcomeMessage,
         })
         .eq('company_id', id);
 

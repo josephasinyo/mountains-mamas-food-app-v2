@@ -10,7 +10,7 @@ import { getSession } from '@/app/company/actions';
 import { useCompany } from '@/components/context/CompanyProvider';
 
 export default function Header() {
-  const { company } = useCompany();
+  const { company, config } = useCompany();
   const { cartCount } = useCart();
   const [isBumped, setIsBumped] = useState(false);
   const pathname = usePathname();
@@ -38,12 +38,12 @@ export default function Header() {
       {isHome ? (
         <Link href={company ? `/${company.slug}` : "/"} className={styles.logo}>
           <div className={styles.logoContainer}>
-            {company ? (
+            {company && !config?.use_mountain_mamas_branding ? (
               <span className={styles.mountainText}>{company.name.toUpperCase()}</span>
             ) : (
               <>
                 <span className={styles.mountainText}>MOUNTAIN</span>
-                <span className={styles.mamasText}>Mama&apos;s</span>
+                <span className={styles.mamasText}>Mama&apos;s Café</span>
               </>
             )}
           </div>

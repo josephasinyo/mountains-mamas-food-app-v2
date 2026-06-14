@@ -195,7 +195,20 @@ export default function CompanyProvider({
                     setFormFields(res.formFields);
                 }
             } else {
-                console.error(`[CompanyProvider] Failed to fetch context for ${targetSlug}:`, res.error);
+                if (res.error === 'Company not found') {
+                    console.warn(`[CompanyProvider] Company not found for slug: ${targetSlug}`);
+                } else {
+                    console.error(`[CompanyProvider] Failed to fetch context for ${targetSlug}:`, res.error);
+                }
+                // Clear stale/invalid company data to fallback to default brand settings
+                setCompany(null);
+                setConfig(null);
+                setFormFields([]);
+                try {
+                    localStorage.removeItem(STORAGE_KEYS.COMPANY);
+                    localStorage.removeItem(STORAGE_KEYS.CONFIG);
+                    localStorage.removeItem(STORAGE_KEYS.FORM_FIELDS);
+                } catch {}
             }
             setIsLoading(false);
         };

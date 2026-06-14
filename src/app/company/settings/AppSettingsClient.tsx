@@ -56,6 +56,7 @@ export default function AppSettingsClient({ initialData, globalSettings, formFie
         use_split_box_types: savedConfig?.use_split_box_types ?? false,
         use_sandwich_only: savedConfig?.use_sandwich_only ?? true,
         custom_welcome_message: savedConfig?.custom_welcome_message ?? '',
+        use_mountain_mamas_branding: savedConfig?.use_mountain_mamas_branding ?? false,
         confirmation_page_fields: savedConfig?.confirmation_page_fields ?? {},
         meal_page_options: savedConfig?.meal_page_options ?? { breads: [], cookies: [] }
     };
@@ -70,6 +71,7 @@ export default function AppSettingsClient({ initialData, globalSettings, formFie
             use_split_box_types: savedConfig?.use_split_box_types ?? false,
             use_sandwich_only: savedConfig?.use_sandwich_only ?? true,
             custom_welcome_message: savedConfig?.custom_welcome_message ?? '',
+            use_mountain_mamas_branding: savedConfig?.use_mountain_mamas_branding ?? false,
             confirmation_page_fields: savedConfig?.confirmation_page_fields ?? {},
             meal_page_options: savedConfig?.meal_page_options ?? { breads: [], cookies: [] }
         });
@@ -261,6 +263,49 @@ export default function AppSettingsClient({ initialData, globalSettings, formFie
                                 onCheckedChange={(val) => setFormData({...formData, show_junior_box_lunch_category: val})}
                                 className="data-[state=checked]:bg-violet-600"
                             />
+                        </div>
+                    </CardContent>
+                </Card>
+
+                {/* Branding & Welcome Message */}
+                <Card className="rounded-[32px] border-none shadow-xl shadow-gray-200/50 overflow-hidden bg-white">
+                    <CardHeader className="p-8 border-b border-gray-50">
+                        <div className="flex items-center gap-4">
+                            <div className="size-10 rounded-xl bg-violet-50 flex items-center justify-center text-violet-600">
+                                <Settings className="size-5" />
+                            </div>
+                            <div>
+                                <CardTitle className="text-xl font-bold">App Branding & Custom Message</CardTitle>
+                                <CardDescription>Customize the header branding and welcome message shown to your guests.</CardDescription>
+                            </div>
+                        </div>
+                    </CardHeader>
+                    <CardContent className="p-8 space-y-6">
+                        <div className="flex items-center justify-between p-4 rounded-2xl border border-violet-100 bg-violet-50/20">
+                            <div className="space-y-1">
+                                <Label className="text-sm font-bold text-violet-900">Use Mountain Mama's Café Branding</Label>
+                                <p className="text-xs text-violet-600/70 font-medium">
+                                    When enabled, your guests will see "Mountain Mama's Café" in the header instead of your company name
+                                </p>
+                            </div>
+                            <Switch 
+                                checked={formData.use_mountain_mamas_branding} 
+                                onCheckedChange={(val) => setFormData({...formData, use_mountain_mamas_branding: val})}
+                                className="data-[state=checked]:bg-violet-600"
+                            />
+                        </div>
+
+                        <div className="space-y-2">
+                            <Label htmlFor="custom_welcome_message" className="text-sm font-bold text-gray-700">Custom Welcome Instructions</Label>
+                            <Textarea 
+                                id="custom_welcome_message"
+                                placeholder="e.g. Please place your family’s order for your tour in Yellowstone below by selecting the meals of your choice."
+                                value={formData.custom_welcome_message}
+                                onChange={(e) => setFormData({...formData, custom_welcome_message: e.target.value})}
+                                rows={3}
+                                className="resize-none rounded-xl"
+                            />
+                            <p className="text-[11px] text-gray-400 font-medium">This message will be prominently displayed at the top of your custom ordering page.</p>
                         </div>
                     </CardContent>
                 </Card>

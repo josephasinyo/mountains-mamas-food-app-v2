@@ -44,6 +44,7 @@ export interface CompanyConfig {
     meal_page_options: any;
     confirmation_page_fields: any;
     custom_welcome_message: string | null;
+    use_mountain_mamas_branding?: boolean;
 }
 
 export interface TourCompany {
@@ -57,4 +58,7 @@ export interface TourCompany {
     representative_name?: string | null;
     representative_title?: string | null;
     discount_percentage?: number;
+    prep_instructions?: string | null;
+    default_slug?: string | null;
+    generic_slug?: string | null;
 }

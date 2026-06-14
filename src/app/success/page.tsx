@@ -145,7 +145,7 @@ function SuccessPageContent() {
         
         <h1 className={styles.title}>Order Placed!</h1>
         <p className={styles.message}>
-          Your order has been received successfully and is being processed by Mountain Mama&apos;s.
+          Your order has been received successfully and is being processed by Mountain Mama&apos;s Café.
         </p>
         
         <Link href={slug ? `/${slug}` : '/'} className={styles.homeLink}>

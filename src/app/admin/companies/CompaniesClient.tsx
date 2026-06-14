@@ -6,6 +6,8 @@ import { ConfirmDialog } from '@/components/ConfirmDialog';
 import { createCompany, updateCompany, updateCompanyStatus, deleteCompany, resendInvitation, deleteInvoice, impersonateCompany } from './actions';
 import type { TourCompany } from '@/lib/supabase/types';
 import { Button, buttonVariants } from '@/components/ui/button';
+import { Textarea } from '@/components/ui/textarea';
+import { Switch } from '@/components/ui/switch';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -28,7 +30,7 @@ import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import {
     Plus, MoreHorizontal, Pencil, CheckCircle, XCircle, Trash2,
     Building2, CreditCard, FileText, Copy, ChevronRight, ChevronDown,
-    Phone, Mail, Globe, ExternalLink, Clock, LayoutGrid, List, Send, User, Percent
+    Phone, Mail, Globe, ExternalLink, Clock, LayoutGrid, List, Send, User, Percent, Settings
 } from 'lucide-react';
 import { cn, formatDateUS } from '@/lib/utils';
 
@@ -45,7 +47,7 @@ export function CompaniesClient({ initialCompanies }: CompaniesClientProps) {
     const [companies, setCompanies] = useState(initialCompanies);
     const [expandedCompanyId, setExpandedCompanyId] = useState<string | null>(null);
     const [open, setOpen] = useState(false);
-    const [editingCompany, setEditingCompany] = useState<TourCompany | null>(null);
+    const [editingCompany, setEditingCompany] = useState<(TourCompany & { company_app_config?: any }) | null>(null);
     const [loading, setLoading] = useState(false);
     const [companyToDelete, setCompanyToDelete] = useState<{ id: string; name: string } | null>(null);
     const [companyToResend, setCompanyToResend] = useState<{ id: string; name: string } | null>(null);
@@ -60,6 +62,9 @@ export function CompaniesClient({ initialCompanies }: CompaniesClientProps) {
     const [representativeName, setRepresentativeName] = useState('');
     const [representativeTitle, setRepresentativeTitle] = useState('');
     const [discountPercentage, setDiscountPercentage] = useState('0');
+    const [prepInstructions, setPrepInstructions] = useState('');
+    const [useMountainMamasBranding, setUseMountainMamasBranding] = useState(false);
+    const [customWelcomeMessage, setCustomWelcomeMessage] = useState('');
 
     const filtered = filter === 'all' ? companies : companies.filter(c => c.status === filter);
 
@@ -70,9 +75,12 @@ export function CompaniesClient({ initialCompanies }: CompaniesClientProps) {
         paymentMethod !== editingCompany.payment_method ||
         representativeName !== (editingCompany.representative_name || '') ||
         representativeTitle !== (editingCompany.representative_title || '') ||
-        discountPercentage !== String(editingCompany.discount_percentage ?? 0)
+        discountPercentage !== String(editingCompany.discount_percentage ?? 0) ||
+        prepInstructions !== (editingCompany.prep_instructions || '') ||
+        useMountainMamasBranding !== (editingCompany.company_app_config?.use_mountain_mamas_branding ?? false) ||
+        customWelcomeMessage !== (editingCompany.company_app_config?.custom_welcome_message || '')
     ) : (
-        name.length > 0 || email.length > 0
+        name.length > 0 || email.length > 0 || prepInstructions.length > 0 || useMountainMamasBranding || customWelcomeMessage.length > 0
     );
 
     const [invoiceToDelete, setInvoiceToDelete] = useState<{ id: string; amount: number; companyId: string } | null>(null);
@@ -126,10 +134,13 @@ export function CompaniesClient({ initialCompanies }: CompaniesClientProps) {
         setRepresentativeName('');
         setRepresentativeTitle('');
         setDiscountPercentage('0');
+        setPrepInstructions('');
+        setUseMountainMamasBranding(false);
+        setCustomWelcomeMessage('');
         setOpen(true);
     }
 
-    function openEdit(company: TourCompany) {
+    function openEdit(company: TourCompany & { company_app_config?: any }) {
         setEditingCompany(company);
         setName(company.name || '');
         setEmail(company.email || '');
@@ -138,6 +149,9 @@ export function CompaniesClient({ initialCompanies }: CompaniesClientProps) {
         setRepresentativeName(company.representative_name || '');
         setRepresentativeTitle(company.representative_title || '');
         setDiscountPercentage(String(company.discount_percentage ?? 0));
+        setPrepInstructions(company.prep_instructions || '');
+        setUseMountainMamasBranding(company.company_app_config?.use_mountain_mamas_branding ?? false);
+        setCustomWelcomeMessage(company.company_app_config?.custom_welcome_message || '');
         setOpen(true);
     }
 
@@ -153,6 +167,9 @@ export function CompaniesClient({ initialCompanies }: CompaniesClientProps) {
             formData.set('representative_name', representativeName);
             formData.set('representative_title', representativeTitle);
             formData.set('discount_percentage', discountPercentage);
+            formData.set('prep_instructions', prepInstructions);
+            formData.set('use_mountain_mamas_branding', String(useMountainMamasBranding));
+            formData.set('custom_welcome_message', customWelcomeMessage);
 
             const result = editingCompany
                 ? await updateCompany(editingCompany.id, formData)
@@ -492,6 +509,19 @@ export function CompaniesClient({ initialCompanies }: CompaniesClientProps) {
                                                                             <p className="text-sm font-mono text-blue-600 font-bold">{company.slug}</p>
                                                                         </div>
                                                                     </div>
+                                                                    <div className="flex items-start gap-4">
+                                                                        <div className="size-8 rounded-xl bg-violet-50 flex items-center justify-center text-violet-600">
+                                                                            <Settings className="size-4" />
+                                                                        </div>
+                                                                        <div>
+                                                                            <p className="text-[10px] text-gray-400 font-bold uppercase tracking-wider">Ordering Branding</p>
+                                                                            <p className="text-sm font-bold text-gray-900">
+                                                                                {company.company_app_config?.use_mountain_mamas_branding 
+                                                                                    ? "Mountain Mama's Café" 
+                                                                                    : "Tour Company Name"}
+                                                                            </p>
+                                                                        </div>
+                                                                    </div>
                                                                 </div>
                                                             </div>
  
@@ -608,6 +638,22 @@ export function CompaniesClient({ initialCompanies }: CompaniesClientProps) {
                                                                 )}
                                                             </div>
                                                         </div>
+                                                        {company.prep_instructions && (
+                                                            <div className="mt-8 p-5 rounded-2xl bg-gray-50 border border-gray-100 space-y-2">
+                                                                <div className="flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.15em] text-gray-400">
+                                                                    <FileText className="size-3.5 text-gray-500" /> Prep & Packaging Profile
+                                                                </div>
+                                                                <p className="text-xs text-gray-600 leading-relaxed whitespace-pre-wrap">{company.prep_instructions}</p>
+                                                            </div>
+                                                        )}
+                                                        {company.company_app_config?.custom_welcome_message && (
+                                                            <div className="mt-4 p-5 rounded-2xl bg-violet-50/30 border border-violet-100/60 space-y-2">
+                                                                <div className="flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.15em] text-violet-500">
+                                                                    <Settings className="size-3.5" /> Custom Welcome Message
+                                                                </div>
+                                                                <p className="text-xs text-gray-600 leading-relaxed whitespace-pre-wrap">{company.company_app_config.custom_welcome_message}</p>
+                                                            </div>
+                                                        )}
                                                     </div>
                                                 </TableCell>
                                             </TableRow>
@@ -677,6 +723,26 @@ export function CompaniesClient({ initialCompanies }: CompaniesClientProps) {
                                         <p className="text-sm font-black text-gray-700">{company.invoices?.length || 0}</p>
                                     </div>
                                 </div>
+                                {company.prep_instructions && (
+                                    <div className="bg-gray-50/50 rounded-2xl p-3 border border-gray-100 group-hover:bg-white group-hover:border-violet-100 transition-all mb-6">
+                                        <p className="text-[9px] font-black text-gray-400 uppercase tracking-widest mb-1 flex items-center gap-1">
+                                            <span>📝</span> Prep & Packaging Profile
+                                        </p>
+                                        <p className="text-xs text-gray-600 line-clamp-3 whitespace-pre-wrap leading-relaxed">
+                                            {company.prep_instructions}
+                                        </p>
+                                    </div>
+                                )}
+                                {company.company_app_config?.custom_welcome_message && (
+                                    <div className="bg-violet-50/30 rounded-2xl p-3 border border-violet-100/60 transition-all mb-6">
+                                        <p className="text-[9px] font-black text-violet-500 uppercase tracking-widest mb-1 flex items-center gap-1">
+                                            <span>👋</span> Custom Welcome Instructions
+                                        </p>
+                                        <p className="text-xs text-gray-600 line-clamp-3 whitespace-pre-wrap leading-relaxed">
+                                            {company.company_app_config.custom_welcome_message}
+                                        </p>
+                                    </div>
+                                )}
  
                                 <div className="pt-5 border-t border-gray-50 flex items-center justify-between">
                                     <button
@@ -731,7 +797,7 @@ export function CompaniesClient({ initialCompanies }: CompaniesClientProps) {
             {/* Add/Edit Dialog */}
             <Dialog open={open} onOpenChange={setOpen}>
                 <DialogContent 
-                    className="sm:max-w-[480px]"
+                    className="sm:max-w-[600px] max-h-[90vh] overflow-y-auto"
                 >
                     <DialogHeader>
                         <DialogTitle>{editingCompany ? 'Edit Company' : 'Add New Company'}</DialogTitle>
@@ -739,90 +805,161 @@ export function CompaniesClient({ initialCompanies }: CompaniesClientProps) {
                             {editingCompany ? 'Update company details.' : 'Register a new tour company partner.'}
                         </DialogDescription>
                     </DialogHeader>
-                    <form onSubmit={handleSubmit} className="space-y-4 mt-2">
-                        <div className="space-y-2">
-                            <Label htmlFor="name">Company Name *</Label>
-                            <Input id="name" name="name" required placeholder="Yellowstone Safari Tours"
-                                value={name || ''} onChange={(e) => setName(e.target.value)} />
-                        </div>
-                        <div className="space-y-2">
-                            <Label htmlFor="email">Email *</Label>
-                            <Input id="email" name="email" type="email" required placeholder="company@example.com"
-                                value={email || ''} onChange={(e) => setEmail(e.target.value)} />
-                        </div>
-                        <div className="space-y-2">
-                            <Label htmlFor="phone">Phone</Label>
-                            <Input id="phone" name="phone" placeholder="(406) 555-0123"
-                                value={phone || ''} onChange={(e) => setPhone(e.target.value)} />
-                        </div>
-                        <div className="grid grid-cols-2 gap-4">
-                            <div className="space-y-2">
-                                <Label htmlFor="representative_name">Representative Name</Label>
-                                <Input id="representative_name" name="representative_name" placeholder="John Doe"
-                                    value={representativeName || ''} onChange={(e) => setRepresentativeName(e.target.value)} />
-                            </div>
-                            <div className="space-y-2">
-                                <Label htmlFor="representative_title">Representative Title</Label>
-                                <Input id="representative_title" name="representative_title" placeholder="Owner"
-                                    value={representativeTitle || ''} onChange={(e) => setRepresentativeTitle(e.target.value)} />
-                            </div>
-                        </div>
-                        <div className="space-y-2">
-                            <Label>Payment Method *</Label>
-                            <Select value={paymentMethod} onValueChange={(val) => setPaymentMethod(val || '')}>
-                                <SelectTrigger className="w-full">
-                                    <SelectValue>
-                                        {paymentMethod === 'direct_pay' ? 'Direct Pay' : 'Monthly Invoice'}
-                                    </SelectValue>
-                                </SelectTrigger>
-                                <SelectContent>
-                                    <SelectItem value="direct_pay">
-                                        <div className="flex flex-col">
-                                            <span className="font-medium">💳 Direct Pay</span>
-                                            <span className="text-[10px] text-muted-foreground">Guests pay individually via Stripe</span>
-                                        </div>
-                                    </SelectItem>
-                                    <SelectItem value="monthly_invoice">
-                                        <div className="flex flex-col">
-                                            <span className="font-medium">📄 Monthly Invoice</span>
-                                            <span className="text-[10px] text-muted-foreground">Company pays directly each month</span>
-                                        </div>
-                                    </SelectItem>
-                                </SelectContent>
-                            </Select>
-                            <div className={cn(
-                                "p-3 rounded-lg border text-xs transition-colors",
-                                paymentMethod === 'direct_pay' ? "bg-emerald-50/50 border-emerald-100 text-emerald-800" : "bg-blue-50/50 border-blue-100 text-blue-800"
-                            )}>
-                                {paymentMethod === 'direct_pay'
-                                    ? 'Guests will see prices and pay securely during checkout.'
-                                    : 'No prices shown to guests. Orders are tracked for monthly billing.'}
-                            </div>
-                        </div>
-                        <div className="space-y-2">
-                            <Label htmlFor="discount_percentage">Company Discount (%)</Label>
-                            <div className="relative">
-                                <Input 
-                                    id="discount_percentage" 
-                                    name="discount_percentage" 
-                                    type="number" 
-                                    min="0" 
-                                    max="100" 
-                                    step="0.5"
-                                    placeholder="0"
-                                    value={discountPercentage}
-                                    onChange={(e) => setDiscountPercentage(e.target.value)}
-                                    className="pr-8"
-                                />
-                                <Percent className="absolute right-3 top-1/2 -translate-y-1/2 size-3.5 text-gray-400" />
-                            </div>
-                            {Number(discountPercentage) > 0 && (
-                                <div className="p-3 rounded-lg border bg-amber-50/50 border-amber-100 text-xs text-amber-800">
-                                    A {discountPercentage}% discount will be automatically applied to all future invoices generated for this company.
+                    <form onSubmit={handleSubmit} className="space-y-6 mt-4 pb-2">
+                        {/* Section 1: Partner Identity */}
+                        <div className="space-y-4">
+                            <h4 className="text-[11px] font-black text-violet-600 uppercase tracking-widest flex items-center gap-2 pb-1.5 border-b border-gray-100">
+                                <Building2 className="size-3.5" /> Partner Identity
+                            </h4>
+                            <div className="space-y-3">
+                                <div className="space-y-1.5">
+                                    <Label htmlFor="name" className="text-xs font-bold text-gray-700">Company Name *</Label>
+                                    <Input id="name" name="name" required placeholder="Yellowstone Safari Tours"
+                                        value={name || ''} onChange={(e) => setName(e.target.value)} />
                                 </div>
-                            )}
+                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                    <div className="space-y-1.5">
+                                        <Label htmlFor="email" className="text-xs font-bold text-gray-700">Email Address *</Label>
+                                        <Input id="email" name="email" type="email" required placeholder="company@example.com"
+                                            value={email || ''} onChange={(e) => setEmail(e.target.value)} />
+                                    </div>
+                                    <div className="space-y-1.5">
+                                        <Label htmlFor="phone" className="text-xs font-bold text-gray-700">Phone Contact</Label>
+                                        <Input id="phone" name="phone" placeholder="(406) 555-0123"
+                                            value={phone || ''} onChange={(e) => setPhone(e.target.value)} />
+                                    </div>
+                                </div>
+                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                    <div className="space-y-1.5">
+                                        <Label htmlFor="representative_name" className="text-xs font-bold text-gray-700">Representative Name</Label>
+                                        <Input id="representative_name" name="representative_name" placeholder="John Doe"
+                                            value={representativeName || ''} onChange={(e) => setRepresentativeName(e.target.value)} />
+                                    </div>
+                                    <div className="space-y-1.5">
+                                        <Label htmlFor="representative_title" className="text-xs font-bold text-gray-700">Representative Title</Label>
+                                        <Input id="representative_title" name="representative_title" placeholder="Owner"
+                                            value={representativeTitle || ''} onChange={(e) => setRepresentativeTitle(e.target.value)} />
+                                    </div>
+                                </div>
+                            </div>
                         </div>
-                        <DialogFooter className="pt-4">
+
+                        {/* Section 2: Billing & Discounts */}
+                        <div className="space-y-4">
+                            <h4 className="text-[11px] font-black text-violet-600 uppercase tracking-widest flex items-center gap-2 pb-1.5 border-b border-gray-100">
+                                <CreditCard className="size-3.5" /> Billing & Discounts
+                            </h4>
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 items-start">
+                                <div className="space-y-1.5">
+                                    <Label className="text-xs font-bold text-gray-700">Payment Method *</Label>
+                                    <Select value={paymentMethod} onValueChange={(val) => setPaymentMethod(val || '')}>
+                                        <SelectTrigger className="w-full">
+                                            <SelectValue>
+                                                {paymentMethod === 'direct_pay' ? 'Direct Pay' : 'Monthly Invoice'}
+                                            </SelectValue>
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                            <SelectItem value="direct_pay">
+                                                <div className="flex flex-col">
+                                                    <span className="font-semibold text-xs">💳 Direct Pay</span>
+                                                </div>
+                                            </SelectItem>
+                                            <SelectItem value="monthly_invoice">
+                                                <div className="flex flex-col">
+                                                    <span className="font-semibold text-xs">📄 Monthly Invoice</span>
+                                                </div>
+                                            </SelectItem>
+                                        </SelectContent>
+                                    </Select>
+                                </div>
+                                <div className="space-y-1.5">
+                                    <Label htmlFor="discount_percentage" className="text-xs font-bold text-gray-700">Company Discount (%)</Label>
+                                    <div className="relative">
+                                        <Input 
+                                            id="discount_percentage" 
+                                            name="discount_percentage" 
+                                            type="number" 
+                                            min="0" 
+                                            max="100" 
+                                            step="0.5"
+                                            placeholder="0"
+                                            value={discountPercentage}
+                                            onChange={(e) => setDiscountPercentage(e.target.value)}
+                                            className="pr-8"
+                                        />
+                                        <Percent className="absolute right-3 top-1/2 -translate-y-1/2 size-3.5 text-gray-400" />
+                                    </div>
+                                </div>
+                            </div>
+                            <div className="grid grid-cols-1 gap-2">
+                                {paymentMethod === 'direct_pay' ? (
+                                    <div className="p-3 rounded-xl border bg-emerald-50/30 border-emerald-100/50 text-[11px] text-emerald-800 font-medium">
+                                        Guests will see prices and pay securely during checkout via Stripe.
+                                    </div>
+                                ) : (
+                                    <div className="p-3 rounded-xl border bg-blue-50/30 border-blue-100/50 text-[11px] text-blue-800 font-medium">
+                                        No prices shown to guests. Orders are tracked for monthly invoicing.
+                                    </div>
+                                )}
+                                {Number(discountPercentage) > 0 && (
+                                    <div className="p-3 rounded-xl border bg-amber-50/30 border-amber-100/50 text-[11px] text-amber-800 font-medium">
+                                        A {discountPercentage}% discount will be automatically applied to all future invoices generated for this company.
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+
+                        {/* Section 3: App Portal Settings */}
+                        <div className="space-y-4">
+                            <h4 className="text-[11px] font-black text-violet-600 uppercase tracking-widest flex items-center gap-2 pb-1.5 border-b border-gray-100">
+                                <Globe className="size-3.5" /> App Portal Settings
+                            </h4>
+                            <div className="space-y-3">
+                                <div className="flex items-center justify-between p-3.5 rounded-2xl border border-violet-100/60 bg-violet-50/20">
+                                    <div className="space-y-0.5">
+                                        <Label htmlFor="use_mountain_mamas_branding" className="text-xs font-bold text-violet-900">Use Mountain Mama's Café Branding</Label>
+                                        <p className="text-[10px] text-violet-600/70 font-medium">Show Cafe logo in header instead of company name</p>
+                                    </div>
+                                    <Switch 
+                                        id="use_mountain_mamas_branding"
+                                        checked={useMountainMamasBranding} 
+                                        onCheckedChange={(val) => setUseMountainMamasBranding(val)}
+                                        className="data-[state=checked]:bg-violet-600"
+                                    />
+                                </div>
+                                <div className="space-y-1.5">
+                                    <Label htmlFor="custom_welcome_message" className="text-xs font-bold text-gray-700">Custom Welcome Instructions</Label>
+                                    <Input 
+                                        id="custom_welcome_message" 
+                                        name="custom_welcome_message" 
+                                        placeholder="e.g. Please place your family's order for your tour in Yellowstone..."
+                                        value={customWelcomeMessage} 
+                                        onChange={(e) => setCustomWelcomeMessage(e.target.value)} 
+                                    />
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* Section 4: Kitchen Operations */}
+                        <div className="space-y-4">
+                            <h4 className="text-[11px] font-black text-violet-600 uppercase tracking-widest flex items-center gap-2 pb-1.5 border-b border-gray-100">
+                                <FileText className="size-3.5" /> Kitchen Operations (Internal)
+                            </h4>
+                            <div className="space-y-1.5">
+                                <Label htmlFor="prep_instructions" className="text-xs font-bold text-gray-700">Preparation & Packaging Instructions</Label>
+                                <Textarea 
+                                    id="prep_instructions" 
+                                    name="prep_instructions" 
+                                    placeholder="e.g. Wrap lunches individually in brown paper bags. Group all vegan orders in a separate cooler box. Add extra napkins."
+                                    value={prepInstructions}
+                                    onChange={(e) => setPrepInstructions(e.target.value)}
+                                    className="min-h-[80px]"
+                                />
+                                <p className="text-[10px] text-gray-400 font-medium">These private instructions are only visible to admin/kitchen staff on prep sheets.</p>
+                            </div>
+                        </div>
+
+                        <DialogFooter className="pt-4 border-t border-gray-100">
                             <Button type="button" variant="outline" onClick={() => setOpen(false)}>Cancel</Button>
                             <Button type="submit" disabled={loading || !hasChanges}>
                                 {loading ? 'Saving...' : editingCompany ? 'Update' : 'Create Company'}

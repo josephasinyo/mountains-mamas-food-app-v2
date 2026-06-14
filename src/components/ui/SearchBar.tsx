@@ -8,7 +8,7 @@ interface SearchBarProps {
   placeholder?: string;
 }
 
-export default function SearchBar({ value, onChange, placeholder = "Search Mountain Mama's meals..." }: SearchBarProps) {
+export default function SearchBar({ value, onChange, placeholder = "Search Mountain Mama's Café meals..." }: SearchBarProps) {
   return (
     <div className={styles.wrapper}>
       <div className={styles.inner}>
