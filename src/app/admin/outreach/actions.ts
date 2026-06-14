@@ -22,6 +22,12 @@ interface OutreachLead {
     status?: string;
     notes?: string;
     partnership_notes?: string;
+    outreach_tier?: string;
+    priority?: string;
+    contact_name?: string;
+    title?: string;
+    average_group_size?: number;
+    estimated_annual_yellowstone_guests?: number;
 }
 
 // ---- Helpers ----
@@ -78,12 +84,41 @@ const COLUMN_MAP: Record<string, string> = {
     // tour_type
     'tour type': 'tour_type',
     'type': 'tour_type',
+    'tour category': 'tour_type',
+    'category': 'tour_type',
     // season
     'season': 'season',
     // partnership_notes
     'partnership notes': 'partnership_notes',
     'notes': 'partnership_notes',
     'partner notes': 'partnership_notes',
+    // outreach_tier
+    'outreach tier': 'outreach_tier',
+    'tier': 'outreach_tier',
+    // priority
+    'priority': 'priority',
+    // contact_name
+    'contact name': 'contact_name',
+    'contact': 'contact_name',
+    // title
+    'title': 'title',
+    'contact title': 'title',
+    // average_group_size
+    'average group size': 'average_group_size',
+    'group size': 'average_group_size',
+    'avg group size': 'average_group_size',
+    // estimated_annual_yellowstone_guests
+    'estimated annual yellowstone guests': 'estimated_annual_yellowstone_guests',
+    'annual guests': 'estimated_annual_yellowstone_guests',
+    'estimated guests': 'estimated_annual_yellowstone_guests',
+
+    // Temporary mappings for columns that are NOT added to the database table
+    'direct email': 'temp_direct_email',
+    'general email': 'temp_general_email',
+    'research batch': 'temp_research_batch',
+    'source url': 'temp_source_url',
+    'verification status': 'temp_verification_status',
+    'next step': 'temp_next_step',
 };
 
 function mapHeaders(rawHeaders: string[]): Record<string, string> {
@@ -122,12 +157,13 @@ export async function importLeadsFromCSV(headers: string[], rows: string[][]) {
 
     log(`CSV Import: ${rows.length} rows, headers mapped: ${JSON.stringify(headerMap)}`);
 
-    // Validate that we have at minimum company_name and email mapped
+    // Validate that we have at minimum company_name and either email, temp_direct_email or temp_general_email mapped
     const mappedFields = Object.values(headerMap);
-    if (!mappedFields.includes('company_name') || !mappedFields.includes('email')) {
+    const hasEmail = mappedFields.includes('email') || mappedFields.includes('temp_direct_email') || mappedFields.includes('temp_general_email');
+    if (!mappedFields.includes('company_name') || !hasEmail) {
         return {
             success: false,
-            error: 'CSV must contain at least "Company Name" and "Email" columns.',
+            error: 'CSV must contain at least "Company Name" and an "Email" column.',
             imported: 0,
             skipped: 0,
         };
@@ -146,12 +182,16 @@ export async function importLeadsFromCSV(headers: string[], rows: string[][]) {
             }
         });
 
-        if (!lead.company_name || !lead.email) {
+        const directEmail = lead.temp_direct_email || '';
+        const generalEmail = lead.temp_general_email || '';
+        const emailVal = lead.email || directEmail || generalEmail;
+
+        if (!lead.company_name || !emailVal) {
             skipped++;
             continue;
         }
 
-        const normalizedEmail = lead.email.toLowerCase().trim();
+        const normalizedEmail = emailVal.toLowerCase().trim();
 
         // Check for duplicate by email address
         const { data: existing } = await supabase
@@ -165,6 +205,24 @@ export async function importLeadsFromCSV(headers: string[], rows: string[][]) {
             continue;
         }
 
+        // Construct notes from notes + temporary fields
+        let notesParts: string[] = [];
+        if (lead.notes) notesParts.push(lead.notes);
+        if (lead.partnership_notes) notesParts.push(lead.partnership_notes);
+
+        let metaParts: string[] = [];
+        if (lead.temp_research_batch) metaParts.push(`Research Batch: ${lead.temp_research_batch}`);
+        if (directEmail && directEmail.toLowerCase().trim() !== normalizedEmail) metaParts.push(`Direct Email: ${directEmail}`);
+        if (generalEmail && generalEmail.toLowerCase().trim() !== normalizedEmail) metaParts.push(`General Email: ${generalEmail}`);
+        if (lead.temp_verification_status) metaParts.push(`Verification Status: ${lead.temp_verification_status}`);
+        if (lead.temp_next_step) metaParts.push(`Next Step: ${lead.temp_next_step}`);
+        if (lead.temp_source_url) metaParts.push(`Source URL: ${lead.temp_source_url}`);
+
+        if (metaParts.length > 0) {
+            notesParts.push(`---\n` + metaParts.join('\n'));
+        }
+        const finalNotes = notesParts.join('\n\n');
+
         const { error } = await supabase.from('outreach_leads').insert({
             company_name: lead.company_name,
             phone: lead.phone || null,
@@ -175,7 +233,14 @@ export async function importLeadsFromCSV(headers: string[], rows: string[][]) {
             primary_gate: lead.primary_gate || null,
             tour_type: lead.tour_type || null,
             season: lead.season || null,
+            notes: finalNotes || null,
             partnership_notes: lead.partnership_notes || null,
+            outreach_tier: lead.outreach_tier || null,
+            priority: lead.priority || null,
+            contact_name: lead.contact_name || null,
+            title: lead.title || null,
+            average_group_size: lead.average_group_size ? parseInt(lead.average_group_size, 10) : null,
+            estimated_annual_yellowstone_guests: lead.estimated_annual_yellowstone_guests ? parseInt(lead.estimated_annual_yellowstone_guests, 10) : null,
             status: 'not_contacted',
         });
 
@@ -219,6 +284,12 @@ export async function createOutreachLead(leadData: {
     season?: string;
     notes?: string;
     partnership_notes?: string;
+    outreach_tier?: string;
+    priority?: string;
+    contact_name?: string;
+    title?: string;
+    average_group_size?: number;
+    estimated_annual_yellowstone_guests?: number;
 }) {
     const supabase = createAdminClient();
 
@@ -253,6 +324,12 @@ export async function createOutreachLead(leadData: {
             season: leadData.season || null,
             notes: leadData.notes || null,
             partnership_notes: leadData.partnership_notes || null,
+            outreach_tier: leadData.outreach_tier || null,
+            priority: leadData.priority || null,
+            contact_name: leadData.contact_name || null,
+            title: leadData.title || null,
+            average_group_size: leadData.average_group_size || null,
+            estimated_annual_yellowstone_guests: leadData.estimated_annual_yellowstone_guests || null,
             status: 'not_contacted',
         })
         .select('*')
@@ -289,6 +366,12 @@ export async function updateOutreachLead(leadId: string, leadData: {
     season?: string;
     notes?: string;
     partnership_notes?: string;
+    outreach_tier?: string;
+    priority?: string;
+    contact_name?: string;
+    title?: string;
+    average_group_size?: number;
+    estimated_annual_yellowstone_guests?: number;
 }) {
     const supabase = createAdminClient();
 
@@ -305,6 +388,12 @@ export async function updateOutreachLead(leadId: string, leadData: {
     if (leadData.season !== undefined) updates.season = leadData.season || null;
     if (leadData.notes !== undefined) updates.notes = leadData.notes || null;
     if (leadData.partnership_notes !== undefined) updates.partnership_notes = leadData.partnership_notes || null;
+    if (leadData.outreach_tier !== undefined) updates.outreach_tier = leadData.outreach_tier || null;
+    if (leadData.priority !== undefined) updates.priority = leadData.priority || null;
+    if (leadData.contact_name !== undefined) updates.contact_name = leadData.contact_name || null;
+    if (leadData.title !== undefined) updates.title = leadData.title || null;
+    if (leadData.average_group_size !== undefined) updates.average_group_size = leadData.average_group_size || null;
+    if (leadData.estimated_annual_yellowstone_guests !== undefined) updates.estimated_annual_yellowstone_guests = leadData.estimated_annual_yellowstone_guests || null;
 
     if (Object.keys(updates).length === 0) {
         return { success: false, error: 'No fields to update.' };

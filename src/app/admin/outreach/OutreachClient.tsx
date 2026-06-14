@@ -41,6 +41,12 @@ interface Lead {
     notes: string | null;
     partnership_notes: string | null;
     created_at: string;
+    outreach_tier: string | null;
+    priority: string | null;
+    contact_name: string | null;
+    title: string | null;
+    average_group_size: number | null;
+    estimated_annual_yellowstone_guests: number | null;
 }
 
 const STATUS_CONFIG: Record<string, { label: string; color: string; bg: string; border: string; icon: React.ElementType }> = {
@@ -56,6 +62,7 @@ export function OutreachClient({ initialLeads }: { initialLeads: Lead[] }) {
     const [search, setSearch] = useState('');
     const [statusFilter, setStatusFilter] = useState<string>('all');
     const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+    const [lastClickedId, setLastClickedId] = useState<string | null>(null);
     const [showImportModal, setShowImportModal] = useState(false);
     const [showDeleteConfirm, setShowDeleteConfirm] = useState<string | null>(null);
     const [showBulkDeleteConfirm, setShowBulkDeleteConfirm] = useState(false);
@@ -87,7 +94,25 @@ export function OutreachClient({ initialLeads }: { initialLeads: Lead[] }) {
 
     const [showLeadFormModal, setShowLeadFormModal] = useState(false);
     const [editingLeadId, setEditingLeadId] = useState<string | null>(null);
-    const emptyForm = { company_name: '', email: '', phone: '', website: '', home_base: '', state: '', primary_gate: '', tour_type: '', season: '', notes: '', partnership_notes: '' };
+    const emptyForm = {
+        company_name: '',
+        email: '',
+        phone: '',
+        website: '',
+        home_base: '',
+        state: '',
+        primary_gate: '',
+        tour_type: '',
+        season: '',
+        notes: '',
+        partnership_notes: '',
+        outreach_tier: '',
+        priority: '',
+        contact_name: '',
+        title: '',
+        average_group_size: '',
+        estimated_annual_yellowstone_guests: '',
+    };
     const [leadForm, setLeadForm] = useState(emptyForm);
 
     const openCreateModal = () => {
@@ -110,6 +135,12 @@ export function OutreachClient({ initialLeads }: { initialLeads: Lead[] }) {
             season: lead.season || '',
             notes: lead.notes || '',
             partnership_notes: lead.partnership_notes || '',
+            outreach_tier: lead.outreach_tier || '',
+            priority: lead.priority || '',
+            contact_name: lead.contact_name || '',
+            title: lead.title || '',
+            average_group_size: lead.average_group_size !== null && lead.average_group_size !== undefined ? String(lead.average_group_size) : '',
+            estimated_annual_yellowstone_guests: lead.estimated_annual_yellowstone_guests !== null && lead.estimated_annual_yellowstone_guests !== undefined ? String(lead.estimated_annual_yellowstone_guests) : '',
         });
         setShowLeadFormModal(true);
     };
@@ -120,9 +151,14 @@ export function OutreachClient({ initialLeads }: { initialLeads: Lead[] }) {
             return;
         }
         startTransition(async () => {
+            const payload = {
+                ...leadForm,
+                average_group_size: leadForm.average_group_size ? parseInt(leadForm.average_group_size, 10) : undefined,
+                estimated_annual_yellowstone_guests: leadForm.estimated_annual_yellowstone_guests ? parseInt(leadForm.estimated_annual_yellowstone_guests, 10) : undefined,
+            };
             if (editingLeadId) {
                 // Update
-                const result = await updateOutreachLead(editingLeadId, leadForm);
+                const result = await updateOutreachLead(editingLeadId, payload);
                 if (result.success && result.data) {
                     setLeads(prev => prev.map(l => l.id === editingLeadId ? { ...l, ...result.data } : l));
                     toast.success('Lead updated successfully');
@@ -132,7 +168,7 @@ export function OutreachClient({ initialLeads }: { initialLeads: Lead[] }) {
                 }
             } else {
                 // Create
-                const result = await createOutreachLead(leadForm);
+                const result = await createOutreachLead(payload);
                 if (result.success && result.data) {
                     setLeads(prev => [result.data, ...prev]);
                     toast.success('Lead created successfully');
@@ -165,11 +201,41 @@ export function OutreachClient({ initialLeads }: { initialLeads: Lead[] }) {
     });
 
     // ---- Selection ----
-    const toggleSelect = (id: string) => {
+    const toggleSelect = (id: string, e?: React.MouseEvent) => {
         setSelectedIds(prev => {
             const next = new Set(prev);
-            if (next.has(id)) next.delete(id);
-            else next.add(id);
+            
+            if (e?.shiftKey && lastClickedId) {
+                const visibleIds = filteredLeads.map(l => l.id);
+                const lastIdx = visibleIds.indexOf(lastClickedId);
+                const currentIdx = visibleIds.indexOf(id);
+
+                if (lastIdx !== -1 && currentIdx !== -1) {
+                    const start = Math.min(lastIdx, currentIdx);
+                    const end = Math.max(lastIdx, currentIdx);
+                    
+                    const isChecking = !prev.has(id);
+                    
+                    for (let i = start; i <= end; i++) {
+                        const targetId = visibleIds[i];
+                        if (isChecking) {
+                            next.add(targetId);
+                        } else {
+                            next.delete(targetId);
+                        }
+                    }
+                    setLastClickedId(id);
+                    return next;
+                }
+            }
+
+            if (next.has(id)) {
+                next.delete(id);
+            } else {
+                next.add(id);
+            }
+            
+            setLastClickedId(id);
             return next;
         });
     };
@@ -598,7 +664,8 @@ export function OutreachClient({ initialLeads }: { initialLeads: Lead[] }) {
                                                 <input
                                                     type="checkbox"
                                                     checked={isSelected}
-                                                    onChange={() => toggleSelect(lead.id)}
+                                                    onChange={() => {}}
+                                                    onClick={(e) => toggleSelect(lead.id, e)}
                                                     className="size-4 rounded border-gray-300 text-violet-600 focus:ring-violet-500 cursor-pointer accent-violet-600"
                                                 />
                                             </td>
@@ -606,16 +673,28 @@ export function OutreachClient({ initialLeads }: { initialLeads: Lead[] }) {
                                             {/* Company */}
                                             <td className="px-4 py-3.5">
                                                 <div className="flex flex-col gap-0.5">
-                                                    <span className="font-bold text-gray-900 text-[14px] leading-tight">
-                                                        {lead.company_name}
-                                                    </span>
+                                                    <div className="flex flex-wrap items-center gap-2">
+                                                        <span className="font-bold text-gray-900 text-[14px] leading-tight">
+                                                            {lead.company_name}
+                                                        </span>
+                                                        {lead.priority && (
+                                                            <span className="px-1.5 py-0.5 text-[9px] font-black uppercase rounded bg-rose-50 text-rose-600 border border-rose-100">
+                                                                {lead.priority}
+                                                            </span>
+                                                        )}
+                                                        {lead.outreach_tier && (
+                                                            <span className="px-1.5 py-0.5 text-[9px] font-bold rounded bg-violet-50 text-violet-600 border border-violet-100">
+                                                                {lead.outreach_tier.split(' - ')[0]}
+                                                            </span>
+                                                        )}
+                                                    </div>
                                                     {lead.tour_type && (
                                                         <span className="text-[11px] text-gray-400 font-medium">{lead.tour_type}</span>
                                                     )}
                                                     {lead.notes && (
                                                         <span className="text-[11px] text-violet-500 font-medium flex items-center gap-1 mt-0.5">
-                                                            <StickyNote className="size-3" />
-                                                            {lead.notes.length > 40 ? lead.notes.slice(0, 40) + '...' : lead.notes}
+                                                            <StickyNote className="size-3 text-violet-400" />
+                                                            {lead.notes.length > 45 ? lead.notes.slice(0, 45) + '...' : lead.notes}
                                                         </span>
                                                     )}
                                                 </div>
@@ -624,6 +703,11 @@ export function OutreachClient({ initialLeads }: { initialLeads: Lead[] }) {
                                             {/* Contact */}
                                             <td className="px-4 py-3.5">
                                                 <div className="flex flex-col gap-1">
+                                                    {lead.contact_name && (
+                                                        <span className="text-[12px] font-bold text-gray-800">
+                                                            {lead.contact_name}{lead.title ? ` (${lead.title})` : ''}
+                                                        </span>
+                                                    )}
                                                     <a
                                                         href={`mailto:${lead.email}`}
                                                         className="text-[13px] font-semibold text-gray-700 hover:text-violet-600 transition-colors truncate max-w-[200px] inline-block"
@@ -663,6 +747,13 @@ export function OutreachClient({ initialLeads }: { initialLeads: Lead[] }) {
                                                     {lead.primary_gate && (
                                                         <span className="text-[11px] text-gray-400 font-medium">
                                                             Gate: {lead.primary_gate}
+                                                        </span>
+                                                    )}
+                                                    {(lead.average_group_size || lead.estimated_annual_yellowstone_guests) && (
+                                                        <span className="text-[11px] text-gray-500 font-medium mt-0.5">
+                                                            {lead.average_group_size ? `Avg Grp: ${lead.average_group_size}` : ''}
+                                                            {lead.average_group_size && lead.estimated_annual_yellowstone_guests ? ' | ' : ''}
+                                                            {lead.estimated_annual_yellowstone_guests ? `Annual: ${lead.estimated_annual_yellowstone_guests}` : ''}
                                                         </span>
                                                     )}
                                                 </div>
@@ -1272,6 +1363,78 @@ export function OutreachClient({ initialLeads }: { initialLeads: Lead[] }) {
                                         placeholder="Summer"
                                         className="w-full px-4 py-2.5 rounded-xl border border-gray-200 text-sm font-medium bg-gray-50/50 focus:bg-white focus:border-violet-300 focus:ring-2 focus:ring-violet-100 outline-none transition-all"
                                     />
+                                </div>
+
+                                {/* Row 6b: Outreach Tier & Priority */}
+                                <div className="grid grid-cols-2 gap-3">
+                                    <div>
+                                        <label className="block text-[11px] font-bold uppercase tracking-wider text-gray-400 mb-1.5">Outreach Tier</label>
+                                        <input
+                                            type="text"
+                                            value={leadForm.outreach_tier}
+                                            onChange={(e) => setLeadForm(f => ({ ...f, outreach_tier: e.target.value }))}
+                                            placeholder="e.g. Tier 1"
+                                            className="w-full px-4 py-2.5 rounded-xl border border-gray-200 text-sm font-medium bg-gray-50/50 focus:bg-white focus:border-violet-300 focus:ring-2 focus:ring-violet-100 outline-none transition-all"
+                                        />
+                                    </div>
+                                    <div>
+                                        <label className="block text-[11px] font-bold uppercase tracking-wider text-gray-400 mb-1.5">Priority</label>
+                                        <input
+                                            type="text"
+                                            value={leadForm.priority}
+                                            onChange={(e) => setLeadForm(f => ({ ...f, priority: e.target.value }))}
+                                            placeholder="e.g. A+"
+                                            className="w-full px-4 py-2.5 rounded-xl border border-gray-200 text-sm font-medium bg-gray-50/50 focus:bg-white focus:border-violet-300 focus:ring-2 focus:ring-violet-100 outline-none transition-all"
+                                        />
+                                    </div>
+                                </div>
+
+                                {/* Row 6c: Contact Name & Title */}
+                                <div className="grid grid-cols-2 gap-3">
+                                    <div>
+                                        <label className="block text-[11px] font-bold uppercase tracking-wider text-gray-400 mb-1.5">Contact Name</label>
+                                        <input
+                                            type="text"
+                                            value={leadForm.contact_name}
+                                            onChange={(e) => setLeadForm(f => ({ ...f, contact_name: e.target.value }))}
+                                            placeholder="John Doe"
+                                            className="w-full px-4 py-2.5 rounded-xl border border-gray-200 text-sm font-medium bg-gray-50/50 focus:bg-white focus:border-violet-300 focus:ring-2 focus:ring-violet-100 outline-none transition-all"
+                                        />
+                                    </div>
+                                    <div>
+                                        <label className="block text-[11px] font-bold uppercase tracking-wider text-gray-400 mb-1.5">Title</label>
+                                        <input
+                                            type="text"
+                                            value={leadForm.title}
+                                            onChange={(e) => setLeadForm(f => ({ ...f, title: e.target.value }))}
+                                            placeholder="Director of Travel"
+                                            className="w-full px-4 py-2.5 rounded-xl border border-gray-200 text-sm font-medium bg-gray-50/50 focus:bg-white focus:border-violet-300 focus:ring-2 focus:ring-violet-100 outline-none transition-all"
+                                        />
+                                    </div>
+                                </div>
+
+                                {/* Row 6d: Average Group Size & Estimated Annual Guests */}
+                                <div className="grid grid-cols-2 gap-3">
+                                    <div>
+                                        <label className="block text-[11px] font-bold uppercase tracking-wider text-gray-400 mb-1.5">Avg Group Size</label>
+                                        <input
+                                            type="number"
+                                            value={leadForm.average_group_size}
+                                            onChange={(e) => setLeadForm(f => ({ ...f, average_group_size: e.target.value }))}
+                                            placeholder="e.g. 25"
+                                            className="w-full px-4 py-2.5 rounded-xl border border-gray-200 text-sm font-medium bg-gray-50/50 focus:bg-white focus:border-violet-300 focus:ring-2 focus:ring-violet-100 outline-none transition-all"
+                                        />
+                                    </div>
+                                    <div>
+                                        <label className="block text-[11px] font-bold uppercase tracking-wider text-gray-400 mb-1.5">Estimated Annual Guests</label>
+                                        <input
+                                            type="number"
+                                            value={leadForm.estimated_annual_yellowstone_guests}
+                                            onChange={(e) => setLeadForm(f => ({ ...f, estimated_annual_yellowstone_guests: e.target.value }))}
+                                            placeholder="e.g. 1500"
+                                            className="w-full px-4 py-2.5 rounded-xl border border-gray-200 text-sm font-medium bg-gray-50/50 focus:bg-white focus:border-violet-300 focus:ring-2 focus:ring-violet-100 outline-none transition-all"
+                                        />
+                                    </div>
                                 </div>
 
                                 {/* Row 7: Notes */}
