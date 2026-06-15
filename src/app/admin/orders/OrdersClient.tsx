@@ -197,13 +197,13 @@ interface Order {
     is_locked: boolean;
     created_at: string;
     company_id: string | null;
-    tour_companies: { name: string; slug: string } | null;
+    tour_companies: { name: string; slug: string; prep_instructions?: string | null } | null;
     order_items: OrderItem[];
 }
 
 interface OrdersClientProps {
     initialOrders: Order[];
-    companies: { id: string; name: string; status: string }[];
+    companies: { id: string; name: string; status: string; prep_instructions?: string | null }[];
 }
 
 const STATUS_LABELS: Record<string, string> = {
@@ -473,11 +473,15 @@ export function OrdersClient({ initialOrders, companies }: OrdersClientProps) {
         );
 
         if (result.success) {
-            const companyName = companies.find(c => c.id === companyId)?.name;
+            const matchedCompany = companies.find(c => c.id === companyId);
             setOrders(prev => prev.map(o => o.id === editingOrder.id ? { 
                 ...o, 
                 ...details, 
-                tour_companies: companyId ? { name: companyName || '', slug: '' } : null,
+                tour_companies: companyId ? { 
+                    name: matchedCompany?.name || '', 
+                    slug: '', 
+                    prep_instructions: matchedCompany?.prep_instructions || null 
+                } : null,
                 order_items: editItems 
             } : o));
             setIsEditDialogOpen(false);
@@ -605,7 +609,7 @@ export function OrdersClient({ initialOrders, companies }: OrdersClientProps) {
                     </div>
 
                     {/* Print & Export buttons row */}
-                    <div className="grid grid-cols-2 sm:grid-cols-4 md:flex items-center gap-2 w-full md:w-auto">
+                    <div className="grid grid-cols-2 sm:grid-cols-5 md:flex items-center gap-2 w-full md:w-auto">
                         <Button 
                             variant="outline" 
                             className="gap-2 h-11 px-2 md:px-4 rounded-xl border-gray-200 hover:border-violet-200 hover:bg-violet-50 transition-all font-bold no-print text-[11px] md:text-sm" 
@@ -645,6 +649,21 @@ export function OrdersClient({ initialOrders, companies }: OrdersClientProps) {
                             <Ticket className="size-4 text-violet-600 shrink-0" />
                             <span className="truncate">
                                 {selected.size > 0 ? `Tickets (${selected.size})` : 'Tickets'}
+                            </span>
+                        </Button>
+                        <Button 
+                            variant="outline" 
+                            className="gap-1.5 h-11 px-2 md:px-4 rounded-xl border-gray-200 hover:border-violet-200 hover:bg-violet-50 transition-all font-bold no-print text-[11px] md:text-sm" 
+                            onClick={async () => {
+                                document.body.classList.add('print-zebra-mode');
+                                window.print();
+                                document.body.classList.remove('print-zebra-mode');
+                                await markOrdersAsPrintedAndFulfilled(ordersToPrint);
+                            }}
+                        >
+                            <Ticket className="size-4 text-amber-600 shrink-0" />
+                            <span className="truncate">
+                                {selected.size > 0 ? `Zebra Labels (${selected.size})` : 'Zebra Labels'}
                             </span>
                         </Button>
                         <Button 
@@ -1665,6 +1684,13 @@ export function OrdersClient({ initialOrders, companies }: OrdersClientProps) {
                                                 </p>
                                             )}
 
+                                            {/* Company prep instructions in ticket details */}
+                                            {order.tour_companies?.prep_instructions && (
+                                                <div className="mt-1.5 bg-amber-50 border border-amber-100 p-2 rounded-lg text-xs font-semibold text-amber-900">
+                                                    ⚠️ Note: {order.tour_companies.prep_instructions}
+                                                </div>
+                                            )}
+
                                             {/* General order notes */}
                                             {order.notes && (
                                                 <>
@@ -1691,6 +1717,154 @@ export function OrdersClient({ initialOrders, companies }: OrdersClientProps) {
                                             <span>Order ID: {order.id.includes('-') ? order.id.split('-')[0].toUpperCase() : order.id.toUpperCase()}</span>
                                             <span>Printed: {isMounted ? formatDateTimeUS(new Date()) : ''}</span>
                                         </div>
+                                    </div>
+                                </div>
+                            );
+                        });
+                    })}
+                </div>
+            </div>
+
+            {/* Print Zebra Labels Layout */}
+            <div className="print-only-section print-zebra-container">
+                <div className="p-0 print-zebra-grid">
+                    {ordersToPrint.flatMap((order) => {
+                        const items = order.order_items || [];
+                        if (items.length === 0) {
+                            return [
+                                <div 
+                                    key={`${order.id}-zebra-empty`} 
+                                    className="print-zebra-card border border-gray-400 p-3 bg-white flex flex-col justify-between"
+                                    style={{ breakInside: 'avoid', pageBreakInside: 'avoid' }}
+                                >
+                                    <div>
+                                        {/* Header */}
+                                        <div className="flex items-center justify-between border-b border-black pb-1 mb-1">
+                                            <span className="text-[10px] font-black tracking-wider text-violet-700 uppercase">MTN MAMA CAFE</span>
+                                            <span className="text-[9px] font-bold text-gray-500 truncate max-w-[50%]">{order.tour_companies?.name || 'Retail'}</span>
+                                        </div>
+
+                                        {/* Name & Tour Date */}
+                                        <div className="text-xs font-bold text-gray-900 uppercase">
+                                            {order.guide_name || order.customer_name || 'Guest'}
+                                        </div>
+
+                                        <div className="text-[9px] text-gray-600 font-semibold mt-1">
+                                            Date: {formatDateUS(order.tour_date)}
+                                            {order.pickup_time && ` · Time: ${order.pickup_time}`}
+                                        </div>
+
+                                        <div className="text-[10px] font-bold text-rose-600 mt-2">
+                                            No items found for this order
+                                        </div>
+                                    </div>
+                                    
+                                    <div className="pt-1 border-t border-gray-200 flex justify-between text-[7px] text-gray-400 font-bold uppercase">
+                                        <span>ID: {order.id.slice(0, 8).toUpperCase()}</span>
+                                        <span>{isMounted ? formatDateTimeUS(new Date()).split(',')[0] : ''}</span>
+                                    </div>
+                                </div>
+                            ];
+                        }
+
+                        const expandedItems = items.flatMap((item: any, itemIdx: number) => {
+                            const qty = item.quantity || 1;
+                            const singleItems = [];
+                            for (let k = 0; k < qty; k++) {
+                                singleItems.push({
+                                    ...item,
+                                    quantity: 1,
+                                    _itemIndex: k
+                                });
+                            }
+                            return singleItems;
+                        });
+
+                        return expandedItems.map((item: any, itemIdx: number) => {
+                            const ticketKey = `${order.id}-${item.id || itemIdx}-${item._itemIndex}-zebra`;
+                            return (
+                                <div 
+                                    key={ticketKey} 
+                                    className="print-zebra-card border border-gray-400 p-3 bg-white flex flex-col justify-between"
+                                    style={{ breakInside: 'avoid', pageBreakInside: 'avoid' }}
+                                >
+                                    <div>
+                                        {/* Header: Company & Tour Details */}
+                                        <div className="flex items-center justify-between border-b border-black pb-1 mb-1">
+                                            <span className="text-[10px] font-black tracking-wider text-violet-700 uppercase truncate max-w-[65%]">
+                                                {order.tour_companies?.name || 'Retail Order'}
+                                            </span>
+                                            {order.guide_name && (
+                                                <span className="text-[8px] font-bold text-gray-500 uppercase truncate max-w-[30%]">
+                                                    G: {order.guide_name}
+                                                </span>
+                                            )}
+                                        </div>
+
+                                        {/* Customer / Guest Name - PRIMARY */}
+                                        <div className="text-[15px] font-black text-gray-950 uppercase tracking-tight truncate mb-1">
+                                            {item.guest_name || order.customer_name || 'Quick Guest'}
+                                        </div>
+
+                                        {/* Meal Item */}
+                                        <div className="bg-gray-100 p-1.5 rounded border border-gray-200 mb-1">
+                                            <p className="font-extrabold text-[12px] text-gray-950 leading-tight">
+                                                {item.meal_name}
+                                                <span className="text-[9px] font-medium text-gray-600 ml-1.5 uppercase">
+                                                    ({item.box_type || 'Bag Lunch'})
+                                                </span>
+                                            </p>
+                                        </div>
+
+                                        {/* Options breakdown */}
+                                        <div className="text-[9.5px] text-gray-900 leading-tight space-y-0.5">
+                                            {item.bread_type && (
+                                                <p className="font-medium text-gray-700">
+                                                    🍞 <span className="font-semibold text-gray-900">{item.bread_type}</span>
+                                                </p>
+                                            )}
+                                            {item.cookie_choice && (
+                                                <p className="font-medium text-gray-700">
+                                                    🍪 <span className="font-semibold text-gray-900">{item.cookie_choice}</span>
+                                                </p>
+                                            )}
+                                            {item.custom_fields && typeof item.custom_fields === 'object' && 
+                                                Object.entries(item.custom_fields)
+                                                    .filter(([key, val]) => val && !STANDARD_ITEM_KEYS.includes(key))
+                                                    .map(([key, val]) => (
+                                                        <p key={key} className="font-medium text-gray-700">
+                                                            ▪️ <span className="font-semibold text-gray-900">{formatFieldName(key)}: {String(val)}</span>
+                                                        </p>
+                                                    ))
+                                            }
+                                        </div>
+
+                                        {/* Customizations / Warnings */}
+                                        {item.customizations && (
+                                            <div className="mt-1 border-t border-dashed border-gray-300 pt-0.5">
+                                                <p className="text-[9.5px] font-black text-red-600 leading-tight uppercase tracking-tight">
+                                                    ⚠️ {item.customizations}
+                                                </p>
+                                            </div>
+                                        )}
+
+                                        {/* Tour Company Prep Instructions */}
+                                        {order.tour_companies?.prep_instructions && (
+                                            <div className="mt-1 border-t border-dashed border-gray-200 pt-0.5">
+                                                <p className="text-[8px] font-bold text-amber-700 leading-tight italic truncate">
+                                                    Note: {order.tour_companies.prep_instructions}
+                                                </p>
+                                            </div>
+                                        )}
+                                    </div>
+
+                                    {/* Footer: Date & Order Info */}
+                                    <div className="border-t border-gray-200 pt-1 mt-1 flex items-center justify-between text-[7px] text-gray-400 font-bold uppercase">
+                                        <span>ID: {order.id.slice(0, 8).toUpperCase()}</span>
+                                        <span>
+                                            {order.tour_date ? formatDateUS(order.tour_date) : ''} 
+                                            {order.pickup_time ? ` @ ${order.pickup_time}` : ''}
+                                        </span>
                                     </div>
                                 </div>
                             );
@@ -1827,6 +2001,15 @@ export function OrdersClient({ initialOrders, companies }: OrdersClientProps) {
             </div>
 
             <style jsx global>{`
+                @page ticket-page {
+                    margin: 0;
+                }
+
+                @page table-page {
+                    size: portrait;
+                    margin: 0.8cm;
+                }
+
                 /* Hide print containers by default in screen view */
                 .print-only-section {
                     display: none !important;
@@ -1855,15 +2038,24 @@ export function OrdersClient({ initialOrders, companies }: OrdersClientProps) {
                         display: block !important;
                         position: absolute !important;
                         top: 0; left: 0; width: 100%;
+                        page: table-page;
                     }
 
                     body.print-table-mode .print-table-container {
                         display: block !important;
                         position: absolute !important;
                         top: 0; left: 0; width: 100%;
+                        page: table-page;
                     }
 
-                    /* Tickets 2-column grid layout for print */
+                    body.print-zebra-mode .print-zebra-container {
+                        display: block !important;
+                        position: absolute !important;
+                        top: 0; left: 0; width: 100%;
+                        page: ticket-page;
+                    }
+
+                    /* Tickets 2-column grid layout for print (Standard Paper) */
                     body.print-tickets-mode .print-tickets-grid {
                         display: grid !important;
                         grid-template-columns: repeat(2, 1fr) !important;
@@ -1871,17 +2063,34 @@ export function OrdersClient({ initialOrders, companies }: OrdersClientProps) {
                         width: 100% !important;
                     }
 
-                    /* Custom ticket styling for printing */
+                    /* Standard ticket card styling */
                     .print-ticket-card {
                         border: 1.5px solid #4b5563 !important;
                         border-radius: 1rem !important;
                         page-break-inside: avoid !important;
                         break-inside: avoid !important;
+                        padding: 1.5rem !important;
                     }
 
-                    @page {
-                        margin: 0.8cm !important;
-                        size: portrait;
+                    /* Zebra grid layout: responsive columns that auto-fit to 1 column on Zebra, 2 columns on Letter */
+                    body.print-zebra-mode .print-zebra-grid {
+                        display: grid !important;
+                        grid-template-columns: repeat(auto-fit, minmax(2.7in, 1fr)) !important;
+                        gap: 0.75rem !important;
+                        width: 100% !important;
+                        padding: 0.5rem !important;
+                        box-sizing: border-box !important;
+                    }
+
+                    /* Zebra ticket styling for printing */
+                    .print-zebra-card {
+                        width: 2.7in !important;
+                        height: 2.7in !important;
+                        box-sizing: border-box !important;
+                        page-break-inside: avoid !important;
+                        break-inside: avoid !important;
+                        border: 1.5px solid #4b5563 !important;
+                        border-radius: 0.5rem !important;
                     }
 
                     /* Ensure background colors and borders print correctly */

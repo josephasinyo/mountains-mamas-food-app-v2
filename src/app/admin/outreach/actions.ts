@@ -508,6 +508,8 @@ export async function sendCampaignEmailToLead(leadId: string, templateId: string
         subject = `How Yellowstone tour companies are solving the lunch problem`;
     } else if (templateId === 'seasonal_urgency') {
         subject = `⛰️ 2026 Yellowstone season is here - secure your lunch partner spot`;
+    } else if (templateId === 'menu_showcase') {
+        subject = `🥪 See what ${cleanedCompany}'s guests could be eating on their Yellowstone tour`;
     }
 
     // Build bcc list including BCC_EMAIL and ADMIN_EMAIL
@@ -562,6 +564,176 @@ function buildCampaignEmailHtml(registrationUrl: string, companyName: string = '
     const cleanCompany = cleanCompanyName(companyName) || 'your tour group';
     
     // The logistics and premium templates have been removed.
+
+    // ---- Template: menu_showcase (Sandwich Showcase) ----
+    if (templateId === 'menu_showcase') {
+        const appUrl = registrationUrl.replace('/company/register', '');
+        const mealsPageUrl = `${appUrl.replace('http://localhost:3000', 'https://mountainmamascafe.app')}`;
+        return `<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Our Sandwich Selection - Mountain Mama's</title>
+    <style>
+        @media only screen and (max-width: 480px) {
+            .email-container { width: 100% !important; max-width: 100% !important; }
+            .mobile-col { display: block !important; width: 100% !important; padding-left: 0 !important; padding-right: 0 !important; box-sizing: border-box; }
+            .mobile-card { margin-bottom: 16px !important; }
+            .mobile-btn { display: block !important; width: 100% !important; text-align: center !important; box-sizing: border-box !important; margin-bottom: 10px !important; }
+        }
+    </style>
+</head>
+<body style="margin: 0; padding: 0; background-color: #faf5ff; font-family: Arial, Helvetica, sans-serif;">
+    <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="background-color: #faf5ff;">
+        <tr>
+            <td align="center" style="padding: 30px 10px;">
+                <table class="email-container" role="presentation" width="600" cellspacing="0" cellpadding="0" border="0" style="background-color: #ffffff; border-radius: 16px; overflow: hidden; box-shadow: 0 4px 24px rgba(0,0,0,0.06);">
+
+                    <!-- Header -->
+                    <tr>
+                        <td style="background: linear-gradient(135deg, #6d28d9, #7c3aed, #a855f7); padding: 36px 28px; text-align: center;">
+                            <p style="margin: 0 0 8px 0; color: #e9d5ff; font-size: 12px; font-weight: bold; letter-spacing: 0.15em; text-transform: uppercase;">Fresh From Our Kitchen</p>
+                            <h1 style="margin: 0 0 8px 0; color: #ffffff; font-size: 26px; font-weight: 900; line-height: 1.2;">A Taste of What We Offer</h1>
+                            <p style="margin: 0; color: #ddd6fe; font-size: 14px; font-weight: 600;">Handcrafted sandwiches your tour guests will love</p>
+                        </td>
+                    </tr>
+
+                    <!-- Greeting -->
+                    <tr>
+                        <td style="padding: 28px 28px 16px 28px;">
+                            <p style="margin: 0 0 16px 0; font-size: 16px; font-weight: bold; color: #111827;">Hi ${cleanCompany} Team,</p>
+                            <p style="margin: 0; font-size: 15px; color: #374151; line-height: 1.65;">I'm Kim from <strong>Mountain Mama's Coffeehouse &amp; Bakery</strong> in West Yellowstone. We know finding the right lunch partner matters. Instead of just telling you how great our food is, we'd rather <strong>show you</strong>. Here are a few of our most popular sandwiches - all made fresh daily with homemade bread, from our kitchen in West Yellowstone:</p>
+                        </td>
+                    </tr>
+
+                    <!-- Social Proof Stats -->
+                    <tr>
+                        <td style="padding: 0 28px 16px 28px;">
+                            <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0">
+                                <tr>
+                                    <td width="50%" style="padding: 0 4px 0 0;">
+                                        <div style="background-color: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 10px; padding: 14px 16px; text-align: center;">
+                                            <p style="margin: 0 0 2px 0; font-size: 22px; font-weight: 900; color: #16a34a;">10+</p>
+                                            <p style="margin: 0; font-size: 11px; color: #15803d; font-weight: bold; text-transform: uppercase; letter-spacing: 0.05em;">Tour Companies Partnered</p>
+                                        </div>
+                                    </td>
+                                    <td width="50%" style="padding: 0 0 0 4px;">
+                                        <div style="background-color: #fefce8; border: 1px solid #fde68a; border-radius: 10px; padding: 14px 16px; text-align: center;">
+                                            <p style="margin: 0 0 2px 0; font-size: 22px; font-weight: 900; color: #ca8a04;">3,000+</p>
+                                            <p style="margin: 0; font-size: 11px; color: #a16207; font-weight: bold; text-transform: uppercase; letter-spacing: 0.05em;">Lunches Served in 2026</p>
+                                        </div>
+                                    </td>
+                                </tr>
+                            </table>
+                        </td>
+                    </tr>
+
+                    <!-- Sandwich Grid: Row 1 -->
+                    <tr>
+                        <td style="padding: 8px 28px;">
+                            <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0">
+                                <tr>
+                                    <td class="mobile-col" width="50%" valign="top" style="padding: 0 6px 12px 0;">
+                                        <a href="https://mountainmamascafe.app/" style="text-decoration: none; color: inherit; display: block;">
+                                        <div class="mobile-card" style="border: 1px solid #e5e7eb; border-radius: 14px; overflow: hidden; background-color: #fafafa;">
+                                            <img src="https://annrpkzwsghiwwkxqdxv.supabase.co/storage/v1/object/public/meal-images/main-77b434c1-c36b-469c-97de-00f731e91d18.jpg" width="260" style="width: 100%; max-width: 260px; height: 160px; object-fit: cover; display: block;" alt="The Madison Sandwich" />
+                                            <div style="padding: 14px 16px;">
+                                                <p style="margin: 0 0 4px 0; font-size: 14px; font-weight: 900; color: #111827;">The Madison</p>
+                                                <p style="margin: 0; font-size: 12px; color: #6b7280; line-height: 1.5;">Herby Focaccia, pesto, Turkey, Bacon, Provolone, avocado &amp; Bell Pepper</p>
+                                            </div>
+                                        </div>
+                                        </a>
+                                    </td>
+                                    <td class="mobile-col" width="50%" valign="top" style="padding: 0 0 12px 6px;">
+                                        <a href="https://mountainmamascafe.app/" style="text-decoration: none; color: inherit; display: block;">
+                                        <div class="mobile-card" style="border: 1px solid #e5e7eb; border-radius: 14px; overflow: hidden; background-color: #fafafa;">
+                                            <img src="https://annrpkzwsghiwwkxqdxv.supabase.co/storage/v1/object/public/meal-images/main-467ac862-19e3-4738-930b-01824ba4706c.jpg" width="260" style="width: 100%; max-width: 260px; height: 160px; object-fit: cover; display: block;" alt="The Grizzly Bear Sandwich" />
+                                            <div style="padding: 14px 16px;">
+                                                <p style="margin: 0 0 4px 0; font-size: 14px; font-weight: 900; color: #111827;">The Grizzly Bear</p>
+                                                <p style="margin: 0; font-size: 12px; color: #6b7280; line-height: 1.5;">Herby Focaccia, Chipotle BBQ sauce, Roast Beef &amp; Cheddar Cheese</p>
+                                            </div>
+                                        </div>
+                                        </a>
+                                    </td>
+                                </tr>
+                            </table>
+                        </td>
+                    </tr>
+
+                    <!-- Sandwich Grid: Row 2 -->
+                    <tr>
+                        <td style="padding: 0 28px 16px 28px;">
+                            <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0">
+                                <tr>
+                                    <td class="mobile-col" width="50%" valign="top" style="padding: 0 6px 12px 0;">
+                                        <a href="https://mountainmamascafe.app/" style="text-decoration: none; color: inherit; display: block;">
+                                        <div class="mobile-card" style="border: 1px solid #e5e7eb; border-radius: 14px; overflow: hidden; background-color: #fafafa;">
+                                            <img src="https://annrpkzwsghiwwkxqdxv.supabase.co/storage/v1/object/public/meal-images/main-06a32bb1-17d5-4a36-a42a-124cc940cbdd.jpg" width="260" style="width: 100%; max-width: 260px; height: 160px; object-fit: cover; display: block;" alt="Chicken Salad Sandwich" />
+                                            <div style="padding: 14px 16px;">
+                                                <p style="margin: 0 0 4px 0; font-size: 14px; font-weight: 900; color: #111827;">Chicken Salad Sandwich</p>
+                                                <p style="margin: 0; font-size: 12px; color: #6b7280; line-height: 1.5;">Fresh Croissant, Homemade Chicken Salad &amp; Lettuce</p>
+                                            </div>
+                                        </div>
+                                        </a>
+                                    </td>
+                                    <td class="mobile-col" width="50%" valign="top" style="padding: 0 0 12px 6px;">
+                                        <a href="https://mountainmamascafe.app/" style="text-decoration: none; color: inherit; display: block;">
+                                        <div class="mobile-card" style="border: 1px solid #e5e7eb; border-radius: 14px; overflow: hidden; background-color: #fafafa;">
+                                            <img src="https://annrpkzwsghiwwkxqdxv.supabase.co/storage/v1/object/public/meal-images/main-28c55056-6096-4ee3-80d9-f8fc784c73e3.jpg" width="260" style="width: 100%; max-width: 260px; height: 160px; object-fit: cover; display: block;" alt="Caprice Sandwich" />
+                                            <div style="padding: 14px 16px;">
+                                                <p style="margin: 0 0 4px 0; font-size: 14px; font-weight: 900; color: #111827;">Caprice Sandwich</p>
+                                                <p style="margin: 0; font-size: 12px; color: #6b7280; line-height: 1.5;">Savory Focaccia, Fresh Mozzarella, Tomatoes, Basil &amp; Arugula</p>
+                                            </div>
+                                        </div>
+                                        </a>
+                                    </td>
+                                </tr>
+                            </table>
+                        </td>
+                    </tr>
+
+                    <!-- "And more" + Custom menu note -->
+                    <tr>
+                        <td style="padding: 0 28px 24px 28px;">
+                            <div style="background-color: #f5f3ff; border: 1px solid #e9d5ff; border-radius: 12px; padding: 18px 20px; text-align: center;">
+                                <p style="margin: 0 0 6px 0; font-size: 14px; font-weight: bold; color: #6d28d9;">&#x1F4CB; These are just 4 of 15+ sandwich options</p>
+                                <p style="margin: 0; font-size: 13px; color: #7c3aed; line-height: 1.6;">Plus salads, kids' meals &amp; more. As a partner, you can <strong>request customized meals with the exact ingredients you want</strong> - build your own menu tailored to your tour guests' preferences.</p>
+                            </div>
+                        </td>
+                    </tr>
+
+                    <!-- Dual CTA Buttons -->
+                    <tr>
+                        <td align="center" style="padding: 0 28px 32px 28px;">
+                            <table role="presentation" cellspacing="0" cellpadding="0" border="0" style="margin: 0 auto;">
+                                <tr>
+                                    <td align="center" style="padding-right: 8px;">
+                                        <a class="mobile-btn" href="${registrationUrl}" style="display: inline-block; background: linear-gradient(135deg, #7c3aed, #6d28d9); color: #ffffff; padding: 14px 28px; border-radius: 10px; text-decoration: none; font-weight: bold; font-size: 14px; box-shadow: 0 4px 14px rgba(109,40,217,0.3);">Register as a Partner &rarr;</a>
+                                    </td>
+                                    <td align="center" style="padding-left: 8px;">
+                                        <a class="mobile-btn" href="${mealsPageUrl}" style="display: inline-block; background-color: #ffffff; color: #6d28d9; padding: 13px 28px; border-radius: 10px; text-decoration: none; font-weight: bold; font-size: 14px; border: 2px solid #c4b5fd;">See All Meals &#x1F50D;</a>
+                                    </td>
+                                </tr>
+                            </table>
+                        </td>
+                    </tr>
+
+                    <!-- Footer -->
+                    <tr>
+                        <td style="background-color: #4c1d95; padding: 24px 28px; text-align: center; color: #ddd6fe; font-size: 13px; line-height: 1.6;">
+                            <p style="margin: 0 0 4px 0; color: #ffffff; font-weight: bold; font-size: 14px;">Kimberly Howell &bull; Mountain Mama's Cafe &amp; Bakery</p>
+                            <p style="margin: 0 0 8px 0;">17 Madison Avenue (Westgate Entrance), West Yellowstone, Montana</p>
+                            <p style="margin: 0;">Phone: 406-461-1024 | <a href="mailto:mountainmamascafe@gmail.com" style="color: #c4b5fd; text-decoration: underline;">mountainmamascafe@gmail.com</a></p>
+                        </td>
+                    </tr>
+                </table>
+            </td>
+        </tr>
+    </table>
+</body>
+</html>`;
+    }
 
     // ---- Template: social_proof (Trust Builder) ----
     if (templateId === 'social_proof') {
@@ -653,10 +825,10 @@ function buildCampaignEmailHtml(registrationUrl: string, companyName: string = '
                     <tr>
                         <td style="padding: 0 28px 24px 28px;">
                             <p class="mobile-greeting" style="margin: 0 0 16px 0; font-size: 16px; font-weight: bold; color: #111827;">
-                                Hello ${cleanCompany} Team,
+                                Hi ${cleanCompany} Team,
                             </p>
                             <p class="mobile-body-text" style="margin: 0 0 20px 0; font-size: 15px; color: #374151; line-height: 1.65;">
-                                Tour companies across the Yellowstone region trust Mountain Mama's for one reason: <strong>we take the lunch problem off their plate</strong> - literally. Here's what our partners get:
+                                I'm Kim from <strong>Mountain Mama's Coffeehouse &amp; Bakery</strong> in West Yellowstone. Tour companies across the Yellowstone region trust Mountain Mama's for one reason: <strong>we take the lunch problem off their plate</strong> - literally. Here's what our partners get:
                             </p>
 
                             <!-- Benefits grid -->
@@ -768,7 +940,7 @@ function buildCampaignEmailHtml(registrationUrl: string, companyName: string = '
                         <td style="padding: 0 28px 24px 28px;">
                             <p style="margin: 0 0 16px 0; font-size: 16px; font-weight: bold; color: #111827;">Hi ${cleanCompany} Team,</p>
                             <p style="margin: 0 0 20px 0; font-size: 15px; color: #374151; line-height: 1.65;">
-                                As tours ramp up this summer, getting reliable, high-quality box lunches shouldn't be another thing on your to-do list. At <strong>Mountain Mama's Café</strong> in West Yellowstone, we've already served <strong style="color: #b45309;">3,000+ lunches</strong> to 10+ tour companies this season - and we've streamlined everything so your guides can focus on the tour, not the food.
+                                I'm Kim from <strong>Mountain Mama's Coffeehouse &amp; Bakery</strong> in West Yellowstone. As tours ramp up this summer, getting reliable, high-quality box lunches shouldn't be another thing on your to-do list. At <strong>Mountain Mama's Café</strong> in West Yellowstone, we've already served <strong style="color: #b45309;">3,000+ lunches</strong> to 10+ tour companies this season - and we've streamlined everything so your guides can focus on the tour, not the food.
                             </p>
 
                             <!-- Quick pitch points -->

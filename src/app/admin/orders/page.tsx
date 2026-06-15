@@ -8,13 +8,13 @@ export default async function OrdersPage() {
 
     const { data: orders } = await supabase
         .from('orders')
-        .select('*, tour_companies(name, slug), order_items(*)')
+        .select('*, tour_companies(name, slug, prep_instructions), order_items(*)')
         .order('created_at', { ascending: false })
         .limit(100);
 
     const { data: companies } = await supabase
         .from('tour_companies')
-        .select('id, name, status')
+        .select('id, name, status, prep_instructions')
         .order('name');
 
     return <OrdersClient initialOrders={orders || []} companies={companies || []} />;

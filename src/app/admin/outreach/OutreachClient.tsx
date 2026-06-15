@@ -1542,6 +1542,13 @@ export function OutreachClient({ initialLeads }: { initialLeads: Lead[] }) {
                                                     desc: 'Time-sensitive urgency notice for 2026.',
                                                     icon: '🔥',
                                                     theme: 'text-orange-600 bg-orange-50 border-orange-100'
+                                                },
+                                                {
+                                                    id: 'menu_showcase',
+                                                    title: 'Menu Showcase',
+                                                    desc: '4 sandwiches + See Meals & Register buttons.',
+                                                    icon: '🥪',
+                                                    theme: 'text-pink-600 bg-pink-50 border-pink-100'
                                                 }
                                             ].map((tpl) => {
                                                 const isSelected = selectedTemplateId === tpl.id;
@@ -1604,6 +1611,7 @@ export function OutreachClient({ initialLeads }: { initialLeads: Lead[] }) {
                                                                     short_intro: `Quick question about ${firstCompany}'s Yellowstone tour lunches`,
                                                                     social_proof: "How Yellowstone tour companies are solving the lunch problem",
                                                                     seasonal_urgency: `⛰️ 2026 Yellowstone season is here - secure your lunch partner spot`,
+                                                                    menu_showcase: `🥪 See what ${firstCompany}'s guests could be eating on their Yellowstone tour`,
                                                                 };
                                                                 return subjects[selectedTemplateId] || "Mountain Mama's Coffeehouse & Bakery - Yellowstone Tour Operator Box Lunch Program";
                                                             })()
