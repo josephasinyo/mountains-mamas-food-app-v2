@@ -428,7 +428,9 @@ export default function AppSettingsClient({ initialData, globalSettings, formFie
                                             <span className={cn(
                                                 "text-sm font-bold",
                                                 isSelected ? "text-orange-900" : "text-gray-600"
-                                            )}>{bread}</span>
+                                            )}>
+                                                {isSelected ? `#${idxInSelected + 1}: ` : ''}{bread}
+                                            </span>
                                         </div>
                                         <Switch 
                                             checked={isSelected} 
@@ -498,7 +500,9 @@ export default function AppSettingsClient({ initialData, globalSettings, formFie
                                             <span className={cn(
                                                 "text-sm font-bold",
                                                 isSelected ? "text-amber-900" : "text-gray-600"
-                                            )}>{cookie}</span>
+                                            )}>
+                                                {isSelected ? `#${idxInSelected + 1}: ` : ''}{cookie}
+                                            </span>
                                         </div>
                                         <Switch 
                                             checked={isSelected} 
