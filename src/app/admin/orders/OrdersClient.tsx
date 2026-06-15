@@ -651,21 +651,7 @@ export function OrdersClient({ initialOrders, companies }: OrdersClientProps) {
                                 {selected.size > 0 ? `Tickets (${selected.size})` : 'Tickets'}
                             </span>
                         </Button>
-                        <Button 
-                            variant="outline" 
-                            className="gap-1.5 h-11 px-2 md:px-4 rounded-xl border-gray-200 hover:border-violet-200 hover:bg-violet-50 transition-all font-bold no-print text-[11px] md:text-sm" 
-                            onClick={async () => {
-                                document.body.classList.add('print-zebra-mode');
-                                window.print();
-                                document.body.classList.remove('print-zebra-mode');
-                                await markOrdersAsPrintedAndFulfilled(ordersToPrint);
-                            }}
-                        >
-                            <Ticket className="size-4 text-amber-600 shrink-0" />
-                            <span className="truncate">
-                                {selected.size > 0 ? `Zebra Labels (${selected.size})` : 'Zebra Labels'}
-                            </span>
-                        </Button>
+
                         <Button 
                             variant="outline" 
                             className="gap-1.5 h-11 px-2 md:px-4 rounded-xl border-gray-200 hover:border-violet-200 hover:bg-violet-50 transition-all font-bold no-print text-[11px] md:text-sm" 
