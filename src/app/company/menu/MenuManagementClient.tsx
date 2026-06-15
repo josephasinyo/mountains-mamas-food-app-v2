@@ -331,12 +331,26 @@ export default function MenuManagementClient({ initialData }: MenuManagementClie
                                 const showJuniorPrice = !!config?.show_junior_box_lunch_category && meal.junior_price > 0;
                                 const showSandwichPrice = !!config?.use_sandwich_only && meal.sandwich_price > 0;
 
-                                let mainPrice = meal.price;
-                                if (!showStandardPrice) {
-                                    if (showJuniorPrice) {
-                                        mainPrice = meal.junior_price;
+                                const currentSlideLabel = availableImages[activeIndex]?.label || 'Main';
+                                let displayPrice = meal.price;
+                                let displayLabel = 'Standard Box';
+
+                                if (currentSlideLabel === 'Junior Box') {
+                                    displayPrice = meal.junior_price || meal.price;
+                                    displayLabel = 'Junior Box';
+                                } else if (currentSlideLabel === 'Sandwich Only') {
+                                    displayPrice = meal.sandwich_price || meal.price;
+                                    displayLabel = 'Sandwich Only';
+                                } else if (currentSlideLabel === 'Main') {
+                                    if (showStandardPrice) {
+                                        displayPrice = meal.price;
+                                        displayLabel = 'Standard Box';
+                                    } else if (showJuniorPrice) {
+                                        displayPrice = meal.junior_price;
+                                        displayLabel = 'Junior Box';
                                     } else if (showSandwichPrice) {
-                                        mainPrice = meal.sandwich_price;
+                                        displayPrice = meal.sandwich_price;
+                                        displayLabel = 'Sandwich Only';
                                     }
                                 }
 
