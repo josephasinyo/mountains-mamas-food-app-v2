@@ -145,18 +145,32 @@ export default function MenuManagementClient({ initialData }: MenuManagementClie
                         const activeIndex = activeImgIndexes[meal.id] ?? 0;
                         const activeImg = availableImages[activeIndex]?.url || meal.image_url;
 
-                        // 2. Determine which prices to display based on active configurations
-                        const showStandardPrice = config?.show_box_lunch_category !== false;
-                        const showJuniorPrice = !!config?.show_junior_box_lunch_category && meal.junior_price > 0;
-                        const showSandwichPrice = !!config?.use_sandwich_only && meal.sandwich_price > 0;
+                        // 2. Determine price and label dynamically based on active slideshow slide
+                        const currentSlideLabel = availableImages[activeIndex]?.label || 'Main';
+                        let displayPrice = meal.price;
+                        let displayLabel = 'Standard Box';
 
-                        // Highest priority price to display as the main tag
-                        let mainPrice = meal.price;
-                        if (!showStandardPrice) {
-                            if (showJuniorPrice) {
-                                mainPrice = meal.junior_price;
+                        if (currentSlideLabel === 'Junior Box') {
+                            displayPrice = meal.junior_price || meal.price;
+                            displayLabel = 'Junior Box';
+                        } else if (currentSlideLabel === 'Sandwich Only') {
+                            displayPrice = meal.sandwich_price || meal.price;
+                            displayLabel = 'Sandwich Only';
+                        } else if (currentSlideLabel === 'Main') {
+                            // If Main slide is shown, default to Standard Box if enabled, otherwise Junior, otherwise Sandwich
+                            const showStandardPrice = config?.show_box_lunch_category !== false;
+                            const showJuniorPrice = !!config?.show_junior_box_lunch_category && meal.junior_price > 0;
+                            const showSandwichPrice = !!config?.use_sandwich_only && meal.sandwich_price > 0;
+                            
+                            if (showStandardPrice) {
+                                displayPrice = meal.price;
+                                displayLabel = 'Standard Box';
+                            } else if (showJuniorPrice) {
+                                displayPrice = meal.junior_price;
+                                displayLabel = 'Junior Box';
                             } else if (showSandwichPrice) {
-                                mainPrice = meal.sandwich_price;
+                                displayPrice = meal.sandwich_price;
+                                displayLabel = 'Sandwich Only';
                             }
                         }
                         
@@ -230,19 +244,8 @@ export default function MenuManagementClient({ initialData }: MenuManagementClie
 
                                         <div className="absolute top-3 right-3 flex gap-2">
                                             <div className="bg-white/90 backdrop-blur-md px-3 py-1.5 rounded-2xl text-[12px] font-black text-gray-900 shadow-sm border border-white/50 flex flex-col items-center">
-                                                <span>${Number(mainPrice).toFixed(2)}</span>
-                                                {/* Sub-prices if multiple items are enabled */}
-                                                {showStandardPrice && (showJuniorPrice || showSandwichPrice) && (
-                                                    <div className="text-[9px] text-gray-400 border-t border-gray-100 mt-1 pt-1 flex flex-col gap-0.5 font-bold">
-                                                        {showJuniorPrice && <div>Jr Box: ${Number(meal.junior_price).toFixed(2)}</div>}
-                                                        {showSandwichPrice && <div>Sandwich: ${Number(meal.sandwich_price || 0).toFixed(2)}</div>}
-                                                    </div>
-                                                )}
-                                                {!showStandardPrice && showJuniorPrice && showSandwichPrice && (
-                                                    <div className="text-[9px] text-gray-400 border-t border-gray-100 mt-1 pt-1 flex flex-col gap-0.5 font-bold">
-                                                        <div>Sandwich: ${Number(meal.sandwich_price || 0).toFixed(2)}</div>
-                                                    </div>
-                                                )}
+                                                <span>${Number(displayPrice).toFixed(2)}</span>
+                                                <span className="text-[8px] text-violet-600 border-t border-gray-100 mt-0.5 pt-0.5 font-bold uppercase tracking-wider">{displayLabel}</span>
                                             </div>
                                             <Badge className={`text-[10px] font-bold rounded-full px-2.5 py-0.5 uppercase tracking-wider shadow-sm border-none ${
                                                 isSelected ? 'bg-emerald-500 text-white' : 'bg-gray-400 text-white'
@@ -375,16 +378,8 @@ export default function MenuManagementClient({ initialData }: MenuManagementClie
                                             <Badge variant="outline" className="capitalize text-[10px] font-bold rounded-lg px-2.5 py-0.5 border-gray-200 text-gray-500 bg-gray-50/50">{meal.category}</Badge>
                                         </TableCell>
                                         <TableCell className="font-bold text-gray-900">
-                                            <div>${Number(mainPrice).toFixed(2)}</div>
-                                            {showStandardPrice && showJuniorPrice && (
-                                                <div className="text-[10px] text-violet-600 font-bold">Jr Box: ${Number(meal.junior_price).toFixed(2)}</div>
-                                            )}
-                                            {showStandardPrice && showSandwichPrice && (
-                                                <div className="text-[10px] text-violet-600 font-bold">Sandwich: ${Number(meal.sandwich_price || 0).toFixed(2)}</div>
-                                            )}
-                                            {!showStandardPrice && showJuniorPrice && showSandwichPrice && (
-                                                <div className="text-[10px] text-violet-600 font-bold">Sandwich: ${Number(meal.sandwich_price || 0).toFixed(2)}</div>
-                                            )}
+                                            <div>${Number(displayPrice).toFixed(2)}</div>
+                                            <div className="text-[10px] text-violet-600 font-bold uppercase tracking-wider">{displayLabel}</div>
                                         </TableCell>
                                         <TableCell>
                                             <div className="flex items-center gap-2">

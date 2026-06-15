@@ -152,7 +152,7 @@ export default function AddToCartForm({ item }: Props) {
       // Auto-logic when Gluten-Free bread is selected
       if (name === 'bread_type' && typeof value === 'string' && value.toLowerCase().includes('gluten-free')) {
         // Find a cookie option that represents a gluten-free brownie
-        const gfCookie = dynamicCookieOptions.find(c => 
+        const gfCookie = dynamicCookieOptions.find((c: string) => 
           c.toLowerCase().includes('gluten-free') || 
           (c.toLowerCase().includes('gf') && c.toLowerCase().includes('brownie')) ||
           c.toLowerCase().includes('brownie')
