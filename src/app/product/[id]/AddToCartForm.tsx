@@ -85,9 +85,10 @@ export default function AddToCartForm({ item }: Props) {
 
     if (parsed?.breads && Array.isArray(parsed.breads) && parsed.breads.length > 0) {
       // Filter out options that are not in the global active list
+      // Maintain the order of parsed.breads since it is sorted by company preference
       const activeBreads = parsed.breads.filter((b: string) => globalBreads.includes(b));
       if (activeBreads.length > 0) {
-        return activeBreads.sort((a: string, b: string) => globalBreads.indexOf(a) - globalBreads.indexOf(b));
+        return activeBreads;
       }
     }
     // Fall back to global settings
@@ -108,9 +109,10 @@ export default function AddToCartForm({ item }: Props) {
 
     if (parsed?.cookies && Array.isArray(parsed.cookies) && parsed.cookies.length > 0) {
       // Filter out options that are not in the global active list
+      // Maintain the order of parsed.cookies since it is sorted by company preference
       const activeCookies = parsed.cookies.filter((c: string) => globalCookies.includes(c));
       if (activeCookies.length > 0) {
-        return activeCookies.sort((a: string, b: string) => globalCookies.indexOf(a) - globalCookies.indexOf(b));
+        return activeCookies;
       }
     }
     if (globalCookies.length > 0) {
