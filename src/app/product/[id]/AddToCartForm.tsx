@@ -144,7 +144,30 @@ export default function AddToCartForm({ item }: Props) {
   }, [formFields, dynamicBreadOptions, dynamicCookieOptions]);
 
   const handleFieldChange = (name: string, value: any) => {
-    setFieldValues(prev => ({ ...prev, [name]: value }));
+    setFieldValues(prev => {
+      const nextValues = { ...prev, [name]: value };
+      
+      // Auto-logic when Gluten-Free bread is selected
+      if (name === 'bread_type' && typeof value === 'string' && value.toLowerCase().includes('gluten-free')) {
+        // Find a cookie option that represents a gluten-free brownie
+        const gfCookie = dynamicCookieOptions.find(c => 
+          c.toLowerCase().includes('gluten-free') || 
+          (c.toLowerCase().includes('gf') && c.toLowerCase().includes('brownie')) ||
+          c.toLowerCase().includes('brownie')
+        );
+        if (gfCookie) {
+          nextValues['cookie_choice'] = gfCookie;
+        }
+
+        // Set customizations/allergy text to Gluten-Free if empty or doesn't already say it
+        const currentCustom = nextValues['customizations'] || '';
+        if (!currentCustom.toLowerCase().includes('gluten-free') && !currentCustom.toLowerCase().includes('gluten free')) {
+          nextValues['customizations'] = currentCustom ? `${currentCustom}, Gluten-Free` : 'Gluten-Free';
+        }
+      }
+      
+      return nextValues;
+    });
   };
   
   // Popup State
