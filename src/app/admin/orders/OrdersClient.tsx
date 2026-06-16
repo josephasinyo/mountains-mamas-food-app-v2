@@ -645,6 +645,10 @@ export function OrdersClient({ initialOrders, companies }: OrdersClientProps) {
                             variant="outline" 
                             className="gap-1.5 h-11 px-2 md:px-4 rounded-xl border-gray-200 hover:border-violet-200 hover:bg-violet-50 transition-all font-bold no-print text-[11px] md:text-sm" 
                             onClick={async () => {
+                                if (selected.size === 0) {
+                                    toast.error('Please select at least one order to print tickets.');
+                                    return;
+                                }
                                 document.body.classList.add('print-tickets-mode');
                                 window.print();
                                 document.body.classList.remove('print-tickets-mode');
