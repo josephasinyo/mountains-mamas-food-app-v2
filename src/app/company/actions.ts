@@ -259,7 +259,7 @@ export async function getCompanyAppConfig() {
 
         const { data: config, error } = await supabase
             .from('company_app_config')
-            .select('*')
+            .select('*, tour_companies(slug, default_slug, generic_slug)')
             .eq('company_id', companyId)
             .single();
 

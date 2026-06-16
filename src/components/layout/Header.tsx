@@ -31,7 +31,11 @@ export default function Header() {
     });
   }, [pathname]);
 
-  const isHome = pathname === '/' || (company && pathname === `/${company.slug}`);
+  const isHome = pathname === '/' || (company && (
+    pathname === `/${company.slug}` ||
+    (company.default_slug && pathname === `/${company.default_slug}`) ||
+    (company.generic_slug && pathname === `/${company.generic_slug}`)
+  ));
 
   return (
     <header className={styles.header}>
@@ -39,7 +43,16 @@ export default function Header() {
         <Link href={company ? `/${company.slug}` : "/"} className={styles.logo}>
           <div className={styles.logoContainer}>
             {company && !config?.use_mountain_mamas_branding ? (
-              <span className={styles.mountainText}>{company.name.toUpperCase()}</span>
+              <div className="flex items-center gap-2">
+                {company.logo_url ? (
+                  <img src={company.logo_url} alt={`${company.name} Logo`} className="h-8 w-8 object-contain rounded-lg shrink-0" />
+                ) : (
+                  <div className="size-8 rounded-xl bg-gradient-to-br from-indigo-600 via-violet-600 to-purple-600 flex items-center justify-center text-xs font-black text-white shadow-md shrink-0">
+                    {company.name.charAt(0).toUpperCase()}
+                  </div>
+                )}
+                <span className={styles.mountainText}>{company.name.toUpperCase()}</span>
+              </div>
             ) : (
               <>
                 <span className={styles.mountainText}>MOUNTAIN</span>

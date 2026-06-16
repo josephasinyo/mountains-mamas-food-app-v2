@@ -66,16 +66,12 @@ export default function CompanyLayout({ children }: { children: React.ReactNode 
             
             // Get company info
             let companyId = session.user.user_metadata?.company_id;
-            let companyName = session.user.user_metadata?.company_name || 'My Company';
-            let companySlug = session.user.user_metadata?.company_slug;
 
             // Admin bypass
             if (!companyId && (session.user.user_metadata?.role?.toLowerCase() === 'admin' || session.user.email?.toLowerCase() === 'mountainmamascafe@gmail.com')) {
                 const { data: companies } = await supabase.from('tour_companies').select('id, name, slug').limit(1);
                 if (companies && companies.length > 0) {
                     companyId = companies[0].id;
-                    companyName = companies[0].name;
-                    companySlug = companies[0].slug;
                 }
             }
 
@@ -83,22 +79,39 @@ export default function CompanyLayout({ children }: { children: React.ReactNode 
             const impStatus = await getImpersonationStatus();
             setImpersonation(impStatus);
             if (impStatus.isImpersonating && impStatus.companyId) {
+                companyId = impStatus.companyId;
+            }
+
+            let name = 'My Company';
+            let slug = '';
+            let defaultSlug = '';
+            let genericSlug = '';
+            let useBranding = false;
+
+            if (companyId) {
                 const { data: company } = await supabase
                     .from('tour_companies')
-                    .select('id, name, slug')
-                    .eq('id', impStatus.companyId)
+                    .select('id, name, slug, default_slug, generic_slug, company_app_config(use_mountain_mamas_branding)')
+                    .eq('id', companyId)
                     .single();
                 if (company) {
-                    companyId = company.id;
-                    companyName = company.name;
-                    companySlug = company.slug;
+                    name = company.name;
+                    slug = company.slug;
+                    defaultSlug = company.default_slug || '';
+                    genericSlug = company.generic_slug || '';
+                    const rawConfig = company.company_app_config;
+                    const config = Array.isArray(rawConfig) ? rawConfig[0] : rawConfig;
+                    useBranding = !!config?.use_mountain_mamas_branding;
                 }
             }
 
             setCompanyInfo({
                 id: companyId,
-                name: companyName,
-                slug: companySlug
+                name,
+                slug,
+                default_slug: defaultSlug,
+                generic_slug: genericSlug,
+                use_mountain_mamas_branding: useBranding
             });
 
             setLoading(false);
@@ -298,15 +311,36 @@ export default function CompanyLayout({ children }: { children: React.ReactNode 
 
                 {/* Preview Link */}
                 {(!collapsed || isMobile) && companyInfo?.slug && (
-                    <div className="px-3 mb-2">
-                        <Link 
-                            href={`/${companyInfo.slug}`}
-                            target="_blank"
-                            className="flex items-center gap-2 px-4 py-3 rounded-xl bg-gray-900 text-white text-[12px] font-bold hover:bg-gray-800 transition-all shadow-lg shadow-gray-200"
-                        >
-                            <ExternalLink className="size-4" />
-                            <span>Open My Order App</span>
-                        </Link>
+                    <div className="px-3 mb-2 space-y-2">
+                        {companyInfo.use_mountain_mamas_branding ? (
+                            <>
+                                <Link 
+                                    href={`/${companyInfo.default_slug || companyInfo.slug}`}
+                                    target="_blank"
+                                    className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-gray-900 text-white text-[11px] font-bold hover:bg-gray-800 transition-all shadow-sm hover:scale-[1.02] active:scale-[0.98]"
+                                >
+                                    <ExternalLink className="size-3.5" />
+                                    <span>Open Default App</span>
+                                </Link>
+                                <Link 
+                                    href={`/${companyInfo.generic_slug || companyInfo.slug}`}
+                                    target="_blank"
+                                    className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-violet-600 text-white text-[11px] font-bold hover:bg-violet-700 transition-all shadow-sm shadow-violet-100 hover:scale-[1.02] active:scale-[0.98]"
+                                >
+                                    <ExternalLink className="size-3.5" />
+                                    <span>Open White-Label App</span>
+                                </Link>
+                            </>
+                        ) : (
+                            <Link 
+                                href={`/${companyInfo.slug}`}
+                                target="_blank"
+                                className="flex items-center gap-2 px-4 py-3 rounded-xl bg-gray-900 text-white text-[12px] font-bold hover:bg-gray-800 transition-all shadow-lg shadow-gray-200"
+                            >
+                                <ExternalLink className="size-4" />
+                                <span>Open My Order App</span>
+                            </Link>
+                        )}
                     </div>
                 )}
 

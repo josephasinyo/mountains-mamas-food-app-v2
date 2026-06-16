@@ -10,7 +10,8 @@ import { Input } from '@/components/ui/input';
 import { 
     Settings, Layout, 
     Save, Loader2, Smartphone, CheckCircle2,
-    Cookie, Utensils, FileText, ArrowUp, ArrowDown
+    Cookie, Utensils, FileText, ArrowUp, ArrowDown,
+    Copy, ExternalLink
 } from 'lucide-react';
 import { updateAppConfig, updateCompanyFormField } from '../actions';
 import { toast } from 'sonner';
@@ -30,6 +31,10 @@ export default function AppSettingsClient({ initialData, globalSettings, formFie
     const { config } = initialData;
     const [savedConfig, setSavedConfig] = useState(config);
     const [isPending, startTransition] = useTransition();
+
+    const company = savedConfig?.tour_companies || config?.tour_companies;
+    const defaultSlug = company?.default_slug || company?.slug || '';
+    const genericSlug = company?.generic_slug || company?.slug || '';
     
     // Baseline/initial list of form fields
     const [initialFormFields, setInitialFormFields] = useState(() => {
@@ -358,6 +363,86 @@ export default function AppSettingsClient({ initialData, globalSettings, formFie
                                 className="data-[state=checked]:bg-violet-600"
                             />
                         </div>
+
+                        {formData.use_mountain_mamas_branding && (
+                            <div className="p-4 rounded-2xl border border-violet-100 bg-violet-50/10 space-y-4">
+                                <div className="space-y-1">
+                                    <h4 className="text-xs font-bold text-violet-900 uppercase tracking-widest">Active Ordering Links</h4>
+                                    <p className="text-[11px] text-gray-500 font-medium">Since branding is active, you can share either of the links below with your clients.</p>
+                                </div>
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                    {/* Default Link */}
+                                    <div className="flex flex-col justify-between p-4 rounded-xl border border-gray-100 bg-white shadow-sm hover:border-violet-200 transition-all">
+                                        <div className="space-y-1">
+                                            <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider block">Default Link</span>
+                                            <p className="text-xs font-bold text-gray-900 truncate font-mono">
+                                                {typeof window !== 'undefined' ? `${window.location.origin}/${defaultSlug}` : `/${defaultSlug}`}
+                                            </p>
+                                        </div>
+                                        <div className="flex items-center gap-2 mt-3 pt-3 border-t border-gray-50">
+                                            <Button
+                                                type="button"
+                                                variant="outline"
+                                                size="sm"
+                                                className="h-8 rounded-lg text-xs font-bold gap-1.5 border-gray-200 text-gray-600 hover:text-violet-600 hover:border-violet-200 hover:bg-violet-50"
+                                                onClick={() => {
+                                                    const url = `${window.location.origin}/${defaultSlug}`;
+                                                    navigator.clipboard.writeText(url);
+                                                    toast.success('Default link copied to clipboard');
+                                                }}
+                                            >
+                                                <Copy className="size-3.5" />
+                                                Copy
+                                            </Button>
+                                            <a
+                                                href={`/${defaultSlug}`}
+                                                target="_blank"
+                                                rel="noopener noreferrer"
+                                                className="inline-flex items-center justify-center h-8 px-3 rounded-lg border border-gray-200 text-xs font-bold gap-1.5 text-gray-600 hover:text-violet-600 hover:border-violet-200 hover:bg-violet-50 transition-colors"
+                                            >
+                                                <ExternalLink className="size-3.5" />
+                                                Preview
+                                            </a>
+                                        </div>
+                                    </div>
+
+                                    {/* White-Label Link */}
+                                    <div className="flex flex-col justify-between p-4 rounded-xl border border-gray-100 bg-white shadow-sm hover:border-violet-200 transition-all">
+                                        <div className="space-y-1">
+                                            <span className="text-[10px] font-bold text-violet-600 uppercase tracking-wider block font-black">White-Label Order Link</span>
+                                            <p className="text-xs font-bold text-gray-900 truncate font-mono">
+                                                {typeof window !== 'undefined' ? `${window.location.origin}/${genericSlug}` : `/${genericSlug}`}
+                                            </p>
+                                        </div>
+                                        <div className="flex items-center gap-2 mt-3 pt-3 border-t border-gray-50">
+                                            <Button
+                                                type="button"
+                                                variant="outline"
+                                                size="sm"
+                                                className="h-8 rounded-lg text-xs font-bold gap-1.5 border-gray-200 text-gray-600 hover:text-violet-600 hover:border-violet-200 hover:bg-violet-50"
+                                                onClick={() => {
+                                                    const url = `${window.location.origin}/${genericSlug}`;
+                                                    navigator.clipboard.writeText(url);
+                                                    toast.success('White-Label link copied to clipboard');
+                                                }}
+                                            >
+                                                <Copy className="size-3.5" />
+                                                Copy
+                                            </Button>
+                                            <a
+                                                href={`/${genericSlug}`}
+                                                target="_blank"
+                                                rel="noopener noreferrer"
+                                                className="inline-flex items-center justify-center h-8 px-3 rounded-lg border border-gray-200 text-xs font-bold gap-1.5 text-gray-600 hover:text-violet-600 hover:border-violet-200 hover:bg-violet-50 transition-colors"
+                                            >
+                                                <ExternalLink className="size-3.5" />
+                                                Preview
+                                            </a>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        )}
 
                         <div className="space-y-2">
                             <Label htmlFor="custom_welcome_message" className="text-sm font-bold text-gray-700">Custom Welcome Instructions</Label>

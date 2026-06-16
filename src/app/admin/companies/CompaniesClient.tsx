@@ -425,9 +425,9 @@ export function CompaniesClient({ initialCompanies }: CompaniesClientProps) {
                                                         <button
                                                             onClick={() => copyLink(company.generic_slug || company.slug)}
                                                             className="inline-flex items-center gap-1.5 text-[11px] font-bold text-violet-600 hover:text-violet-700 bg-violet-50 hover:bg-violet-100 px-2 py-1 rounded-lg transition-colors group/link"
-                                                            title="Copy Generic Link"
+                                                            title="Copy White-labeled Link"
                                                         >
-                                                            <span className="text-[9px] text-violet-400 font-normal uppercase mr-0.5">Generic:</span>
+                                                            <span className="text-[9px] text-violet-400 font-normal uppercase mr-0.5">White-labeled:</span>
                                                             <code>/{company.generic_slug || company.slug}</code>
                                                             <Copy className="size-3 opacity-50 group-hover/link:opacity-100" />
                                                         </button>
@@ -532,7 +532,7 @@ export function CompaniesClient({ initialCompanies }: CompaniesClientProps) {
                                                                             {company.company_app_config?.use_mountain_mamas_branding ? (
                                                                                 <div className="space-y-1">
                                                                                     <p className="text-xs font-mono text-blue-600 font-bold">Default: /{company.default_slug || company.slug}</p>
-                                                                                    <p className="text-xs font-mono text-blue-600 font-bold">Generic: /{company.generic_slug || company.slug}</p>
+                                                                                    <p className="text-xs font-mono text-blue-600 font-bold">White-labeled: /{company.generic_slug || company.slug}</p>
                                                                                 </div>
                                                                             ) : (
                                                                                 <p className="text-sm font-mono text-blue-600 font-bold">/{company.slug}</p>
@@ -987,12 +987,14 @@ export function CompaniesClient({ initialCompanies }: CompaniesClientProps) {
                                 </div>
                                 <div className="space-y-1.5">
                                     <Label htmlFor="custom_welcome_message" className="text-xs font-bold text-gray-700">Custom Welcome Instructions</Label>
-                                    <Input 
+                                    <Textarea 
                                         id="custom_welcome_message" 
                                         name="custom_welcome_message" 
                                         placeholder="e.g. Please place your family's order for your tour in Yellowstone..."
                                         value={customWelcomeMessage} 
                                         onChange={(e) => setCustomWelcomeMessage(e.target.value)} 
+                                        rows={3}
+                                        className="resize-none"
                                     />
                                 </div>
                             </div>
