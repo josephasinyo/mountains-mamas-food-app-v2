@@ -11,14 +11,15 @@ export async function getCompanyBySlug(slug: string) {
         const { data: company, error } = await supabase
             .from('tour_companies')
             .select('*, company_app_config(*)')
-            .eq('slug', slug)
-            .single();
+            .or(`slug.eq.${slug},default_slug.eq.${slug},generic_slug.eq.${slug}`)
+            .maybeSingle();
 
         if (error) {
-            if (error.code === 'PGRST116') {
-                return { success: false, error: 'Company not found' };
-            }
             throw error;
+        }
+
+        if (!company) {
+            return { success: false, error: 'Company not found' };
         }
 
         // Fetch global fields and company overrides

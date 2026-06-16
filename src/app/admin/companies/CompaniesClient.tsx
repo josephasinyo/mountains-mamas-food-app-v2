@@ -411,13 +411,36 @@ export function CompaniesClient({ initialCompanies }: CompaniesClientProps) {
                                                 </Badge>
                                             </TableCell>
                                             <TableCell onClick={(e) => e.stopPropagation()} className="text-center">
-                                                <button
-                                                    onClick={() => copyLink(company.slug)}
-                                                    className="inline-flex items-center gap-1.5 text-[11px] font-bold text-violet-600 hover:text-violet-700 bg-violet-50 hover:bg-violet-100 px-2 py-1 rounded-lg transition-colors group/link"
-                                                >
-                                                    <code>/{company.slug}</code>
-                                                    <Copy className="size-3 opacity-50 group-hover/link:opacity-100" />
-                                                </button>
+                                                {company.company_app_config?.use_mountain_mamas_branding ? (
+                                                    <div className="flex flex-col gap-1.5 items-center justify-center">
+                                                        <button
+                                                            onClick={() => copyLink(company.default_slug || company.slug)}
+                                                            className="inline-flex items-center gap-1.5 text-[11px] font-bold text-violet-600 hover:text-violet-700 bg-violet-50 hover:bg-violet-100 px-2 py-1 rounded-lg transition-colors group/link"
+                                                            title="Copy Default Link"
+                                                        >
+                                                            <span className="text-[9px] text-violet-400 font-normal uppercase mr-0.5">Default:</span>
+                                                            <code>/{company.default_slug || company.slug}</code>
+                                                            <Copy className="size-3 opacity-50 group-hover/link:opacity-100" />
+                                                        </button>
+                                                        <button
+                                                            onClick={() => copyLink(company.generic_slug || company.slug)}
+                                                            className="inline-flex items-center gap-1.5 text-[11px] font-bold text-violet-600 hover:text-violet-700 bg-violet-50 hover:bg-violet-100 px-2 py-1 rounded-lg transition-colors group/link"
+                                                            title="Copy Generic Link"
+                                                        >
+                                                            <span className="text-[9px] text-violet-400 font-normal uppercase mr-0.5">Generic:</span>
+                                                            <code>/{company.generic_slug || company.slug}</code>
+                                                            <Copy className="size-3 opacity-50 group-hover/link:opacity-100" />
+                                                        </button>
+                                                    </div>
+                                                ) : (
+                                                    <button
+                                                        onClick={() => copyLink(company.slug)}
+                                                        className="inline-flex items-center gap-1.5 text-[11px] font-bold text-violet-600 hover:text-violet-700 bg-violet-50 hover:bg-violet-100 px-2 py-1 rounded-lg transition-colors group/link"
+                                                    >
+                                                        <code>/{company.slug}</code>
+                                                        <Copy className="size-3 opacity-50 group-hover/link:opacity-100" />
+                                                    </button>
+                                                )}
                                             </TableCell>
                                             <TableCell className="text-[11px] text-gray-400 font-bold" suppressHydrationWarning>
                                                 {formatDateUS(company.created_at)}
@@ -505,8 +528,15 @@ export function CompaniesClient({ initialCompanies }: CompaniesClientProps) {
                                                                             <Globe className="size-4" />
                                                                         </div>
                                                                         <div>
-                                                                            <p className="text-[10px] text-gray-400 font-bold uppercase tracking-wider">Public Slug</p>
-                                                                            <p className="text-sm font-mono text-blue-600 font-bold">{company.slug}</p>
+                                                                            <p className="text-[10px] text-gray-400 font-bold uppercase tracking-wider">Public Slug(s)</p>
+                                                                            {company.company_app_config?.use_mountain_mamas_branding ? (
+                                                                                <div className="space-y-1">
+                                                                                    <p className="text-xs font-mono text-blue-600 font-bold">Default: /{company.default_slug || company.slug}</p>
+                                                                                    <p className="text-xs font-mono text-blue-600 font-bold">Generic: /{company.generic_slug || company.slug}</p>
+                                                                                </div>
+                                                                            ) : (
+                                                                                <p className="text-sm font-mono text-blue-600 font-bold">/{company.slug}</p>
+                                                                            )}
                                                                         </div>
                                                                     </div>
                                                                     <div className="flex items-start gap-4">
@@ -744,13 +774,41 @@ export function CompaniesClient({ initialCompanies }: CompaniesClientProps) {
                                     </div>
                                 )}
  
-                                <div className="pt-5 border-t border-gray-50 flex items-center justify-between">
-                                    <button
-                                        onClick={() => copyLink(company.slug)}
-                                        className="text-[11px] font-black text-violet-600 hover:text-violet-700 uppercase tracking-widest flex items-center gap-1.5"
-                                    >
-                                        Copy Link <Copy className="size-3" />
-                                    </button>
+                                <div className="pt-5 border-t border-gray-50 flex flex-col gap-2 w-full">
+                                    {company.company_app_config?.use_mountain_mamas_branding ? (
+                                        <div className="flex flex-col gap-2 w-full text-left">
+                                            <div className="flex items-center justify-between">
+                                                <span className="text-[9px] text-gray-400 font-bold uppercase tracking-wider">Default Link</span>
+                                                <button
+                                                    onClick={() => copyLink(company.default_slug || company.slug)}
+                                                    className="text-[11px] font-black text-violet-600 hover:text-violet-700 uppercase tracking-widest flex items-center gap-1.5"
+                                                >
+                                                    Copy default <Copy className="size-3" />
+                                                </button>
+                                            </div>
+                                            <div className="flex items-center justify-between">
+                                                <span className="text-[9px] text-gray-400 font-bold uppercase tracking-wider">Generic Link</span>
+                                                <button
+                                                    onClick={() => copyLink(company.generic_slug || company.slug)}
+                                                    className="text-[11px] font-black text-violet-600 hover:text-violet-700 uppercase tracking-widest flex items-center gap-1.5"
+                                                >
+                                                    Copy generic <Copy className="size-3" />
+                                                </button>
+                                            </div>
+                                        </div>
+                                    ) : (
+                                        <div className="flex items-center justify-between w-full">
+                                            <button
+                                                onClick={() => copyLink(company.slug)}
+                                                className="text-[11px] font-black text-violet-600 hover:text-violet-700 uppercase tracking-widest flex items-center gap-1.5"
+                                            >
+                                                Copy Link <Copy className="size-3" />
+                                            </button>
+                                            <span className="text-[11px] font-mono text-gray-400">/{company.slug}</span>
+                                        </div>
+                                    )}
+                                </div>
+                                <div className="flex items-center justify-end w-full mt-2">
                                     <DropdownMenu>
                                         <DropdownMenuTrigger className="size-8 rounded-xl bg-gray-50 text-gray-400 hover:text-violet-600 hover:bg-violet-50 transition-all flex items-center justify-center">
                                             <MoreHorizontal className="size-4" />
