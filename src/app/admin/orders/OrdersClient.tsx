@@ -407,6 +407,11 @@ export function OrdersClient({ initialOrders, companies }: OrdersClientProps) {
     }
 
     async function markOrdersAsPrintedAndFulfilled(ordersList: Order[]) {
+        if (typeof window !== 'undefined' && (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')) {
+            console.log('Skipping fulfillment marking on localhost');
+            return;
+        }
+
         const orderIds = ordersList.map(o => o.id);
         if (orderIds.length === 0) return;
         
@@ -1498,218 +1503,233 @@ export function OrdersClient({ initialOrders, companies }: OrdersClientProps) {
             </Dialog>
         </div>
             {/* Print Tickets Layout */}
-            <div className="print-only-section print-tickets-container">
-                <div className="p-4 print-tickets-grid">
-                    {ordersToPrint.flatMap((order) => {
-                        const items = order.order_items || [];
-                        if (items.length === 0) {
-                            return [
-                                <div 
-                                    key={`${order.id}-empty`} 
-                                    className="print-ticket-card border border-gray-400 p-6 rounded-2xl break-inside-avoid bg-white flex flex-col justify-between"
-                                    style={{ breakInside: 'avoid', pageBreakInside: 'avoid' }}
-                                >
-                                    <div>
-                                        {/* Brand Header with Logo */}
-                                        <div className="flex items-center justify-center gap-2 mb-2">
-                                            <img src="/icon.svg" alt="" className="w-7 h-7" />
-                                            <h1 className="text-xl font-black text-center text-[#1E3A8A] tracking-wider uppercase">
-                                                MOUNTAIN MAMA&apos;S CAFE
-                                            </h1>
-                                        </div>
+            {(() => {
+                const ticketCards = ordersToPrint.flatMap((order) => {
+                    const items = order.order_items || [];
+                    if (items.length === 0) {
+                        return [
+                            <div 
+                                key={`${order.id}-empty`} 
+                                className="print-ticket-card border border-gray-400 p-6 rounded-2xl break-inside-avoid bg-white flex flex-col justify-between"
+                                style={{ breakInside: 'avoid', pageBreakInside: 'avoid' }}
+                            >
+                                <div>
+                                    {/* Brand Header with Logo */}
+                                    <div className="flex items-center justify-center gap-2 mb-2">
+                                        <img src="/icon.svg" alt="" className="w-7 h-7" />
+                                        <h1 className="text-xl font-black text-center text-[#1E3A8A] tracking-wider uppercase">
+                                            MOUNTAIN MAMA&apos;S CAFE
+                                        </h1>
+                                    </div>
 
-                                        {/* Dashed separator */}
-                                        <div className="border-t border-dashed border-gray-300 my-2" />
+                                    {/* Dashed separator */}
+                                    <div className="border-t border-dashed border-gray-300 my-2 dashed-sep" />
 
-                                        {/* Gray Rounded Meta Box */}
-                                        <div className="bg-[#F3F4F6] p-2.5 rounded-lg text-[11px] text-gray-800 font-medium border border-gray-200">
-                                            <div className="grid grid-cols-2 gap-x-3 gap-y-1">
-                                                <div className="break-words">
-                                                    <span className="font-bold text-gray-600">Name:</span>{' '}
-                                                    <span className="uppercase font-bold text-gray-900">{order.guide_name || order.customer_name}</span>
-                                                </div>
-                                                <div className="break-words text-right">
-                                                    <span className="font-bold text-gray-600">Tour Date:</span>{' '}
-                                                    <span className="font-bold text-gray-900">{formatDateUS(order.tour_date)}</span>
-                                                </div>
-                                                <div className="break-words">
-                                                    <span className="font-bold text-gray-600">Group:</span>{' '}
-                                                    <span className="text-gray-900 font-bold">{order.tour_companies?.name || 'Individual'}</span>
-                                                </div>
-                                                <div className="break-words text-right">
-                                                    <span className="font-bold text-gray-600">Guide:</span>{' '}
-                                                    <span className="text-gray-900 font-bold">{order.guide_name || 'None'}</span>
-                                                </div>
+                                    {/* Gray Rounded Meta Box */}
+                                    <div className="bg-[#F3F4F6] p-2.5 rounded-lg text-[11px] text-gray-800 font-medium border border-gray-200 meta-box">
+                                        <div className="grid grid-cols-2 gap-x-3 gap-y-1">
+                                            <div className="break-words">
+                                                <span className="font-bold text-gray-600">Guest Name:</span>{' '}
+                                                <span className="uppercase font-bold text-gray-900">{order.customer_name}</span>
+                                            </div>
+                                            <div className="break-words text-right">
+                                                <span className="font-bold text-gray-600">Tour Date:</span>{' '}
+                                                <span className="font-bold text-gray-900">{formatDateUS(order.tour_date)}</span>
+                                            </div>
+                                            <div className="break-words">
+                                                <span className="font-bold text-gray-600">Group:</span>{' '}
+                                                <span className="text-gray-900 font-bold">{order.tour_companies?.name || 'Individual'}</span>
+                                            </div>
+                                            <div className="break-words text-right">
+                                                <span className="font-bold text-gray-600">Guide:</span>{' '}
+                                                <span className="text-gray-900 font-bold">{order.guide_name || 'None'}</span>
                                             </div>
                                         </div>
-
-                                        {/* Pickup Time */}
-                                        <div className="mt-2 flex items-center gap-1.5 text-[11px] font-bold text-gray-900">
-                                            <span>⏰ Pick-up:</span>
-                                            <span className="font-extrabold">{order.pickup_time || 'None'}</span>
-                                        </div>
-
-                                        {/* Order Details Header */}
-                                        <div className="mt-2 pb-0.5 border-b-2 border-black">
-                                            <p className="text-[10px] font-bold tracking-wider text-gray-900">Order Details</p>
-                                        </div>
-
-                                        {/* Order Items list */}
-                                        <div className="my-2">
-                                            <p className="text-xs text-gray-400 italic">No items found for this order</p>
-                                        </div>
                                     </div>
 
-                                    {/* Footer block */}
-                                    <div>
-                                        <div className="text-center my-2">
-                                            <p className="text-lg font-bold text-amber-600 italic font-serif">Enjoy your meal!</p>
-                                            <p className="text-[7px] font-black text-gray-400 tracking-widest uppercase mt-0.5">
-                                                THANK YOU FOR SUPPORTING LOCAL BUSINESSES!
-                                            </p>
-                                        </div>
+                                    {/* Pickup Time */}
+                                    <div className="mt-2 flex items-center gap-1.5 text-[11px] font-bold text-gray-900 pickup-time">
+                                        <span>⏰ Pick-up:</span>
+                                        <span className="font-extrabold">{order.pickup_time || 'None'}</span>
+                                    </div>
 
-                                        <div className="pt-2 border-t border-gray-100 flex justify-between text-[7px] text-gray-400 font-bold uppercase tracking-widest">
-                                            <span>Order ID: {order.id.includes('-') ? order.id.split('-')[0].toUpperCase() : order.id.toUpperCase()}</span>
-                                            <span>Printed: {isMounted ? formatDateTimeUS(new Date()) : ''}</span>
-                                        </div>
+                                    {/* Order Details Header */}
+                                    <div className="mt-2 pb-0.5 border-b border-gray-300 order-details-header">
+                                        <p className="text-[10px] font-bold tracking-wider text-gray-900">Order Details</p>
+                                    </div>
+
+                                    {/* Order Items list */}
+                                    <div className="my-2">
+                                        <p className="text-xs text-gray-400 italic">No items found for this order</p>
                                     </div>
                                 </div>
-                            ];
+
+                                {/* Footer block */}
+                                <div>
+                                    <div className="text-center my-2">
+                                        <p className="text-lg font-bold text-amber-600 italic font-serif enjoy-text">Enjoy your meal!</p>
+                                        <p className="text-[7px] font-black text-gray-400 tracking-widest uppercase mt-0.5 support-text">
+                                            THANK YOU FOR SUPPORTING LOCAL BUSINESSES!
+                                        </p>
+                                    </div>
+
+                                    <div className="pt-2 border-t border-gray-100 flex justify-between text-[7px] text-gray-400 font-bold uppercase tracking-widest card-footer-info">
+                                        <span>Order ID: {order.id.includes('-') ? order.id.split('-')[0].toUpperCase() : order.id.toUpperCase()}</span>
+                                        <span>Printed: {isMounted ? formatDateTimeUS(new Date()) : ''}</span>
+                                    </div>
+                                </div>
+                            </div>
+                        ];
+                    }
+
+                    // Expand each item of quantity Q into Q individual items of quantity 1
+                    const expandedItems = items.flatMap((item: any, itemIdx: number) => {
+                        const qty = item.quantity || 1;
+                        const singleItems = [];
+                        for (let k = 0; k < qty; k++) {
+                            singleItems.push({
+                                ...item,
+                                quantity: 1,
+                                _itemIndex: k
+                            });
                         }
+                        return singleItems;
+                    });
 
-                        // Expand each item of quantity Q into Q individual items of quantity 1
-                        const expandedItems = items.flatMap((item: any, itemIdx: number) => {
-                            const qty = item.quantity || 1;
-                            const singleItems = [];
-                            for (let k = 0; k < qty; k++) {
-                                singleItems.push({
-                                    ...item,
-                                    quantity: 1,
-                                    _itemIndex: k
-                                });
-                            }
-                            return singleItems;
-                        });
+                    return expandedItems.map((item: any, itemIdx: number) => {
+                        const ticketKey = `${order.id}-${item.id || itemIdx}-${item._itemIndex}`;
+                        return (
+                            <div 
+                                key={ticketKey} 
+                                className="print-ticket-card border border-gray-400 p-4 rounded-2xl break-inside-avoid bg-white flex flex-col justify-between"
+                                style={{ breakInside: 'avoid', pageBreakInside: 'avoid' }}
+                            >
+                                <div>
+                                    {/* Brand Header with Logo */}
+                                    <div className="flex items-center justify-center gap-2 mb-2">
+                                        <img src="/icon.svg" alt="" className="w-7 h-7" />
+                                        <h1 className="text-xl font-black text-center text-[#1E3A8A] tracking-wider uppercase">
+                                            MOUNTAIN MAMA&apos;S CAFE
+                                        </h1>
+                                    </div>
 
-                        return expandedItems.map((item: any, itemIdx: number) => {
-                            const ticketKey = `${order.id}-${item.id || itemIdx}-${item._itemIndex}`;
-                            return (
-                                <div 
-                                    key={ticketKey} 
-                                    className="print-ticket-card border border-gray-400 p-4 rounded-2xl break-inside-avoid bg-white flex flex-col justify-between"
-                                    style={{ breakInside: 'avoid', pageBreakInside: 'avoid' }}
-                                >
-                                    <div>
-                                        {/* Brand Header with Logo */}
-                                        <div className="flex items-center justify-center gap-2 mb-2">
-                                            <img src="/icon.svg" alt="" className="w-7 h-7" />
-                                            <h1 className="text-xl font-black text-center text-[#1E3A8A] tracking-wider uppercase">
-                                                MOUNTAIN MAMA&apos;S CAFE
-                                            </h1>
-                                        </div>
+                                    {/* Dashed separator */}
+                                    <div className="border-t border-dashed border-gray-300 my-2 dashed-sep" />
 
-                                        {/* Dashed separator */}
-                                        <div className="border-t border-dashed border-gray-300 my-2" />
-
-                                        {/* Gray Rounded Meta Box */}
-                                        <div className="bg-[#F3F4F6] p-2.5 rounded-lg text-[11px] text-gray-800 font-medium border border-gray-200">
-                                            <div className="grid grid-cols-2 gap-x-3 gap-y-1">
-                                                <div className="break-words">
-                                                    <span className="font-bold text-gray-600">Name:</span>{' '}
-                                                    <span className="uppercase font-bold text-gray-900">{order.guide_name || order.customer_name}</span>
-                                                </div>
-                                                <div className="break-words text-right">
-                                                    <span className="font-bold text-gray-600">Tour Date:</span>{' '}
-                                                    <span className="font-bold text-gray-900">{formatDateUS(order.tour_date)}</span>
-                                                </div>
-                                                <div className="break-words">
-                                                    <span className="font-bold text-gray-600">Group:</span>{' '}
-                                                    <span className="text-gray-900 font-bold">{order.tour_companies?.name || 'Individual'}</span>
-                                                </div>
-                                                <div className="break-words text-right">
-                                                    <span className="font-bold text-gray-600">Guide:</span>{' '}
-                                                    <span className="text-gray-900 font-bold">{order.guide_name || 'None'}</span>
-                                                </div>
+                                    {/* Gray Rounded Meta Box */}
+                                    <div className="bg-[#F3F4F6] p-2.5 rounded-lg text-[11px] text-gray-800 font-medium border border-gray-200 meta-box">
+                                        <div className="grid grid-cols-2 gap-x-3 gap-y-1">
+                                            <div className="break-words">
+                                                <span className="font-bold text-gray-600">Guest Name:</span>{' '}
+                                                <span className="uppercase font-bold text-gray-900">{item.guest_name || order.customer_name}</span>
+                                            </div>
+                                            <div className="break-words text-right">
+                                                <span className="font-bold text-gray-600">Tour Date:</span>{' '}
+                                                <span className="font-bold text-gray-900">{formatDateUS(order.tour_date)}</span>
+                                            </div>
+                                            <div className="break-words">
+                                                <span className="font-bold text-gray-600">Group:</span>{' '}
+                                                <span className="text-gray-900 font-bold">{order.tour_companies?.name || 'Individual'}</span>
+                                            </div>
+                                            <div className="break-words text-right">
+                                                <span className="font-bold text-gray-600">Guide:</span>{' '}
+                                                <span className="text-gray-900 font-bold">{order.guide_name || 'None'}</span>
                                             </div>
                                         </div>
-
-                                        {/* Pickup Time */}
-                                        <div className="mt-2 flex items-center gap-1.5 text-[11px] font-bold text-gray-900">
-                                            <span>⏰ Pick-up:</span>
-                                            <span className="font-extrabold">{order.pickup_time || 'None'}</span>
-                                        </div>
-
-                                        {/* Order Details Header */}
-                                        <div className="mt-2 pb-0.5 border-b-2 border-black">
-                                            <p className="text-[10px] font-bold tracking-wider text-gray-900">Order Details</p>
-                                        </div>
-
-                                        {/* Order Items list */}
-                                        <div className="my-2">
-                                            <p className="font-bold text-sm text-gray-900">
-                                                {item.quantity}x {item.meal_name}
-                                            </p>
-                                            <p className="text-xs text-gray-700 italic leading-snug">
-                                                {[
-                                                    formatBoxType(item.box_type),
-                                                    item.bread_type,
-                                                    item.cookie_choice,
-                                                    ...((item.custom_fields && typeof item.custom_fields === 'object')
-                                                        ? Object.entries(item.custom_fields)
-                                                            .filter(([key, val]) => val && !STANDARD_ITEM_KEYS.includes(key))
-                                                            .map(([key, val]) => `${formatFieldName(key)}: ${String(val)}`)
-                                                        : [])
-                                                ].filter(Boolean).join(' • ')}
-                                            </p>
-                                            {(item.guest_name || item.customizations) && (
-                                                <p className="text-xs text-gray-800 font-medium leading-snug mt-0.5">
-                                                    {item.guest_name && <span className="font-bold text-violet-700">{item.guest_name}</span>}
-                                                    {item.guest_name && item.customizations && ' '}
-                                                    {item.customizations && <span className="text-red-600 italic font-semibold">{item.customizations}</span>}
-                                                </p>
-                                            )}
-
-                                            {/* Company prep instructions in ticket details */}
-                                            {order.tour_companies?.prep_instructions && (
-                                                <div className="mt-1.5 bg-amber-50 border border-amber-100 p-2 rounded-lg text-xs font-semibold text-amber-900">
-                                                    ⚠️ Note: {order.tour_companies.prep_instructions}
-                                                </div>
-                                            )}
-
-                                            {/* General order notes */}
-                                            {order.notes && (
-                                                <>
-                                                    <div className="w-10 border-t border-dashed border-gray-300 my-1.5" />
-                                                    <p className="font-bold text-xs text-gray-900">Notes</p>
-                                                    <p className="text-xs text-gray-800 italic leading-snug">
-                                                        {order.notes}
-                                                    </p>
-                                                </>
-                                            )}
-                                        </div>
                                     </div>
 
-                                    {/* Footer block */}
-                                    <div>
-                                        <div className="text-center my-2">
-                                            <p className="text-lg font-bold text-amber-600 italic font-serif">Enjoy your meal!</p>
-                                            <p className="text-[7px] font-black text-gray-400 tracking-widest uppercase mt-0.5">
-                                                THANK YOU FOR SUPPORTING LOCAL BUSINESSES!
-                                            </p>
-                                        </div>
+                                    {/* Pickup Time */}
+                                    <div className="mt-2 flex items-center gap-1.5 text-[11px] font-bold text-gray-900 pickup-time">
+                                        <span>⏰ Pick-up:</span>
+                                        <span className="font-extrabold">{order.pickup_time || 'None'}</span>
+                                    </div>
 
-                                        <div className="pt-2 border-t border-gray-100 flex justify-between text-[7px] text-gray-400 font-bold uppercase tracking-widest">
-                                            <span>Order ID: {order.id.includes('-') ? order.id.split('-')[0].toUpperCase() : order.id.toUpperCase()}</span>
-                                            <span>Printed: {isMounted ? formatDateTimeUS(new Date()) : ''}</span>
-                                        </div>
+                                    {/* Order Details Header */}
+                                    <div className="mt-2 pb-0.5 border-b border-gray-300 order-details-header">
+                                        <p className="text-[10px] font-bold tracking-wider text-gray-900">Order Details</p>
+                                    </div>
+
+                                    {/* Order Items list */}
+                                    <div className="my-2">
+                                        <p className="font-bold text-sm text-gray-900 item-title">
+                                            {item.quantity}x {item.meal_name}
+                                        </p>
+                                        <p className="text-xs text-gray-700 italic leading-snug item-options">
+                                            {[
+                                                formatBoxType(item.box_type),
+                                                item.bread_type,
+                                                item.cookie_choice,
+                                                ...((item.custom_fields && typeof item.custom_fields === 'object')
+                                                    ? Object.entries(item.custom_fields)
+                                                        .filter(([key, val]) => val && !STANDARD_ITEM_KEYS.includes(key))
+                                                        .map(([key, val]) => `${formatFieldName(key)}: ${String(val)}`)
+                                                    : [])
+                                            ].filter(Boolean).join(' • ')}
+                                        </p>
+                                        {(item.guest_name || item.customizations) && (
+                                            <p className="text-xs text-gray-800 font-medium leading-snug mt-0.5 item-notes">
+                                                {item.guest_name && <span className="font-bold text-violet-700">{item.guest_name}</span>}
+                                                {item.guest_name && item.customizations && ' '}
+                                                {item.customizations && <span className="text-red-600 italic font-semibold">{item.customizations}</span>}
+                                            </p>
+                                        )}
+
+                                        {/* Company prep instructions in ticket details */}
+                                        {order.tour_companies?.prep_instructions && (
+                                            <div className="mt-1.5 bg-amber-50 border border-amber-100 p-2 rounded-lg text-xs font-semibold text-amber-900 item-notes">
+                                                ⚠️ Note: {order.tour_companies.prep_instructions.length > 100 ? order.tour_companies.prep_instructions.slice(0, 100) + '...' : order.tour_companies.prep_instructions}
+                                            </div>
+                                        )}
+
+                                        {/* General order notes */}
+                                        {order.notes && (
+                                            <>
+                                                <div className="w-10 border-t border-dashed border-gray-300 my-1.5 dashed-sep" />
+                                                <p className="font-bold text-xs text-gray-900 item-notes">Notes</p>
+                                                <p className="text-xs text-gray-800 italic leading-snug item-notes">
+                                                    {order.notes.length > 100 ? order.notes.slice(0, 100) + '...' : order.notes}
+                                                </p>
+                                            </>
+                                        )}
                                     </div>
                                 </div>
-                            );
-                        });
-                    })}
-                </div>
-            </div>
+
+                                {/* Footer block */}
+                                <div>
+                                    <div className="text-center my-2">
+                                        <p className="text-lg font-bold text-amber-600 italic font-serif enjoy-text">Enjoy your meal!</p>
+                                        <p className="text-[7px] font-black text-gray-400 tracking-widest uppercase mt-0.5 support-text">
+                                            THANK YOU FOR SUPPORTING LOCAL BUSINESSES!
+                                        </p>
+                                    </div>
+
+                                    <div className="pt-2 border-t border-gray-100 flex justify-between text-[7px] text-gray-400 font-bold uppercase tracking-widest card-footer-info">
+                                        <span>Order ID: {order.id.includes('-') ? order.id.split('-')[0].toUpperCase() : order.id.toUpperCase()}</span>
+                                        <span>Printed: {isMounted ? formatDateTimeUS(new Date()) : ''}</span>
+                                    </div>
+                                </div>
+                            </div>
+                        );
+                    });
+                });
+
+                const ticketPages = [];
+                for (let i = 0; i < ticketCards.length; i += 6) {
+                    ticketPages.push(ticketCards.slice(i, i + 6));
+                }
+
+                return (
+                    <div className="print-only-section print-tickets-container">
+                        {ticketPages.map((pageGroup, pageIdx) => (
+                            <div key={`page-${pageIdx}`} className="print-ticket-page">
+                                <div className="print-tickets-grid">
+                                    {pageGroup}
+                                </div>
+                            </div>
+                        ))}
+                    </div>
+                );
+            })()}
 
             {/* Print Zebra Labels Layout */}
             <div className="print-only-section print-zebra-container">
@@ -1988,7 +2008,8 @@ export function OrdersClient({ initialOrders, companies }: OrdersClientProps) {
 
             <style jsx global>{`
                 @page ticket-page {
-                    margin: 0;
+                    size: letter;
+                    margin: 0 !important;
                 }
 
                 @page table-page {
@@ -2023,8 +2044,27 @@ export function OrdersClient({ initialOrders, companies }: OrdersClientProps) {
                     body.print-tickets-mode .print-tickets-container {
                         display: block !important;
                         position: absolute !important;
-                        top: 0; left: 0; width: 100%;
-                        page: table-page;
+                        top: 0 !important;
+                        left: 0 !important;
+                        width: 8.5in !important;
+                        margin: 0 !important;
+                        padding: 0 !important;
+                        z-index: 99999 !important;
+                        background: white !important;
+                        page: ticket-page;
+                    }
+
+                    /* Specific container styling for each ticket sheet page */
+                    .print-ticket-page {
+                        display: block !important;
+                        width: 8.5in !important;
+                        height: 11in !important;
+                        padding-top: 0.625in !important;
+                        padding-left: 0.625in !important;
+                        box-sizing: border-box !important;
+                        page-break-after: always !important;
+                        break-after: page !important;
+                        background: white !important;
                     }
 
                     body.print-table-mode .print-table-container {
@@ -2041,21 +2081,96 @@ export function OrdersClient({ initialOrders, companies }: OrdersClientProps) {
                         page: ticket-page;
                     }
 
-                    /* Tickets 2-column grid layout for print (Standard Paper) */
+                    /* Tickets 2-column grid layout for print (3" x 3" square labels, 6 per page) */
                     body.print-tickets-mode .print-tickets-grid {
                         display: grid !important;
-                        grid-template-columns: repeat(2, 1fr) !important;
-                        gap: 1.5rem !important;
-                        width: 100% !important;
+                        grid-template-columns: repeat(2, 3in) !important;
+                        grid-auto-rows: 3in !important;
+                        gap: 0.375in 1.25in !important;
+                        width: 7.25in !important;
+                        padding: 0 !important;
+                        margin: 0 !important;
+                        box-sizing: border-box !important;
                     }
 
-                    /* Standard ticket card styling */
+                    /* 3" x 3" ticket card styling */
                     .print-ticket-card {
+                        width: 3in !important;
+                        height: 3in !important;
                         border: 1.5px solid #4b5563 !important;
-                        border-radius: 1rem !important;
+                        border-radius: 0.5rem !important;
                         page-break-inside: avoid !important;
                         break-inside: avoid !important;
-                        padding: 1.5rem !important;
+                        padding: 0.5rem !important;
+                        box-sizing: border-box !important;
+                        display: flex !important;
+                        flex-direction: column !important;
+                        justify-content: space-between !important;
+                        background: white !important;
+                        font-size: 9px !important;
+                    }
+
+                    .print-ticket-card h1 {
+                        font-size: 12px !important;
+                        line-height: 1.1 !important;
+                    }
+
+                    .print-ticket-card img {
+                        width: 18px !important;
+                        height: 18px !important;
+                    }
+
+                    .print-ticket-card .dashed-sep {
+                        margin: 0.15rem 0 !important;
+                    }
+
+                    .print-ticket-card .meta-box {
+                        padding: 0.25rem 0.35rem !important;
+                        font-size: 8.5px !important;
+                        line-height: 1.2 !important;
+                        border-radius: 0.25rem !important;
+                    }
+
+                    .print-ticket-card .pickup-time {
+                        margin-top: 0.2rem !important;
+                        font-size: 9.5px !important;
+                    }
+
+                    .print-ticket-card .order-details-header {
+                        margin-top: 0.2rem !important;
+                        font-size: 8.5px !important;
+                    }
+
+                    .print-ticket-card .item-title {
+                        font-size: 11px !important;
+                        line-height: 1.2 !important;
+                    }
+
+                    .print-ticket-card .item-options {
+                        font-size: 8.5px !important;
+                        line-height: 1.2 !important;
+                    }
+
+                    .print-ticket-card .item-notes {
+                        font-size: 8.5px !important;
+                        line-height: 1.2 !important;
+                    }
+
+                    .print-ticket-card .enjoy-text {
+                        font-size: 12px !important;
+                        line-height: 1.1 !important;
+                        margin: 0.25rem 0 0 0 !important;
+                    }
+
+                    .print-ticket-card .support-text {
+                        font-size: 6px !important;
+                        line-height: 1.1 !important;
+                    }
+
+                    .print-ticket-card .card-footer-info {
+                        font-size: 6px !important;
+                        padding-top: 0.2rem !important;
+                        margin-top: 0.2rem !important;
                     }
 
                     /* Zebra grid layout: responsive columns that auto-fit to 1 column on Zebra, 2 columns on Letter */
