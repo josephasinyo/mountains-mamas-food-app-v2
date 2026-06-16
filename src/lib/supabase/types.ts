@@ -24,6 +24,7 @@ export interface TourCompany {
     prep_instructions?: string | null;
     default_slug?: string | null;
     generic_slug?: string | null;
+    logo_url?: string | null;
     created_at: string;
     updated_at: string;
 }
