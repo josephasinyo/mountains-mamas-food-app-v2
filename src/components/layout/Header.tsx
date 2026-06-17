@@ -44,12 +44,8 @@ export default function Header() {
           <div className={styles.logoContainer}>
             {company && !config?.use_mountain_mamas_branding ? (
               <div className="flex items-center gap-2">
-                {company.logo_url ? (
+                {company.logo_url && (
                   <img src={company.logo_url} alt={`${company.name} Logo`} className="h-8 w-8 object-contain rounded-lg shrink-0" />
-                ) : (
-                  <div className="size-8 rounded-xl bg-gradient-to-br from-indigo-600 via-violet-600 to-purple-600 flex items-center justify-center text-xs font-black text-white shadow-md shrink-0">
-                    {company.name.charAt(0).toUpperCase()}
-                  </div>
                 )}
                 <span className={styles.mountainText}>{company.name.toUpperCase()}</span>
               </div>
