@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
@@ -191,6 +191,18 @@ export function QuantitiesClient({ initialOrders, companies }: QuantitiesClientP
     const [activeTab, setActiveTab] = useState<'smart' | 'summary'>('smart');
     const [smartPerspective, setSmartPerspective] = useState<'sandwich' | 'company'>('sandwich');
     const [expandedCompanies, setExpandedCompanies] = useState<Record<string, boolean>>({});
+    const [activePrintMode, setActivePrintMode] = useState<'smart' | 'summary' | null>(null);
+
+    useEffect(() => {
+        if (activePrintMode) {
+            // Use setTimeout to ensure DOM is updated with print mode classes before printing
+            const timer = setTimeout(() => {
+                window.print();
+                setActivePrintMode(null);
+            }, 100);
+            return () => clearTimeout(timer);
+        }
+    }, [activePrintMode]);
 
     const handleDateRangeChange = (range: string) => {
         setDateRange(range);
@@ -207,6 +219,38 @@ export function QuantitiesClient({ initialOrders, companies }: QuantitiesClientP
             ...prev,
             [key]: !prev[key]
         }));
+    };
+
+    const toggleAllCompaniesForMeal = (mealName: string, companiesList: any[]) => {
+        const keys = companiesList.map(co => `${mealName}-${co.companyName}`);
+        const allExpanded = keys.every(k => expandedCompanies[k]);
+        setExpandedCompanies(prev => {
+            const next = { ...prev };
+            keys.forEach(k => {
+                if (!allExpanded) {
+                    next[k] = true;
+                } else {
+                    delete next[k];
+                }
+            });
+            return next;
+        });
+    };
+
+    const toggleAllMealsForCompany = (companyName: string, mealsList: any[]) => {
+        const keys = mealsList.map(meal => `${companyName}-${meal.mealName}`);
+        const allExpanded = keys.every(k => expandedCompanies[k]);
+        setExpandedCompanies(prev => {
+            const next = { ...prev };
+            keys.forEach(k => {
+                if (!allExpanded) {
+                    next[k] = true;
+                } else {
+                    delete next[k];
+                }
+            });
+            return next;
+        });
     };
 
     const filteredOrders = orders.filter(o => {
@@ -372,7 +416,6 @@ export function QuantitiesClient({ initialOrders, companies }: QuantitiesClientP
             const existingLunch = companyGroup.lunches.find(l => 
                 (l.boxType || '').toLowerCase() === (item.box_type || '').toLowerCase() &&
                 (l.breadType || '').toLowerCase() === (item.bread_type || '').toLowerCase() &&
-                (l.cookieChoice || '').toLowerCase() === (item.cookie_choice || '').toLowerCase() &&
                 (l.customizations || '').toLowerCase().trim() === (item.customizations || '').toLowerCase().trim()
             );
 
@@ -384,7 +427,7 @@ export function QuantitiesClient({ initialOrders, companies }: QuantitiesClientP
                     quantity: qty,
                     boxType: item.box_type,
                     breadType: item.bread_type,
-                    cookieChoice: item.cookie_choice,
+                    cookieChoice: null,
                     customizations: item.customizations
                 });
             }
@@ -479,7 +522,6 @@ export function QuantitiesClient({ initialOrders, companies }: QuantitiesClientP
             const existingLunch = mealGroup.lunches.find(l => 
                 (l.boxType || '').toLowerCase() === (item.box_type || '').toLowerCase() &&
                 (l.breadType || '').toLowerCase() === (item.bread_type || '').toLowerCase() &&
-                (l.cookieChoice || '').toLowerCase() === (item.cookie_choice || '').toLowerCase() &&
                 (l.customizations || '').toLowerCase().trim() === (item.customizations || '').toLowerCase().trim()
             );
 
@@ -491,7 +533,7 @@ export function QuantitiesClient({ initialOrders, companies }: QuantitiesClientP
                     quantity: qty,
                     boxType: item.box_type,
                     breadType: item.bread_type,
-                    cookieChoice: item.cookie_choice,
+                    cookieChoice: null,
                     customizations: item.customizations
                 });
             }
@@ -521,9 +563,16 @@ export function QuantitiesClient({ initialOrders, companies }: QuantitiesClientP
                         <Button 
                             variant="outline" 
                             className="gap-2 h-11 px-4 rounded-xl border-gray-200 hover:border-violet-200 hover:bg-violet-50 transition-all font-bold shadow-sm" 
-                            onClick={() => window.print()}
+                            onClick={() => setActivePrintMode('smart')}
                         >
-                            <Printer className="size-4 text-violet-600" /> Print Kitchen Sheet
+                            <Printer className="size-4 text-violet-600" /> Print Smart Prep Sheet
+                        </Button>
+                        <Button 
+                            variant="outline" 
+                            className="gap-2 h-11 px-4 rounded-xl border-gray-200 hover:border-violet-200 hover:bg-violet-50 transition-all font-bold shadow-sm" 
+                            onClick={() => setActivePrintMode('summary')}
+                        >
+                            <Printer className="size-4 text-violet-600" /> Print Standard Totals
                         </Button>
                     </div>
                 </div>
@@ -743,8 +792,23 @@ export function QuantitiesClient({ initialOrders, companies }: QuantitiesClientP
                                                                 {item.boxTypes.sandwichOnly > 0 && `${item.boxTypes.sandwichOnly} Sandwich Only`}
                                                             </p>
                                                         </div>
-                                                        <div className="size-11 rounded-full bg-violet-600 text-white flex items-center justify-center font-black text-lg shadow-sm shadow-violet-200">
-                                                            {item.totalQty}
+                                                        <div className="flex items-center gap-2">
+                                                            <Button
+                                                                variant="ghost"
+                                                                size="icon"
+                                                                className="h-8 w-8 rounded-lg text-gray-500 hover:text-violet-600 hover:bg-violet-50 transition-colors"
+                                                                title="Expand/Collapse All"
+                                                                onClick={() => toggleAllCompaniesForMeal(item.mealName, item.companies)}
+                                                            >
+                                                                {item.companies.every(co => !!expandedCompanies[`${item.mealName}-${co.companyName}`]) ? (
+                                                                    <ChevronUp className="size-5" />
+                                                                ) : (
+                                                                    <ChevronDown className="size-5" />
+                                                                )}
+                                                            </Button>
+                                                            <div className="size-11 rounded-full bg-violet-600 text-white flex items-center justify-center font-black text-lg shadow-sm shadow-violet-200">
+                                                                {item.totalQty}
+                                                            </div>
                                                         </div>
                                                     </div>
 
@@ -788,26 +852,18 @@ export function QuantitiesClient({ initialOrders, companies }: QuantitiesClientP
                                                                             )}
                                                                             {co.lunches.map((lunch, lIdx) => (
                                                                                 <div key={lIdx} className="flex items-start justify-between py-2 border-b border-gray-100 last:border-0 text-xs text-gray-700 hover:bg-gray-50/50 px-2 rounded-lg transition-colors">
-                                                                                    <div className="space-y-1 w-full">
+                                                                                    <div className="w-full">
                                                                                         <div className="flex items-center flex-wrap gap-2">
                                                                                             <span className="font-black text-violet-700 bg-violet-50 px-1.5 py-0.5 rounded text-[10px] border border-violet-100">
                                                                                                 {lunch.quantity}x
                                                                                             </span>
-                                                                                            <span className="text-gray-400 font-semibold text-[10px] uppercase">
+                                                                                            <span className="text-gray-400 font-semibold text-[10px] uppercase mr-1">
                                                                                                 {lunch.boxType || 'No Box'}
                                                                                             </span>
-                                                                                        </div>
-                                                                                        <div className="flex flex-wrap gap-1 mt-1.5">
                                                                                             {/* Bread Choice */}
                                                                                             {lunch.breadType && !['sandwich', 'none', 'no bread', 'standard'].includes(lunch.breadType.toLowerCase()) && (
                                                                                                 <span className="px-2 py-0.5 rounded-md bg-amber-50 text-amber-700 border border-amber-100/70 text-[10px] font-bold">
                                                                                                     🍞 {lunch.breadType === 'gluten-free' || lunch.breadType === 'gf' ? 'Gluten-Free' : lunch.breadType}
-                                                                                                </span>
-                                                                                            )}
-                                                                                            {/* Cookie Choice */}
-                                                                                            {lunch.cookieChoice && !['no cookie', 'none', 'no'].includes(lunch.cookieChoice.toLowerCase()) && (
-                                                                                                <span className="px-2 py-0.5 rounded-md bg-amber-50 text-amber-700 border border-amber-100/70 text-[10px] font-bold">
-                                                                                                    🍪 {lunch.cookieChoice}
                                                                                                 </span>
                                                                                             )}
                                                                                             {/* Customizations */}
@@ -818,8 +874,7 @@ export function QuantitiesClient({ initialOrders, companies }: QuantitiesClientP
                                                                                             )}
                                                                                             {/* Standard notice if nothing custom */}
                                                                                             {!lunch.customizations && 
-                                                                                             (!lunch.breadType || ['sandwich', 'none', 'no bread', 'standard'].includes(lunch.breadType.toLowerCase())) && 
-                                                                                             (!lunch.cookieChoice || ['no cookie', 'none', 'no'].includes(lunch.cookieChoice.toLowerCase())) && (
+                                                                                             (!lunch.breadType || ['sandwich', 'none', 'no bread', 'standard'].includes(lunch.breadType.toLowerCase())) && (
                                                                                                 <span className="text-[10px] text-gray-400 italic font-medium">Standard preparation</span>
                                                                                              )}
                                                                                         </div>
@@ -832,6 +887,32 @@ export function QuantitiesClient({ initialOrders, companies }: QuantitiesClientP
                                                             );
                                                         })}
                                                     </div>
+                                                    {(() => {
+                                                        const breadCounts: Record<string, number> = {};
+                                                        item.companies.forEach(co => {
+                                                            co.lunches.forEach(lunch => {
+                                                                const rawBread = lunch.breadType;
+                                                                const isStandard = !rawBread || ['sandwich', 'none', 'no bread', 'standard'].includes(rawBread.toLowerCase());
+                                                                const displayBread = isStandard 
+                                                                    ? 'Standard' 
+                                                                    : (rawBread === 'gluten-free' || rawBread === 'gf' ? 'Gluten-Free' : rawBread);
+                                                                breadCounts[displayBread] = (breadCounts[displayBread] || 0) + lunch.quantity;
+                                                            });
+                                                        });
+                                                        return (
+                                                            <div className="px-5 py-3.5 bg-violet-50/30 border-t border-violet-100/50 flex flex-col gap-2.5 text-xs rounded-b-2xl">
+                                                                <span className="font-extrabold uppercase text-[10px] tracking-wider text-violet-800 text-left">Bread Prep Totals</span>
+                                                                <div className="flex flex-wrap gap-2 justify-start">
+                                                                    {Object.entries(breadCounts).map(([bread, count], bIdx) => (
+                                                                        <span key={bIdx} className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-white border border-violet-100 text-violet-800 font-bold shadow-sm shadow-violet-100/50 text-[10px]">
+                                                                            <span className="text-gray-500 font-medium">{bread}:</span>
+                                                                            <span className="font-black text-violet-700">{count}</span>
+                                                                        </span>
+                                                                    ))}
+                                                                </div>
+                                                            </div>
+                                                        );
+                                                    })()}
                                                 </Card>
                                             ))
                                         ) : (
@@ -856,8 +937,23 @@ export function QuantitiesClient({ initialOrders, companies }: QuantitiesClientP
                                                                 {company.meals.length} meal type{company.meals.length > 1 ? 's' : ''} ordered
                                                             </p>
                                                         </div>
-                                                        <div className="size-11 rounded-full bg-violet-600 text-white flex items-center justify-center font-black text-lg shadow-sm shadow-violet-200">
-                                                            {company.totalQty}
+                                                        <div className="flex items-center gap-2">
+                                                            <Button
+                                                                variant="ghost"
+                                                                size="icon"
+                                                                className="h-8 w-8 rounded-lg text-gray-500 hover:text-violet-600 hover:bg-violet-50 transition-colors"
+                                                                title="Expand/Collapse All"
+                                                                onClick={() => toggleAllMealsForCompany(company.companyName, company.meals)}
+                                                            >
+                                                                {company.meals.every(meal => !!expandedCompanies[`${company.companyName}-${meal.mealName}`]) ? (
+                                                                    <ChevronUp className="size-5" />
+                                                                ) : (
+                                                                    <ChevronDown className="size-5" />
+                                                                )}
+                                                            </Button>
+                                                            <div className="size-11 rounded-full bg-violet-600 text-white flex items-center justify-center font-black text-lg shadow-sm shadow-violet-200">
+                                                                {company.totalQty}
+                                                            </div>
                                                         </div>
                                                     </div>
 
@@ -901,26 +997,18 @@ export function QuantitiesClient({ initialOrders, companies }: QuantitiesClientP
                                                                         <div className="p-3 bg-white border-t border-gray-100 space-y-2 max-h-96 overflow-y-auto">
                                                                             {meal.lunches.map((lunch, lIdx) => (
                                                                                 <div key={lIdx} className="flex items-start justify-between py-2 border-b border-gray-100 last:border-0 text-xs text-gray-700 hover:bg-gray-50/50 px-2 rounded-lg transition-colors">
-                                                                                    <div className="space-y-1 w-full">
+                                                                                    <div className="w-full">
                                                                                         <div className="flex items-center flex-wrap gap-2">
                                                                                             <span className="font-black text-violet-700 bg-violet-50 px-1.5 py-0.5 rounded text-[10px] border border-violet-100">
                                                                                                 {lunch.quantity}x
                                                                                             </span>
-                                                                                            <span className="text-gray-400 font-semibold text-[10px] uppercase">
+                                                                                            <span className="text-gray-400 font-semibold text-[10px] uppercase mr-1">
                                                                                                 {lunch.boxType || 'No Box'}
                                                                                             </span>
-                                                                                        </div>
-                                                                                        <div className="flex flex-wrap gap-1 mt-1.5">
                                                                                             {/* Bread Choice */}
                                                                                             {lunch.breadType && !['sandwich', 'none', 'no bread', 'standard'].includes(lunch.breadType.toLowerCase()) && (
                                                                                                 <span className="px-2 py-0.5 rounded-md bg-amber-50 text-amber-700 border border-amber-100/70 text-[10px] font-bold">
                                                                                                     🍞 {lunch.breadType === 'gluten-free' || lunch.breadType === 'gf' ? 'Gluten-Free' : lunch.breadType}
-                                                                                                </span>
-                                                                                            )}
-                                                                                            {/* Cookie Choice */}
-                                                                                            {lunch.cookieChoice && !['no cookie', 'none', 'no'].includes(lunch.cookieChoice.toLowerCase()) && (
-                                                                                                <span className="px-2 py-0.5 rounded-md bg-amber-50 text-amber-700 border border-amber-100/70 text-[10px] font-bold">
-                                                                                                    🍪 {lunch.cookieChoice}
                                                                                                 </span>
                                                                                             )}
                                                                                             {/* Customizations */}
@@ -931,8 +1019,7 @@ export function QuantitiesClient({ initialOrders, companies }: QuantitiesClientP
                                                                                             )}
                                                                                             {/* Standard notice if nothing custom */}
                                                                                             {!lunch.customizations && 
-                                                                                             (!lunch.breadType || ['sandwich', 'none', 'no bread', 'standard'].includes(lunch.breadType.toLowerCase())) && 
-                                                                                             (!lunch.cookieChoice || ['no cookie', 'none', 'no'].includes(lunch.cookieChoice.toLowerCase())) && (
+                                                                                             (!lunch.breadType || ['sandwich', 'none', 'no bread', 'standard'].includes(lunch.breadType.toLowerCase())) && (
                                                                                                 <span className="text-[10px] text-gray-400 italic font-medium">Standard preparation</span>
                                                                                              )}
                                                                                         </div>
@@ -945,6 +1032,32 @@ export function QuantitiesClient({ initialOrders, companies }: QuantitiesClientP
                                                             );
                                                         })}
                                                     </div>
+                                                    {(() => {
+                                                        const breadCounts: Record<string, number> = {};
+                                                        company.meals.forEach(meal => {
+                                                            meal.lunches.forEach(lunch => {
+                                                                const rawBread = lunch.breadType;
+                                                                const isStandard = !rawBread || ['sandwich', 'none', 'no bread', 'standard'].includes(rawBread.toLowerCase());
+                                                                const displayBread = isStandard 
+                                                                    ? 'Standard' 
+                                                                    : (rawBread === 'gluten-free' || rawBread === 'gf' ? 'Gluten-Free' : rawBread);
+                                                                breadCounts[displayBread] = (breadCounts[displayBread] || 0) + lunch.quantity;
+                                                            });
+                                                        });
+                                                        return (
+                                                            <div className="px-5 py-3.5 bg-violet-50/30 border-t border-violet-100/50 flex flex-col gap-2.5 text-xs rounded-b-2xl">
+                                                                <span className="font-extrabold uppercase text-[10px] tracking-wider text-violet-800 text-left">Bread Prep Totals</span>
+                                                                <div className="flex flex-wrap gap-2 justify-start">
+                                                                    {Object.entries(breadCounts).map(([bread, count], bIdx) => (
+                                                                        <span key={bIdx} className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-white border border-violet-100 text-violet-800 font-bold shadow-sm shadow-violet-100/50 text-[10px]">
+                                                                            <span className="text-gray-500 font-medium">{bread}:</span>
+                                                                            <span className="font-black text-violet-700">{count}</span>
+                                                                        </span>
+                                                                    ))}
+                                                                </div>
+                                                            </div>
+                                                        );
+                                                    })()}
                                                 </Card>
                                             ))
                                         ) : (
@@ -955,6 +1068,43 @@ export function QuantitiesClient({ initialOrders, companies }: QuantitiesClientP
                                     </div>
                                 )}
                             </>
+                        )}
+                        {activeTab === 'smart' && aggregatedCookies.length > 0 && (
+                            <div className="mt-8 max-w-4xl">
+                                <Card className="rounded-2xl border-gray-100 shadow-sm overflow-hidden bg-white">
+                                    <div className="px-6 py-4 border-b border-gray-100 bg-white">
+                                        <h2 className="text-lg font-bold text-gray-900">House-made Cookies</h2>
+                                    </div>
+                                    <div className="p-0">
+                                        <Table>
+                                            <TableHeader className="bg-violet-100/50">
+                                                <TableRow className="hover:bg-transparent border-violet-100">
+                                                    <TableHead className="font-bold text-gray-900 py-3 pl-6 text-left">House-made Cookie</TableHead>
+                                                    <TableHead className="font-bold text-gray-900 py-3 text-center w-36">Junior Box</TableHead>
+                                                    <TableHead className="font-bold text-gray-900 py-3 text-center w-36">Standard Box</TableHead>
+                                                    <TableHead className="font-bold text-gray-900 py-3 text-center w-36">Total</TableHead>
+                                                </TableRow>
+                                            </TableHeader>
+                                            <TableBody>
+                                                {aggregatedCookies.map((item, i) => (
+                                                    <TableRow key={i} className="hover:bg-gray-50/50 border-b border-gray-100 last:border-0 transition-colors">
+                                                        <TableCell className="font-semibold text-sm text-amber-700 py-2.5 pl-6">{item.name}</TableCell>
+                                                        <TableCell className="py-2.5 text-center text-gray-600 font-semibold">{item.junior}</TableCell>
+                                                        <TableCell className="py-2.5 text-center text-gray-600 font-semibold">{item.standard}</TableCell>
+                                                        <TableCell className="py-2.5 text-center font-bold text-violet-700 w-36">{item.junior + item.standard}</TableCell>
+                                                    </TableRow>
+                                                ))}
+                                                <TableRow className="bg-violet-50/50 border-t-2 border-violet-200">
+                                                    <TableCell className="font-black text-gray-900 pl-6 py-3">TOTAL</TableCell>
+                                                    <TableCell className="py-3 text-center font-black text-violet-600 text-base">{cookiesJuniorTotal}</TableCell>
+                                                    <TableCell className="py-3 text-center font-black text-violet-600 text-base">{cookiesStandardTotal}</TableCell>
+                                                    <TableCell className="py-3 text-center font-black text-violet-600 text-base w-36">{cookiesJuniorTotal + cookiesStandardTotal}</TableCell>
+                                                </TableRow>
+                                            </TableBody>
+                                        </Table>
+                                    </div>
+                                </Card>
+                            </div>
                         )}
 
                         {/* TAB 2: Summary View (Original Tables) */}
@@ -1010,7 +1160,7 @@ export function QuantitiesClient({ initialOrders, companies }: QuantitiesClientP
                                                         <TableHead className="font-bold text-gray-900 py-3 pl-6 text-left">House-made Cookie</TableHead>
                                                         <TableHead className="font-bold text-gray-900 py-3 text-center w-36">Junior Box</TableHead>
                                                         <TableHead className="font-bold text-gray-900 py-3 text-center w-36">Standard Box</TableHead>
-                                                        <TableHead className="w-36"></TableHead>
+                                                        <TableHead className="font-bold text-gray-900 py-3 text-center w-36">Total</TableHead>
                                                     </TableRow>
                                                 </TableHeader>
                                                 <TableBody>
@@ -1019,14 +1169,14 @@ export function QuantitiesClient({ initialOrders, companies }: QuantitiesClientP
                                                             <TableCell className="font-semibold text-sm text-amber-700 py-2.5 pl-6">{item.name}</TableCell>
                                                             <TableCell className="py-2.5 text-center text-gray-600 font-semibold">{item.junior}</TableCell>
                                                             <TableCell className="py-2.5 text-center text-gray-600 font-semibold">{item.standard}</TableCell>
-                                                            <TableCell className="w-36"></TableCell>
+                                                            <TableCell className="py-2.5 text-center font-bold text-violet-700 w-36">{item.junior + item.standard}</TableCell>
                                                         </TableRow>
                                                     ))}
                                                     <TableRow className="bg-violet-50/50 border-t-2 border-violet-200">
                                                         <TableCell className="font-black text-gray-900 pl-6 py-3">TOTAL</TableCell>
                                                         <TableCell className="py-3 text-center font-black text-violet-600 text-base">{cookiesJuniorTotal}</TableCell>
                                                         <TableCell className="py-3 text-center font-black text-violet-600 text-base">{cookiesStandardTotal}</TableCell>
-                                                        <TableCell className="w-36"></TableCell>
+                                                        <TableCell className="py-3 text-center font-black text-violet-600 text-base w-36">{cookiesJuniorTotal + cookiesStandardTotal}</TableCell>
                                                     </TableRow>
                                                 </TableBody>
                                             </Table>
@@ -1080,77 +1230,81 @@ export function QuantitiesClient({ initialOrders, companies }: QuantitiesClientP
                     </div>
 
                     {/* SECTION 1: Standard Totals Summary Table */}
-                    <div className="mb-8 print-section">
-                        <h2 className="text-md font-black uppercase tracking-wider mb-3 pb-1 border-b border-gray-200 text-gray-800">
-                            1. Summary Totals
-                        </h2>
-                        {aggregatedMeals.length > 0 && (
-                            <table className="w-full border-collapse text-sm mb-6">
-                                <thead>
-                                    <tr className="bg-gray-100 text-black">
-                                        <th className="p-1.5 px-3 text-left font-bold border-b-2 border-gray-300">Sandwich / Salad</th>
-                                        <th className="p-1.5 px-3 text-center font-bold border-b-2 border-gray-300 w-28">Junior Box</th>
-                                        <th className="p-1.5 px-3 text-center font-bold border-b-2 border-gray-300 w-28">Standard Box</th>
-                                        <th className="p-1.5 px-3 text-center font-bold border-b-2 border-gray-300 w-28">Sandwich Only</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    {aggregatedMeals.map((item, i) => (
-                                        <tr key={i} className="border-b border-gray-200">
-                                            <td className="p-1.5 px-3 text-left font-semibold text-gray-800">{item.name}</td>
-                                            <td className="p-1.5 px-3 text-center font-semibold">{item.junior}</td>
-                                            <td className="p-1.5 px-3 text-center font-semibold">{item.standard}</td>
-                                            <td className="p-1.5 px-3 text-center font-semibold">{item.sandwich || 0}</td>
+                    {(activePrintMode === null || activePrintMode === 'summary') && (
+                        <div className="mb-8 print-section">
+                            <h2 className="text-md font-black uppercase tracking-wider mb-3 pb-1 border-b border-gray-200 text-gray-800">
+                                1. Summary Totals
+                            </h2>
+                            {aggregatedMeals.length > 0 && (
+                                <table className="w-full border-collapse text-sm mb-6">
+                                    <thead>
+                                        <tr className="bg-gray-100 text-black">
+                                            <th className="p-1.5 px-3 text-left font-bold border-b-2 border-gray-300">Sandwich / Salad</th>
+                                            <th className="p-1.5 px-3 text-center font-bold border-b-2 border-gray-300 w-28">Junior Box</th>
+                                            <th className="p-1.5 px-3 text-center font-bold border-b-2 border-gray-300 w-28">Standard Box</th>
+                                            <th className="p-1.5 px-3 text-center font-bold border-b-2 border-gray-300 w-28">Sandwich Only</th>
                                         </tr>
-                                    ))}
-                                </tbody>
-                                <tfoot>
-                                    <tr className="bg-gray-50 border-t-2 border-gray-300 font-bold">
-                                        <td className="p-2 px-3 text-left uppercase text-xs">Total Sandwiches</td>
-                                        <td className="p-2 px-3 text-center text-sm">{mealsJuniorTotal}</td>
-                                        <td className="p-2 px-3 text-center text-sm">{mealsStandardTotal}</td>
-                                        <td className="p-2 px-3 text-center text-sm">{mealsSandwichTotal}</td>
-                                    </tr>
-                                </tfoot>
-                            </table>
-                        )}
-
-                        {aggregatedCookies.length > 0 && (
-                            <table className="w-full border-collapse text-sm">
-                                <thead>
-                                    <tr className="bg-gray-100 text-black">
-                                        <th className="p-1.5 px-3 text-left font-bold border-b-2 border-gray-300">House-made Cookie</th>
-                                        <th className="p-1.5 px-3 text-center font-bold border-b-2 border-gray-300 w-28">Junior Box</th>
-                                        <th className="p-1.5 px-3 text-center font-bold border-b-2 border-gray-300 w-28">Standard Box</th>
-                                        <th className="p-1.5 px-3 border-b-2 border-gray-300 w-28"></th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    {aggregatedCookies.map((item, i) => (
-                                        <tr key={i} className="border-b border-gray-200">
-                                            <td className="p-1.5 px-3 text-left font-semibold text-amber-900">{item.name}</td>
-                                            <td className="p-1.5 px-3 text-center font-semibold">{item.junior}</td>
-                                            <td className="p-1.5 px-3 text-center font-semibold">{item.standard}</td>
-                                            <td className="p-1.5 px-3 text-center font-semibold"></td>
+                                    </thead>
+                                    <tbody>
+                                        {aggregatedMeals.map((item, i) => (
+                                            <tr key={i} className="border-b border-gray-200">
+                                                <td className="p-1.5 px-3 text-left font-semibold text-gray-800">{item.name}</td>
+                                                <td className="p-1.5 px-3 text-center font-semibold">{item.junior}</td>
+                                                <td className="p-1.5 px-3 text-center font-semibold">{item.standard}</td>
+                                                <td className="p-1.5 px-3 text-center font-semibold">{item.sandwich || 0}</td>
+                                            </tr>
+                                        ))}
+                                    </tbody>
+                                    <tfoot>
+                                        <tr className="bg-gray-50 border-t-2 border-gray-300 font-bold">
+                                            <td className="p-2 px-3 text-left uppercase text-xs">Total Sandwiches</td>
+                                            <td className="p-2 px-3 text-center text-sm">{mealsJuniorTotal}</td>
+                                            <td className="p-2 px-3 text-center text-sm">{mealsStandardTotal}</td>
+                                            <td className="p-2 px-3 text-center text-sm">{mealsSandwichTotal}</td>
                                         </tr>
-                                    ))}
-                                </tbody>
-                                <tfoot>
-                                    <tr className="bg-gray-50 border-t-2 border-gray-300 font-bold">
-                                        <td className="p-2 px-3 text-left uppercase text-xs">Total Cookies</td>
-                                        <td className="p-2 px-3 text-center text-sm">{cookiesJuniorTotal}</td>
-                                        <td className="p-2 px-3 text-center text-sm">{cookiesStandardTotal}</td>
-                                        <td className="p-2 px-3 w-28"></td>
-                                    </tr>
-                                </tfoot>
-                            </table>
-                        )}
-                    </div>
+                                    </tfoot>
+                                </table>
+                            )}
 
-                    <div className="print-page-break" style={{ pageBreakBefore: 'always', breakBefore: 'page' }}></div>
+                            {aggregatedCookies.length > 0 && (
+                                <table className="w-full border-collapse text-sm">
+                                    <thead>
+                                        <tr className="bg-gray-100 text-black">
+                                            <th className="p-1.5 px-3 text-left font-bold border-b-2 border-gray-300">House-made Cookie</th>
+                                            <th className="p-1.5 px-3 text-center font-bold border-b-2 border-gray-300 w-28">Junior Box</th>
+                                            <th className="p-1.5 px-3 text-center font-bold border-b-2 border-gray-300 w-28">Standard Box</th>
+                                            <th className="p-1.5 px-3 text-center font-bold border-b-2 border-gray-300 w-28">Total</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {aggregatedCookies.map((item, i) => (
+                                            <tr key={i} className="border-b border-gray-200">
+                                                <td className="p-1.5 px-3 text-left font-semibold text-amber-900">{item.name}</td>
+                                                <td className="p-1.5 px-3 text-center font-semibold">{item.junior}</td>
+                                                <td className="p-1.5 px-3 text-center font-semibold">{item.standard}</td>
+                                                <td className="p-1.5 px-3 text-center font-bold text-black w-28">{item.junior + item.standard}</td>
+                                            </tr>
+                                        ))}
+                                    </tbody>
+                                    <tfoot>
+                                        <tr className="bg-gray-50 border-t-2 border-gray-300 font-bold">
+                                            <td className="p-2 px-3 text-left uppercase text-xs">Total Cookies</td>
+                                            <td className="p-2 px-3 text-center text-sm">{cookiesJuniorTotal}</td>
+                                            <td className="p-2 px-3 text-center text-sm">{cookiesStandardTotal}</td>
+                                            <td className="p-2 px-3 text-center text-sm w-28">{cookiesJuniorTotal + cookiesStandardTotal}</td>
+                                        </tr>
+                                    </tfoot>
+                                </table>
+                            )}
+                        </div>
+                    )}
+
+                    {activePrintMode === null && (
+                        <div className="print-page-break" style={{ pageBreakBefore: 'always', breakBefore: 'page' }}></div>
+                    )}
 
                     {/* SECTION 2: Detailed Smart Prep Breakdown */}
-                    {activeTab === 'smart' && (
+                    {(activePrintMode === null || activePrintMode === 'smart') && (
                         <div className="print-section">
                             <h2 className="text-md font-black uppercase tracking-wider mb-4 pb-1 border-b border-gray-200 text-gray-800">
                                 2. Smart Prep Sheet ({smartPerspective === 'sandwich' ? 'Customizations by Sandwich' : 'Customizations by Tour Company'})
@@ -1191,7 +1345,6 @@ export function QuantitiesClient({ initialOrders, companies }: QuantitiesClientP
                                                         <ul className="text-xs pl-2 space-y-1">
                                                             {co.lunches.map((lunch, lIdx) => {
                                                                 const hasCustomBread = lunch.breadType && !['sandwich', 'none', 'no bread', 'standard'].includes(lunch.breadType.toLowerCase());
-                                                                const hasCustomCookie = lunch.cookieChoice && !['no cookie', 'none', 'no'].includes(lunch.cookieChoice.toLowerCase());
                                                                 const hasCustomization = !!lunch.customizations;
                                                                 
                                                                 return (
@@ -1205,17 +1358,12 @@ export function QuantitiesClient({ initialOrders, companies }: QuantitiesClientP
                                                                                     🍞 {lunch.breadType === 'gluten-free' || lunch.breadType === 'gf' ? 'Gluten-Free' : lunch.breadType}
                                                                                 </span>
                                                                             )}
-                                                                            {hasCustomCookie && (
-                                                                                <span className="text-[10px] font-bold text-amber-800 bg-amber-50 border border-amber-100 rounded px-1">
-                                                                                    🍪 {lunch.cookieChoice}
-                                                                                </span>
-                                                                            )}
                                                                             {hasCustomization && (
                                                                                 <span className="text-[10px] font-bold text-rose-800 bg-rose-50 border border-rose-100 rounded px-1 italic">
                                                                                     ⚠️ {lunch.customizations}
                                                                                 </span>
                                                                             )}
-                                                                            {!hasCustomBread && !hasCustomCookie && !hasCustomization && (
+                                                                            {!hasCustomBread && !hasCustomization && (
                                                                                 <span className="text-[10px] text-gray-400 italic">Standard</span>
                                                                             )}
                                                                         </div>
@@ -1226,6 +1374,31 @@ export function QuantitiesClient({ initialOrders, companies }: QuantitiesClientP
                                                     </div>
                                                 ))}
                                             </div>
+                                            {(() => {
+                                                const breadCounts: Record<string, number> = {};
+                                                item.companies.forEach(co => {
+                                                    co.lunches.forEach(lunch => {
+                                                        const rawBread = lunch.breadType;
+                                                        const isStandard = !rawBread || ['sandwich', 'none', 'no bread', 'standard'].includes(rawBread.toLowerCase());
+                                                        const displayBread = isStandard 
+                                                            ? 'Standard' 
+                                                            : (rawBread === 'gluten-free' || rawBread === 'gf' ? 'Gluten-Free' : rawBread);
+                                                        breadCounts[displayBread] = (breadCounts[displayBread] || 0) + lunch.quantity;
+                                                    });
+                                                });
+                                                return (
+                                                    <div className="mt-3 pt-2 border-t border-gray-200 flex flex-col gap-1.5 text-[10px] text-gray-700 font-bold">
+                                                        <span className="uppercase tracking-wider text-gray-400 text-left">Bread Prep Totals</span>
+                                                        <div className="flex flex-wrap gap-3 justify-start">
+                                                            {Object.entries(breadCounts).map(([bread, count], bIdx) => (
+                                                                <span key={bIdx} className="font-black text-black">
+                                                                    {bread}: {count}
+                                                                </span>
+                                                            ))}
+                                                        </div>
+                                                    </div>
+                                                );
+                                            })()}
                                         </div>
                                     ))}
                                 </div>
@@ -1257,7 +1430,6 @@ export function QuantitiesClient({ initialOrders, companies }: QuantitiesClientP
                                                         <ul className="text-xs pl-2 space-y-1">
                                                             {meal.lunches.map((lunch, lIdx) => {
                                                                 const hasCustomBread = lunch.breadType && !['sandwich', 'none', 'no bread', 'standard'].includes(lunch.breadType.toLowerCase());
-                                                                const hasCustomCookie = lunch.cookieChoice && !['no cookie', 'none', 'no'].includes(lunch.cookieChoice.toLowerCase());
                                                                 const hasCustomization = !!lunch.customizations;
                                                                 
                                                                 return (
@@ -1271,17 +1443,12 @@ export function QuantitiesClient({ initialOrders, companies }: QuantitiesClientP
                                                                                     🍞 {lunch.breadType === 'gluten-free' || lunch.breadType === 'gf' ? 'Gluten-Free' : lunch.breadType}
                                                                                 </span>
                                                                             )}
-                                                                            {hasCustomCookie && (
-                                                                                <span className="text-[10px] font-bold text-amber-800 bg-amber-50 border border-amber-100 rounded px-1">
-                                                                                    🍪 {lunch.cookieChoice}
-                                                                                </span>
-                                                                            )}
                                                                             {hasCustomization && (
                                                                                 <span className="text-[10px] font-bold text-rose-800 bg-rose-50 border border-rose-100 rounded px-1 italic">
                                                                                     ⚠️ {lunch.customizations}
                                                                                 </span>
                                                                             )}
-                                                                            {!hasCustomBread && !hasCustomCookie && !hasCustomization && (
+                                                                            {!hasCustomBread && !hasCustomization && (
                                                                                 <span className="text-[10px] text-gray-400 italic">Standard</span>
                                                                             )}
                                                                         </div>
@@ -1292,8 +1459,69 @@ export function QuantitiesClient({ initialOrders, companies }: QuantitiesClientP
                                                     </div>
                                                 ))}
                                             </div>
+                                            {(() => {
+                                                const breadCounts: Record<string, number> = {};
+                                                company.meals.forEach(meal => {
+                                                    meal.lunches.forEach(lunch => {
+                                                        const rawBread = lunch.breadType;
+                                                        const isStandard = !rawBread || ['sandwich', 'none', 'no bread', 'standard'].includes(rawBread.toLowerCase());
+                                                        const displayBread = isStandard 
+                                                            ? 'Standard' 
+                                                            : (rawBread === 'gluten-free' || rawBread === 'gf' ? 'Gluten-Free' : rawBread);
+                                                        breadCounts[displayBread] = (breadCounts[displayBread] || 0) + lunch.quantity;
+                                                    });
+                                                });
+                                                return (
+                                                    <div className="mt-3 pt-2 border-t border-gray-200 flex flex-col gap-1.5 text-[10px] text-gray-700 font-bold">
+                                                        <span className="uppercase tracking-wider text-gray-400 text-left">Bread Prep Totals</span>
+                                                        <div className="flex flex-wrap gap-3 justify-start">
+                                                            {Object.entries(breadCounts).map(([bread, count], bIdx) => (
+                                                                <span key={bIdx} className="font-black text-black">
+                                                                    {bread}: {count}
+                                                                </span>
+                                                            ))}
+                                                        </div>
+                                                    </div>
+                                                );
+                                            })()}
                                         </div>
                                     ))}
+                                </div>
+                            )}
+                            {/* print cookies table at bottom of smart prep print view */}
+                            {aggregatedCookies.length > 0 && (
+                                <div className="mt-8 print-section" style={{ pageBreakInside: 'avoid', breakInside: 'avoid' }}>
+                                    <h2 className="text-sm font-black uppercase tracking-wider mb-3 pb-1 border-b border-gray-200 text-gray-800">
+                                        House-made Cookies
+                                    </h2>
+                                    <table className="w-full border-collapse text-sm">
+                                        <thead>
+                                            <tr className="bg-gray-100 text-black">
+                                                <th className="p-1.5 px-3 text-left font-bold border-b-2 border-gray-300">House-made Cookie</th>
+                                                <th className="p-1.5 px-3 text-center font-bold border-b-2 border-gray-300 w-28">Junior Box</th>
+                                                <th className="p-1.5 px-3 text-center font-bold border-b-2 border-gray-300 w-28">Standard Box</th>
+                                                <th className="p-1.5 px-3 text-center font-bold border-b-2 border-gray-300 w-28">Total</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            {aggregatedCookies.map((item, i) => (
+                                                <tr key={i} className="border-b border-gray-200">
+                                                    <td className="p-1.5 px-3 text-left font-semibold text-amber-900">{item.name}</td>
+                                                    <td className="p-1.5 px-3 text-center font-semibold">{item.junior}</td>
+                                                    <td className="p-1.5 px-3 text-center font-semibold">{item.standard}</td>
+                                                    <td className="p-1.5 px-3 text-center font-bold text-black w-28">{item.junior + item.standard}</td>
+                                                </tr>
+                                            ))}
+                                        </tbody>
+                                        <tfoot>
+                                            <tr className="bg-gray-50 border-t-2 border-gray-300 font-bold">
+                                                <td className="p-2 px-3 text-left uppercase text-xs">Total Cookies</td>
+                                                <td className="p-2 px-3 text-center text-sm">{cookiesJuniorTotal}</td>
+                                                <td className="p-2 px-3 text-center text-sm">{cookiesStandardTotal}</td>
+                                                <td className="p-2 px-3 text-center text-sm w-28">{cookiesJuniorTotal + cookiesStandardTotal}</td>
+                                            </tr>
+                                        </tfoot>
+                                    </table>
                                 </div>
                             )}
                         </div>

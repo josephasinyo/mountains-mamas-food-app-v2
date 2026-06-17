@@ -23,7 +23,8 @@ import {
     Download, CheckCircle, Ticket, ShoppingCart, Lock,
     ChevronRight, X, Building2, Pencil, Printer,
     MoreHorizontal, Trash2, Check, ListFilter,
-    ArrowUpDown, ArrowUp, ArrowDown, LayoutGrid, List
+    ArrowUpDown, ArrowUp, ArrowDown, LayoutGrid, List,
+    Search
 } from 'lucide-react';
 import { cn, formatDateUS, formatDateTimeUS } from '@/lib/utils';
 import {
@@ -235,6 +236,7 @@ export function OrdersClient({ initialOrders, companies }: OrdersClientProps) {
     const [dateFilterMode, setDateFilterMode] = useState<'tour' | 'order'>('tour');
     const [companyFilter, setCompanyFilter] = useState('');
     const [statusFilter, setStatusFilter] = useState('');
+    const [searchTerm, setSearchTerm] = useState('');
     const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
     const [editingOrder, setEditingOrder] = useState<Order | null>(null);
     const [editItems, setEditItems] = useState<OrderItem[]>([]);
@@ -363,6 +365,28 @@ export function OrdersClient({ initialOrders, companies }: OrdersClientProps) {
 
         if (companyFilter && o.company_id !== companyFilter) return false;
         if (statusFilter && o.status !== statusFilter) return false;
+
+        if (searchTerm.trim()) {
+            const term = searchTerm.toLowerCase();
+            const matchesCustomer = o.customer_name?.toLowerCase().includes(term);
+            const matchesGuide = o.guide_name?.toLowerCase().includes(term);
+            const matchesCompany = o.tour_companies?.name?.toLowerCase().includes(term);
+            const matchesNotes = o.notes?.toLowerCase().includes(term);
+            const matchesId = o.id?.toLowerCase().includes(term);
+            const matchesItems = o.order_items?.some(item => {
+                return (
+                    item.meal_name?.toLowerCase().includes(term) ||
+                    item.guest_name?.toLowerCase().includes(term) ||
+                    item.box_type?.toLowerCase().includes(term) ||
+                    item.bread_type?.toLowerCase().includes(term) ||
+                    item.cookie_choice?.toLowerCase().includes(term) ||
+                    item.customizations?.toLowerCase().includes(term)
+                );
+            });
+            if (!matchesCustomer && !matchesGuide && !matchesCompany && !matchesNotes && !matchesId && !matchesItems) {
+                return false;
+            }
+        }
         return true;
     });
 
@@ -538,7 +562,7 @@ export function OrdersClient({ initialOrders, companies }: OrdersClientProps) {
     }
 
     const pendingCount = filtered.filter(o => o.status === 'pending').length;
-    const hasFilters = !!(dateRange || companyFilter || statusFilter || startDate || endDate);
+    const hasFilters = !!(dateRange || companyFilter || statusFilter || startDate || endDate || searchTerm);
     const allSelected = filtered.length > 0 && selected.size === filtered.length;
 
     return (
@@ -676,6 +700,17 @@ export function OrdersClient({ initialOrders, companies }: OrdersClientProps) {
             {/* Filters */}
             <Card className="rounded-2xl border-gray-100 shadow-sm mb-6">
                 <CardContent className="p-3 flex flex-wrap items-center gap-4">
+                    <div className="relative w-full sm:w-[260px] md:w-[320px]">
+                        <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 size-4 text-gray-400" />
+                        <Input
+                            type="text"
+                            placeholder="Search orders..."
+                            value={searchTerm}
+                            onChange={e => setSearchTerm(e.target.value)}
+                            className="pl-10 pr-4 h-10 rounded-xl border-gray-200 text-sm font-semibold focus-visible:ring-violet-600 w-full"
+                        />
+                    </div>
+
                     <div className="flex items-center gap-1 bg-gray-100/50 p-1 rounded-xl border border-gray-200">
                         <Button 
                             variant="ghost" 
@@ -796,6 +831,7 @@ export function OrdersClient({ initialOrders, companies }: OrdersClientProps) {
                                 setEndDate('');
                                 setCompanyFilter(''); 
                                 setStatusFilter(''); 
+                                setSearchTerm('');
                             }} 
                             className="gap-2 text-xs font-bold h-10 px-4 text-gray-400 hover:text-gray-900 transition-colors"
                         >
