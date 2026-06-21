@@ -9,8 +9,7 @@ export default async function OrdersPage() {
     const { data: orders } = await supabase
         .from('orders')
         .select('*, tour_companies(name, slug, prep_instructions), order_items(*)')
-        .order('created_at', { ascending: false })
-        .limit(100);
+        .order('created_at', { ascending: false });
 
     const { data: companies } = await supabase
         .from('tour_companies')
