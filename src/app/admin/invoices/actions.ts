@@ -119,9 +119,10 @@ export async function sendInvoiceToCompany(invoiceId: string) {
                         <a href="${customPayLink}" style="display: inline-block; background-color: #7c3aed; color: white; padding: 12px 24px; border-radius: 8px; text-decoration: none; font-weight: bold; font-size: 15px;">Pay Securely Online</a>
                     </div>
                     
-                    <p style="margin-top: 32px; font-size: 14px; color: #6b7280; border-top: 1px solid #e5e7eb; padding-top: 24px;">
-                        If you have any questions or require modifications, please contact Kim at mountainmamascafe@gmail.com
-                    </p>
+                    <div style="margin-top: 32px; border-top: 1px solid #e5e7eb; padding-top: 24px; font-size: 14px; color: #6b7280; line-height: 20px;">
+                        <p style="margin: 0 0 12px 0;">Tipping your sandwich makers is greatly appreciated.</p>
+                        <p style="margin: 0;">If you have any questions or require modifications, please contact Kim at <a href="mailto:mountainmamascafe@gmail.com" style="color: #7c3aed; text-decoration: none;">mountainmamascafe@gmail.com</a></p>
+                    </div>
                 </div>
             </div>
         `;
