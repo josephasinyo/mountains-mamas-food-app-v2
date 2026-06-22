@@ -359,9 +359,10 @@ export async function updateCompanyOrderStatus(orderId: string, status: string) 
         const companyId = await getCompanyId();
         const supabase = await createClient();
         
-        // Verify ownership
-        const { data: order } = await supabase.from('orders').select('company_id').eq('id', orderId).single();
+        // Verify ownership and status
+        const { data: order } = await supabase.from('orders').select('company_id, status').eq('id', orderId).single();
         if (!order || order.company_id !== companyId) throw new Error('Unauthorized');
+        if (order.status === 'fulfilled') throw new Error('Fulfilled orders cannot be modified.');
 
         const updates: Record<string, string> = { status };
         if (status === 'fulfilled') updates.fulfilled_at = new Date().toISOString();

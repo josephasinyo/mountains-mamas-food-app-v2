@@ -761,13 +761,14 @@ export default function OrderHistoryClient({ initialData }: OrderHistoryClientPr
                                                     </Badge>
                                                 </TableCell>
                                                 <TableCell className="py-4 text-center pr-6" onClick={e => e.stopPropagation()}>
-                                                    <DropdownMenu>
-                                                        <DropdownMenuTrigger className={cn(
-                                                            buttonVariants({ variant: 'ghost', size: 'icon' }),
-                                                            "h-9 w-9 p-0 rounded-xl hover:bg-violet-50 hover:text-violet-600 transition-all"
-                                                        )}>
-                                                            <MoreHorizontal className="size-4" />
-                                                        </DropdownMenuTrigger>
+                                                    {order.status !== 'fulfilled' && (
+                                                        <DropdownMenu>
+                                                            <DropdownMenuTrigger className={cn(
+                                                                buttonVariants({ variant: 'ghost', size: 'icon' }),
+                                                                "h-9 w-9 p-0 rounded-xl hover:bg-violet-50 hover:text-violet-600 transition-all"
+                                                            )}>
+                                                                <MoreHorizontal className="size-4" />
+                                                            </DropdownMenuTrigger>
                                                         <DropdownMenuContent align="end" className="w-[180px] rounded-xl border-gray-100 shadow-xl p-1">
                                                         <DropdownMenuGroup>
                                                             <DropdownMenuLabel className="text-[10px] font-bold text-gray-400 uppercase tracking-widest px-3 py-2">Actions</DropdownMenuLabel>
@@ -820,6 +821,7 @@ export default function OrderHistoryClient({ initialData }: OrderHistoryClientPr
                                                             )}
                                                         </DropdownMenuContent>
                                                     </DropdownMenu>
+                                                    )}
                                                 </TableCell>
                                             </TableRow>,
                                             <AnimatePresence key={`${order.id}-detail`}>
@@ -944,13 +946,14 @@ export default function OrderHistoryClient({ initialData }: OrderHistoryClientPr
                                             
                                             {/* Action Dropdown inside Card */}
                                             <div onClick={e => e.stopPropagation()}>
-                                                <DropdownMenu>
-                                                    <DropdownMenuTrigger className={cn(
-                                                        buttonVariants({ variant: 'ghost', size: 'icon' }),
-                                                        "h-8 w-8 p-0 rounded-lg hover:bg-violet-50 hover:text-violet-600 transition-all"
-                                                    )}>
-                                                        <MoreHorizontal className="size-4" />
-                                                    </DropdownMenuTrigger>
+                                                {order.status !== 'fulfilled' && (
+                                                    <DropdownMenu>
+                                                        <DropdownMenuTrigger className={cn(
+                                                            buttonVariants({ variant: 'ghost', size: 'icon' }),
+                                                            "h-8 w-8 p-0 rounded-lg hover:bg-violet-50 hover:text-violet-600 transition-all"
+                                                        )}>
+                                                            <MoreHorizontal className="size-4" />
+                                                        </DropdownMenuTrigger>
                                                     <DropdownMenuContent align="end" className="w-[180px] rounded-xl border-gray-100 shadow-xl p-1">
                                                         <DropdownMenuGroup>
                                                             <DropdownMenuLabel className="text-[10px] font-bold text-gray-400 uppercase tracking-widest px-3 py-2">Actions</DropdownMenuLabel>
@@ -1002,6 +1005,7 @@ export default function OrderHistoryClient({ initialData }: OrderHistoryClientPr
                                                         )}
                                                     </DropdownMenuContent>
                                                 </DropdownMenu>
+                                                )}
                                             </div>
                                         </div>
 
