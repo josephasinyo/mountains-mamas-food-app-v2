@@ -805,14 +805,17 @@ export default function OrderHistoryClient({ initialData }: OrderHistoryClientPr
                                                                 </DropdownMenuItem>
                                                             )}
 
-                                                            <DropdownMenuSeparator className="bg-gray-100 my-1" />
-                                                            
-                                                            <DropdownMenuItem 
-                                                                className="rounded-lg gap-2 font-bold text-rose-600 focus:bg-rose-50 focus:text-rose-700 cursor-pointer"
-                                                                onClick={() => handleDelete(order.id)}
-                                                            >
-                                                                <Trash2 className="size-3.5" /> Delete Order
-                                                            </DropdownMenuItem>
+                                                            {order.status !== 'fulfilled' && (
+                                                                <>
+                                                                    <DropdownMenuSeparator className="bg-gray-100 my-1" />
+                                                                    <DropdownMenuItem 
+                                                                        className="rounded-lg gap-2 font-bold text-rose-600 focus:bg-rose-50 focus:text-rose-700 cursor-pointer"
+                                                                        onClick={() => handleDelete(order.id)}
+                                                                    >
+                                                                        <Trash2 className="size-3.5" /> Delete Order
+                                                                    </DropdownMenuItem>
+                                                                </>
+                                                            )}
                                                         </DropdownMenuContent>
                                                     </DropdownMenu>
                                                 </TableCell>
@@ -982,13 +985,17 @@ export default function OrderHistoryClient({ initialData }: OrderHistoryClientPr
                                                             </DropdownMenuItem>
                                                         )}
 
-                                                        <DropdownMenuSeparator className="bg-gray-100 my-1" />
-                                                        <DropdownMenuItem 
-                                                            className="rounded-lg gap-2 font-bold text-rose-600 focus:bg-rose-50 focus:text-rose-700 cursor-pointer"
-                                                            onClick={() => handleDelete(order.id)}
-                                                        >
-                                                            <Trash2 className="size-3.5" /> Delete Order
-                                                        </DropdownMenuItem>
+                                                        {order.status !== 'fulfilled' && (
+                                                            <>
+                                                                <DropdownMenuSeparator className="bg-gray-100 my-1" />
+                                                                <DropdownMenuItem 
+                                                                    className="rounded-lg gap-2 font-bold text-rose-600 focus:bg-rose-50 focus:text-rose-700 cursor-pointer"
+                                                                    onClick={() => handleDelete(order.id)}
+                                                                >
+                                                                    <Trash2 className="size-3.5" /> Delete Order
+                                                                </DropdownMenuItem>
+                                                            </>
+                                                        )}
                                                     </DropdownMenuContent>
                                                 </DropdownMenu>
                                             </div>

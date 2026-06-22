@@ -2123,7 +2123,7 @@ export function OrdersClient({
 
                 @page table-page {
                     size: portrait;
-                    margin: 0.8cm;
+                    margin: 1.5cm;
                 }
 
                 /* Hide print containers by default in screen view */
@@ -2142,9 +2142,15 @@ export function OrdersClient({
                         display: none !important;
                     }
 
-                    /* Reset body margins for print */
-                    body, html {
+                    /* Reset body margins for print only for tickets and zebra labels */
+                    body.print-tickets-mode, body.print-tickets-mode html,
+                    body.print-zebra-mode, body.print-zebra-mode html {
                         margin: 0 !important;
+                        padding: 0 !important;
+                        background: white !important;
+                    }
+
+                    body.print-table-mode, body.print-table-mode html {
                         padding: 0 !important;
                         background: white !important;
                     }

@@ -267,7 +267,6 @@ export default async function ContractDetailPage({ params }: PageProps) {
                         color: #111827 !important;
                         -webkit-print-color-adjust: exact;
                         print-color-adjust: exact;
-                        margin: 0 !important;
                         padding: 0 !important;
                     }
                     
@@ -373,7 +372,7 @@ export default async function ContractDetailPage({ params }: PageProps) {
                 }
                 @page {
                     size: letter;
-                    margin: 8mm 0mm;
+                    margin: 1.5cm;
                 }
             `}} />
         </div>

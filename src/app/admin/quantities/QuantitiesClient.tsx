@@ -1586,7 +1586,6 @@ export function QuantitiesClient({ initialOrders, companies }: QuantitiesClientP
 
                     /* Reset body margins for print */
                     body, html {
-                        margin: 0 !important;
                         padding: 0 !important;
                         background: white !important;
                     }
@@ -1599,7 +1598,7 @@ export function QuantitiesClient({ initialOrders, companies }: QuantitiesClientP
                     }
 
                     @page {
-                        margin: 1.2cm;
+                        margin: 1.5cm;
                         size: portrait;
                     }
 

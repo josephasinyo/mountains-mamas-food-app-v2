@@ -381,9 +381,10 @@ export async function deleteCompanyOrder(orderId: string) {
         const companyId = await getCompanyId();
         const supabase = await createClient();
 
-        // Verify ownership
-        const { data: order } = await supabase.from('orders').select('company_id').eq('id', orderId).single();
+        // Verify ownership and status
+        const { data: order } = await supabase.from('orders').select('company_id, status').eq('id', orderId).single();
         if (!order || order.company_id !== companyId) throw new Error('Unauthorized');
+        if (order.status === 'fulfilled') throw new Error('Fulfilled orders cannot be deleted.');
 
         // Delete order items first
         await supabase.from('order_items').delete().eq('order_id', orderId);
