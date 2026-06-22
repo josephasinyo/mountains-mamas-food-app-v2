@@ -1,6 +1,6 @@
 'use server';
 
-import { createAdminClient } from '@/lib/supabase/server';
+import { createAdminClient, createClient } from '@/lib/supabase/server';
 import { logActivity } from '@/lib/supabase/activity-log';
 
 export async function updateOrderStatus(orderId: string, status: string) {
@@ -37,6 +37,18 @@ export async function updateOrderDetails(orderId: string, details: {
 }[]) {
     try {
         const supabase = createAdminClient();
+        
+        // Prevent company users from modifying fulfilled orders
+        const userClient = await createClient();
+        const { data: { user } } = await userClient.auth.getUser();
+        const isAdmin = user?.user_metadata?.role?.toLowerCase() === 'admin' || user?.email?.toLowerCase() === 'mountainmamascafe@gmail.com';
+        
+        if (!isAdmin) {
+            const { data: order } = await supabase.from('orders').select('status').eq('id', orderId).single();
+            if (order && order.status === 'fulfilled') {
+                return { success: false, error: 'Fulfilled orders cannot be modified.' };
+            }
+        }
         
         // 1. Update Order Metadata
         const { error: orderError } = await supabase.from('orders').update(details).eq('id', orderId);

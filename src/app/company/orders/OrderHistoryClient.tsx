@@ -773,21 +773,23 @@ export default function OrderHistoryClient({ initialData }: OrderHistoryClientPr
                                                             <DropdownMenuLabel className="text-[10px] font-bold text-gray-400 uppercase tracking-widest px-3 py-2">Actions</DropdownMenuLabel>
                                                         </DropdownMenuGroup>
                                                         
-                                                        <DropdownMenuItem 
-                                                            className="rounded-lg gap-2 font-bold text-gray-700 focus:bg-violet-50 focus:text-violet-700 cursor-pointer"
-                                                            onClick={() => {
-                                                                setEditingOrder(order);
-                                                                setCustomerName(order.customer_name || '');
-                                                                setGuideName(order.guide_name || '');
-                                                                setTourDate(order.tour_date || '');
-                                                                setPickupTime(order.pickup_time || '');
-                                                                setNotes(order.notes || '');
-                                                                setEditItems(JSON.parse(JSON.stringify(order.order_items || [])));
-                                                                setIsEditDialogOpen(true);
-                                                            }}
-                                                        >
-                                                            <Pencil className="size-3.5" /> Edit Order
-                                                        </DropdownMenuItem>
+                                                        {order.status !== 'fulfilled' && (
+                                                            <DropdownMenuItem 
+                                                                className="rounded-lg gap-2 font-bold text-gray-700 focus:bg-violet-50 focus:text-violet-700 cursor-pointer"
+                                                                onClick={() => {
+                                                                    setEditingOrder(order);
+                                                                    setCustomerName(order.customer_name || '');
+                                                                    setGuideName(order.guide_name || '');
+                                                                    setTourDate(order.tour_date || '');
+                                                                    setPickupTime(order.pickup_time || '');
+                                                                    setNotes(order.notes || '');
+                                                                    setEditItems(JSON.parse(JSON.stringify(order.order_items || [])));
+                                                                    setIsEditDialogOpen(true);
+                                                                }}
+                                                            >
+                                                                <Pencil className="size-3.5" /> Edit Order
+                                                            </DropdownMenuItem>
+                                                        )}
                                                             
                                                             {order.status === 'cancelled' ? (
                                                                 <DropdownMenuItem 
@@ -953,21 +955,23 @@ export default function OrderHistoryClient({ initialData }: OrderHistoryClientPr
                                                         <DropdownMenuGroup>
                                                             <DropdownMenuLabel className="text-[10px] font-bold text-gray-400 uppercase tracking-widest px-3 py-2">Actions</DropdownMenuLabel>
                                                         </DropdownMenuGroup>
-                                                        <DropdownMenuItem 
-                                                            className="rounded-lg gap-2 font-bold text-gray-700 focus:bg-violet-50 focus:text-violet-700 cursor-pointer"
-                                                            onClick={() => {
-                                                                setEditingOrder(order);
-                                                                setCustomerName(order.customer_name || '');
-                                                                setGuideName(order.guide_name || '');
-                                                                setTourDate(order.tour_date || '');
-                                                                setPickupTime(order.pickup_time || '');
-                                                                setNotes(order.notes || '');
-                                                                setEditItems(JSON.parse(JSON.stringify(order.order_items || [])));
-                                                                setIsEditDialogOpen(true);
-                                                            }}
-                                                        >
-                                                            <Pencil className="size-3.5" /> Edit Order
-                                                        </DropdownMenuItem>
+                                                        {order.status !== 'fulfilled' && (
+                                                            <DropdownMenuItem 
+                                                                className="rounded-lg gap-2 font-bold text-gray-700 focus:bg-violet-50 focus:text-violet-700 cursor-pointer"
+                                                                onClick={() => {
+                                                                    setEditingOrder(order);
+                                                                    setCustomerName(order.customer_name || '');
+                                                                    setGuideName(order.guide_name || '');
+                                                                    setTourDate(order.tour_date || '');
+                                                                    setPickupTime(order.pickup_time || '');
+                                                                    setNotes(order.notes || '');
+                                                                    setEditItems(JSON.parse(JSON.stringify(order.order_items || [])));
+                                                                    setIsEditDialogOpen(true);
+                                                                }}
+                                                            >
+                                                                <Pencil className="size-3.5" /> Edit Order
+                                                            </DropdownMenuItem>
+                                                        )}
                                                         
                                                         {order.status === 'cancelled' ? (
                                                             <DropdownMenuItem 
