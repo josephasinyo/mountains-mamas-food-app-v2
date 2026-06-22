@@ -10,8 +10,10 @@ import {
 import {
     Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from '@/components/ui/select';
-import { Printer, ShoppingCart, X, FileText, CheckSquare, ChevronDown, ChevronUp } from 'lucide-react';
+import { Printer, ShoppingCart, X, FileText, CheckSquare, ChevronDown, ChevronUp, Loader2 } from 'lucide-react';
 import { formatDateTimeUS } from '@/lib/utils';
+import { getQuantitiesOrders } from './actions';
+import { toast } from 'sonner';
 
 interface OrderItem {
     id: string;
@@ -175,7 +177,48 @@ const STATUS_LABELS: Record<string, string> = {
 };
 
 export function QuantitiesClient({ initialOrders, companies }: QuantitiesClientProps) {
-    const [orders] = useState<Order[]>(initialOrders);
+    const [orders, setOrders] = useState<Order[]>(initialOrders);
+    const [dbLoading, setDbLoading] = useState(false);
+
+    const handleQueryDatabase = async () => {
+        setDbLoading(true);
+        const result = await getQuantitiesOrders({
+            dateFilterMode,
+            startDate,
+            endDate,
+            companyId: companyFilter,
+            status: statusFilter
+        });
+        if (result.success) {
+            setOrders(result.orders);
+        } else {
+            toast.error(result.error || 'Failed to query database');
+        }
+        setDbLoading(false);
+    };
+
+    const handleClearFilters = async () => {
+        setDateRange('');
+        setStartDate('');
+        setEndDate('');
+        setCompanyFilter('');
+        setStatusFilter('');
+        
+        setDbLoading(true);
+        const result = await getQuantitiesOrders({
+            dateFilterMode,
+            startDate: '',
+            endDate: '',
+            companyId: '',
+            status: ''
+        });
+        if (result.success) {
+            setOrders(result.orders);
+        } else {
+            toast.error(result.error || 'Failed to query database');
+        }
+        setDbLoading(false);
+    };
     const [dateRange, setDateRange] = useState('today');
     const [startDate, setStartDate] = useState(() => {
         const now = new Date();
@@ -253,17 +296,7 @@ export function QuantitiesClient({ initialOrders, companies }: QuantitiesClientP
         });
     };
 
-    const filteredOrders = orders.filter(o => {
-        // Date Filtering Logic
-        const targetDateStr = dateFilterMode === 'tour' ? o.tour_date : o.created_at.split('T')[0];
-        
-        if (startDate && targetDateStr < startDate) return false;
-        if (endDate && targetDateStr > endDate) return false;
-
-        if (companyFilter && o.company_id !== companyFilter) return false;
-        if (statusFilter && o.status !== statusFilter) return false;
-        return true;
-    });
+    const filteredOrders = orders;
 
     // 1. Standard Aggregation (Original Logic)
     const itemsAggregation: Record<string, { type: 'meal' | 'cookie', name: string; standard: number; junior: number; sandwich: number }> = {};
@@ -679,17 +712,21 @@ export function QuantitiesClient({ initialOrders, companies }: QuantitiesClientP
                             </SelectContent>
                         </Select>
 
+                        <Button 
+                            onClick={handleQueryDatabase} 
+                            disabled={dbLoading}
+                            className="bg-violet-600 hover:bg-violet-700 text-white rounded-xl h-10 px-5 font-bold text-sm transition-all flex items-center gap-2"
+                        >
+                            {dbLoading && <Loader2 className="h-4 w-4 animate-spin" />}
+                            {dbLoading ? 'Searching...' : 'Search'}
+                        </Button>
+
                         {hasFilters && (
                             <Button 
                                 variant="ghost" 
                                 size="sm" 
-                                onClick={() => { 
-                                    setDateRange(''); 
-                                    setStartDate('');
-                                    setEndDate('');
-                                    setCompanyFilter(''); 
-                                    setStatusFilter(''); 
-                                }} 
+                                onClick={handleClearFilters}
+                                disabled={dbLoading}
                                 className="gap-2 text-xs font-bold h-10 px-4 text-gray-400 hover:text-rose-600 transition-colors"
                             >
                                 <X className="size-3.5" /> Clear Filters

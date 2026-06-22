@@ -6,10 +6,14 @@ export const dynamic = 'force-dynamic';
 export default async function QuantitiesPage() {
     const supabase = createAdminClient();
 
-    // Fetch all orders with items to allow client-side filtering and aggregation
+    // Default range is today
+    const now = new Date();
+    const todayStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+
     const { data: orders } = await supabase
         .from('orders')
         .select('*, tour_companies(name, slug, prep_instructions), order_items(*)')
+        .eq('tour_date', todayStr)
         .order('created_at', { ascending: false });
 
     const { data: companies } = await supabase
