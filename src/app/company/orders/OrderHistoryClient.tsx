@@ -9,7 +9,7 @@ import {
     ChevronRight, ListFilter, Download, Printer, 
     Ticket, Building2, X, MoreHorizontal, Pencil,
     Trash2, Check, ArrowUpDown, ArrowUp, ArrowDown,
-    LayoutGrid, List,
+    LayoutGrid, List, Loader2,
 } from 'lucide-react';
 import { Button, buttonVariants } from '@/components/ui/button';
 import { cn, formatDateUS } from '@/lib/utils';
@@ -56,7 +56,7 @@ import {
 } from '@/components/ui/dialog';
 import { Label } from '@/components/ui/label';
 import { motion, AnimatePresence } from 'framer-motion';
-import { updateCompanyOrderStatus, deleteCompanyOrder, getCompanyMenuSelections } from '../actions';
+import { updateCompanyOrderStatus, deleteCompanyOrder, getCompanyMenuSelections, getPaginatedCompanyOrders } from '../actions';
 import { updateOrderDetails } from '../../admin/orders/actions';
 import { toast } from 'sonner';
 import { OrderItemCustomFields } from '@/components/ui/OrderItemCustomFields';
@@ -67,12 +67,124 @@ const STATUS_LABELS: Record<string, string> = {
     cancelled: 'Cancelled',
 };
 
+const getPresetDates = (range: string): { start: string; end: string } => {
+    const now = new Date();
+    const getLocalDateStr = (d: Date) => {
+        const yyyy = d.getFullYear();
+        const mm = String(d.getMonth() + 1).padStart(2, '0');
+        const dd = String(d.getDate()).padStart(2, '0');
+        return `${yyyy}-${mm}-${dd}`;
+    };
+    const todayStr = getLocalDateStr(now);
+    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+
+    switch (range) {
+        case 'today':
+            return { start: todayStr, end: todayStr };
+        case 'yesterday': {
+            const yesterday = new Date(today);
+            yesterday.setDate(today.getDate() - 1);
+            return { start: getLocalDateStr(yesterday), end: getLocalDateStr(yesterday) };
+        }
+        case 'tomorrow': {
+            const tomorrow = new Date(today);
+            tomorrow.setDate(today.getDate() + 1);
+            return { start: getLocalDateStr(tomorrow), end: getLocalDateStr(tomorrow) };
+        }
+        case 'this_week': {
+            const startOfWeek = new Date(today);
+            startOfWeek.setDate(today.getDate() - today.getDay());
+            return { start: getLocalDateStr(startOfWeek), end: '' };
+        }
+        case 'last_week': {
+            const startOfLastWeek = new Date(today);
+            startOfLastWeek.setDate(today.getDate() - today.getDay() - 7);
+            const endOfLastWeek = new Date(startOfLastWeek);
+            endOfLastWeek.setDate(startOfLastWeek.getDate() + 6);
+            return { start: getLocalDateStr(startOfLastWeek), end: getLocalDateStr(endOfLastWeek) };
+        }
+        case 'next_week': {
+            const startOfNextWeek = new Date(today);
+            startOfNextWeek.setDate(today.getDate() - today.getDay() + 7);
+            const endOfNextWeek = new Date(startOfNextWeek);
+            endOfNextWeek.setDate(startOfNextWeek.getDate() + 6);
+            return { start: getLocalDateStr(startOfNextWeek), end: getLocalDateStr(endOfNextWeek) };
+        }
+        case 'this_month': {
+            const startOfMonth = new Date(today.getFullYear(), today.getMonth(), 1);
+            const endOfMonth = new Date(today.getFullYear(), today.getMonth() + 1, 0);
+            return { start: getLocalDateStr(startOfMonth), end: getLocalDateStr(endOfMonth) };
+        }
+        case 'last_month': {
+            const startOfLastMonth = new Date(today.getFullYear(), today.getMonth() - 1, 1);
+            const endOfLastMonth = new Date(today.getFullYear(), today.getMonth(), 0);
+            return { start: getLocalDateStr(startOfLastMonth), end: getLocalDateStr(endOfLastMonth) };
+        }
+        case 'next_month': {
+            const startOfNextMonth = new Date(today.getFullYear(), today.getMonth() + 1, 1);
+            const endOfNextMonth = new Date(today.getFullYear(), today.getMonth() + 2, 0);
+            return { start: getLocalDateStr(startOfNextMonth), end: getLocalDateStr(endOfNextMonth) };
+        }
+        case 'next_3_months': {
+            const tomorrow = new Date(today);
+            tomorrow.setDate(today.getDate() + 1);
+            const limit = new Date(today);
+            limit.setMonth(today.getMonth() + 3);
+            return { start: getLocalDateStr(tomorrow), end: getLocalDateStr(limit) };
+        }
+        case 'next_6_months': {
+            const tomorrow = new Date(today);
+            tomorrow.setDate(today.getDate() + 1);
+            const limit = new Date(today);
+            limit.setMonth(today.getMonth() + 6);
+            return { start: getLocalDateStr(tomorrow), end: getLocalDateStr(limit) };
+        }
+        case 'next_12_months': {
+            const tomorrow = new Date(today);
+            tomorrow.setDate(today.getDate() + 1);
+            const limit = new Date(today);
+            limit.setMonth(today.getMonth() + 12);
+            return { start: getLocalDateStr(tomorrow), end: getLocalDateStr(limit) };
+        }
+        case 'this_year': {
+            const startOfYear = new Date(today.getFullYear(), 0, 1);
+            const endOfYear = new Date(today.getFullYear(), 11, 31);
+            return { start: getLocalDateStr(startOfYear), end: getLocalDateStr(endOfYear) };
+        }
+        case 'last_3_months': {
+            const limit = new Date(today);
+            limit.setMonth(today.getMonth() - 3);
+            return { start: getLocalDateStr(limit), end: todayStr };
+        }
+        case 'last_6_months': {
+            const limit = new Date(today);
+            limit.setMonth(today.getMonth() - 6);
+            return { start: getLocalDateStr(limit), end: todayStr };
+        }
+        case 'last_12_months': {
+            const limit = new Date(today);
+            limit.setMonth(today.getMonth() - 12);
+            return { start: getLocalDateStr(limit), end: todayStr };
+        }
+        default:
+            if (range && range.includes('-')) {
+                return { start: range, end: range };
+            }
+            return { start: '', end: '' };
+    }
+};
+
 interface OrderHistoryClientProps {
     initialData: any;
 }
 
 export default function OrderHistoryClient({ initialData }: OrderHistoryClientProps) {
     const [allOrders, setAllOrders] = useState<any[]>(initialData.recentOrders || []);
+    const [totalCount, setTotalCount] = useState(initialData.totalCount || 0);
+    const [totalLunches, setTotalLunches] = useState(initialData.totalLunches || 0);
+    const [pendingCount, setPendingCount] = useState(initialData.pendingCount || 0);
+    const [page, setPage] = useState(1);
+    const [dbLoading, setDbLoading] = useState(false);
     const [search, setSearch] = useState('');
     const [expanded, setExpanded] = useState<string | null>(null);
     const [dateRange, setDateRange] = useState('');
@@ -86,6 +198,57 @@ export default function OrderHistoryClient({ initialData }: OrderHistoryClientPr
         key: 'created_at', 
         direction: 'desc' 
     });
+
+    const handleQueryDatabase = async (targetPage = 1) => {
+        setDbLoading(true);
+        const { start, end } = getPresetDates(dateRange);
+        const result = await getPaginatedCompanyOrders({
+            page: targetPage,
+            limit: 100,
+            searchTerm: search,
+            dateFilterMode,
+            startDate: start,
+            endDate: end,
+            status: statusFilter
+        });
+        if (result.success) {
+            setAllOrders(result.orders);
+            setTotalCount(result.totalCount);
+            setTotalLunches(result.totalLunches);
+            setPendingCount(result.pendingCount);
+            setPage(targetPage);
+        } else {
+            toast.error(result.error || 'Failed to query database');
+        }
+        setDbLoading(false);
+    };
+
+    const handleClearFilters = async () => {
+        setDateRange('');
+        setStatusFilter('');
+        setSearch('');
+        
+        setDbLoading(true);
+        const result = await getPaginatedCompanyOrders({
+            page: 1,
+            limit: 100,
+            dateFilterMode,
+            searchTerm: '',
+            startDate: '',
+            endDate: '',
+            status: ''
+        });
+        if (result.success) {
+            setAllOrders(result.orders);
+            setTotalCount(result.totalCount);
+            setTotalLunches(result.totalLunches);
+            setPendingCount(result.pendingCount);
+            setPage(1);
+        } else {
+            toast.error(result.error || 'Failed to query database');
+        }
+        setDbLoading(false);
+    };
 
     const toggleSort = (key: 'created_at' | 'tour_date') => {
         setSortConfig(prev => ({
@@ -108,113 +271,7 @@ export default function OrderHistoryClient({ initialData }: OrderHistoryClientPr
     const [notes, setNotes] = useState('');
     const [editItems, setEditItems] = useState<any[]>([]);
 
-    const filteredOrders = (allOrders || []).filter((order: any) => {
-        // Search
-        const searchMatch = 
-            order.customer_name?.toLowerCase().includes(search.toLowerCase()) ||
-            order.guide_name?.toLowerCase().includes(search.toLowerCase());
-        if (search && !searchMatch) return false;
-
-        // Status
-        if (statusFilter && order.status !== statusFilter) return false;
-
-        // Date Filtering Logic
-        if (dateRange) {
-            const now = new Date();
-            const getLocalDateStr = (d: Date) => {
-                const yyyy = d.getFullYear();
-                const mm = String(d.getMonth() + 1).padStart(2, '0');
-                const dd = String(d.getDate()).padStart(2, '0');
-                return `${yyyy}-${mm}-${dd}`;
-            };
-            const todayStr = getLocalDateStr(now);
-            const targetDateStr = dateFilterMode === 'tour' ? order.tour_date : order.created_at.split('T')[0];
-            
-            const parseLocalDate = (dateStr: string) => {
-                const parts = dateStr.split('-');
-                if (parts.length !== 3) return new Date();
-                const [yyyy, mm, dd] = parts.map(Number);
-                return new Date(yyyy, mm - 1, dd);
-            };
-
-            const orderDate = parseLocalDate(targetDateStr);
-            const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-
-            if (dateRange === 'today') {
-                if (targetDateStr !== todayStr) return false;
-            } else if (dateRange === 'yesterday') {
-                const yesterday = new Date(today);
-                yesterday.setDate(today.getDate() - 1);
-                const yesterdayStr = getLocalDateStr(yesterday);
-                if (targetDateStr !== yesterdayStr) return false;
-            } else if (dateRange === 'tomorrow') {
-                const tomorrow = new Date(today);
-                tomorrow.setDate(today.getDate() + 1);
-                const tomorrowStr = getLocalDateStr(tomorrow);
-                if (targetDateStr !== tomorrowStr) return false;
-            } else if (dateRange === 'this_week') {
-                const startOfWeek = new Date(today);
-                startOfWeek.setDate(today.getDate() - today.getDay());
-                if (orderDate < startOfWeek) return false;
-            } else if (dateRange === 'last_week') {
-                const startOfLastWeek = new Date(today);
-                startOfLastWeek.setDate(today.getDate() - today.getDay() - 7);
-                const endOfLastWeek = new Date(startOfLastWeek);
-                endOfLastWeek.setDate(startOfLastWeek.getDate() + 6);
-                if (orderDate < startOfLastWeek || orderDate > endOfLastWeek) return false;
-            } else if (dateRange === 'next_week') {
-                const startOfNextWeek = new Date(today);
-                startOfNextWeek.setDate(today.getDate() - today.getDay() + 7);
-                const endOfNextWeek = new Date(startOfNextWeek);
-                endOfNextWeek.setDate(startOfNextWeek.getDate() + 6);
-                if (orderDate < startOfNextWeek || orderDate > endOfNextWeek) return false;
-            } else if (dateRange === 'this_month') {
-                if (orderDate.getMonth() !== today.getMonth() || orderDate.getFullYear() !== today.getFullYear()) return false;
-            } else if (dateRange === 'last_month') {
-                const lastMonth = new Date(today.getFullYear(), today.getMonth() - 1, 1);
-                if (orderDate.getMonth() !== lastMonth.getMonth() || orderDate.getFullYear() !== lastMonth.getFullYear()) return false;
-            } else if (dateRange === 'next_month') {
-                const nextMonth = new Date(today.getFullYear(), today.getMonth() + 1, 1);
-                if (orderDate.getMonth() !== nextMonth.getMonth() || orderDate.getFullYear() !== nextMonth.getFullYear()) return false;
-            } else if (dateRange === 'next_3_months') {
-                const limit = new Date(today);
-                limit.setMonth(today.getMonth() + 3);
-                if (orderDate <= today || orderDate > limit) return false;
-            } else if (dateRange === 'next_6_months') {
-                const limit = new Date(today);
-                limit.setMonth(today.getMonth() + 6);
-                if (orderDate <= today || orderDate > limit) return false;
-            } else if (dateRange === 'next_12_months') {
-                const limit = new Date(today);
-                limit.setMonth(today.getMonth() + 12);
-                if (orderDate <= today || orderDate > limit) return false;
-            } else if (dateRange === 'this_year') {
-                if (orderDate.getFullYear() !== today.getFullYear()) return false;
-            } else if (dateRange === 'last_3_months') {
-                const limit = new Date(today);
-                limit.setMonth(today.getMonth() - 3);
-                const tomorrow = new Date(today);
-                tomorrow.setDate(today.getDate() + 1);
-                if (orderDate < limit || orderDate >= tomorrow) return false;
-            } else if (dateRange === 'last_6_months') {
-                const limit = new Date(today);
-                limit.setMonth(today.getMonth() - 6);
-                const tomorrow = new Date(today);
-                tomorrow.setDate(today.getDate() + 1);
-                if (orderDate < limit || orderDate >= tomorrow) return false;
-            } else if (dateRange === 'last_12_months') {
-                const limit = new Date(today);
-                limit.setMonth(today.getMonth() - 12);
-                const tomorrow = new Date(today);
-                tomorrow.setDate(today.getDate() + 1);
-                if (orderDate < limit || orderDate >= tomorrow) return false;
-            } else if (dateRange.includes('-')) { // Custom date YYYY-MM-DD
-                if (targetDateStr !== dateRange) return false;
-            }
-        }
-
-        return true;
-    });
+    const filteredOrders = allOrders || [];
 
     const sortedOrders = [...filteredOrders].sort((a: any, b: any) => {
         const aVal = a[sortConfig.key];
@@ -229,11 +286,7 @@ export default function OrderHistoryClient({ initialData }: OrderHistoryClientPr
         }
     });
 
-    const totalLunchItemsCount = React.useMemo(() => {
-        return filteredOrders.reduce((sum: number, order: any) => {
-            return sum + (order.order_items?.reduce((acc: number, item: any) => acc + (item.quantity || 1), 0) || 0);
-        }, 0);
-    }, [filteredOrders]);
+    const totalLunchItemsCount = totalLunches;
 
     function handleExport() {
         const headers = ['Order ID', 'Customer', 'Guide', 'Tour Date', 'Pickup', 'Status', 'Items', 'Placed At'];
@@ -332,20 +385,21 @@ export default function OrderHistoryClient({ initialData }: OrderHistoryClientPr
     const updateEditItem = (itemId: string, updates: any) => {
         setEditItems(prev => prev.map(item => item.id === itemId ? { ...item, ...updates } : item));
     };
-    const pendingCount = filteredOrders.filter((o: any) => o.status === 'pending').length;
     const hasFilters = !!(dateRange || statusFilter || search);
 
     return (
-        <div className="space-y-6 dashboard-web-view no-print">
+        <>
+
+            <div className="space-y-6 dashboard-web-view no-print">
             {/* Header */}
             <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between mb-8">
                 <div className="flex items-center justify-between w-full md:w-auto">
                     <div>
                         <h1 className="text-3xl font-extrabold tracking-tight text-gray-900">Order History</h1>
                         <p className="hidden md:block text-sm font-medium text-gray-500 mt-1">
-                            <span className="text-violet-600 font-bold">{filteredOrders.length}</span> order{filteredOrders.length !== 1 ? 's' : ''} found ·{' '}
-                            <span className="text-violet-600 font-bold">{totalLunchItemsCount}</span> total lunch{totalLunchItemsCount !== 1 ? 'es' : ''} ·{' '}
-                            <span className="text-amber-500 font-bold">{pendingCount}</span> pending
+                            <span className="text-violet-600 font-bold">{totalCount}</span> order{totalCount !== 1 ? 's' : ''} found ·{' '}
+                            <span className="text-violet-600 font-bold">{totalLunches}</span> total lunch{totalLunches !== 1 ? 'es' : ''} ·{' '}
+                            <span className="text-amber-500 font-bold">{pendingCount}</span> pending order{pendingCount !== 1 ? 's' : ''}
                         </p>
                     </div>
                     {/* Mobile View Mode Toggle */}
@@ -375,9 +429,9 @@ export default function OrderHistoryClient({ initialData }: OrderHistoryClientPr
 
                 {/* Mobile-only Stats */}
                 <p className="block md:hidden text-xs font-semibold text-gray-500 bg-gray-50 border border-gray-100/70 rounded-xl p-3 text-center">
-                    <span className="text-violet-600 font-black">{filteredOrders.length}</span> orders ·{' '}
-                    <span className="text-violet-600 font-black">{totalLunchItemsCount}</span> lunches ·{' '}
-                    <span className="text-amber-500 font-black">{pendingCount}</span> pending
+                    <span className="text-violet-600 font-black">{totalCount}</span> orders ·{' '}
+                    <span className="text-violet-600 font-black">{totalLunches}</span> lunches ·{' '}
+                    <span className="text-amber-500 font-black">{pendingCount}</span> pending order{pendingCount !== 1 ? 's' : ''}
                 </p>
 
                 {/* Actions Grid */}
@@ -519,13 +573,61 @@ export default function OrderHistoryClient({ initialData }: OrderHistoryClientPr
                         </SelectContent>
                     </Select>
 
-                    {hasFilters && (
-                        <Button variant="ghost" size="sm" onClick={() => { setDateRange(''); setStatusFilter(''); setSearch(''); }} className="gap-2 text-xs font-bold h-10 px-4 text-gray-400 hover:text-gray-900 transition-colors">
+                    <Button 
+                        onClick={() => handleQueryDatabase(1)} 
+                        disabled={dbLoading}
+                        className="bg-violet-600 hover:bg-violet-700 text-white rounded-xl h-10 px-5 font-bold text-sm transition-all flex items-center gap-2"
+                    >
+                        {dbLoading && <Loader2 className="h-4 w-4 animate-spin" />}
+                        {dbLoading ? 'Searching...' : 'Search'}
+                    </Button>
+
+                    {(hasFilters || page > 1) && (
+                        <Button 
+                            variant="ghost" 
+                            size="sm" 
+                            onClick={handleClearFilters} 
+                            disabled={dbLoading}
+                            className="gap-2 text-xs font-bold h-10 px-4 text-gray-400 hover:text-gray-900 transition-colors"
+                        >
                             <X className="size-3.5" /> Clear
                         </Button>
                     )}
                 </CardContent>
             </Card>
+
+            {/* Pagination Controls */}
+            {totalCount > 100 && (
+                <div className="flex flex-col sm:flex-row items-center justify-between gap-4 p-4 bg-white rounded-2xl border border-gray-150 shadow-sm no-print mb-6">
+                    <div className="text-sm font-semibold text-gray-500">
+                        Showing <span className="font-bold text-gray-800">{Math.min(totalCount, (page - 1) * 100 + 1)}</span> to{' '}
+                        <span className="font-bold text-gray-800">{Math.min(totalCount, page * 100)}</span> of{' '}
+                        <span className="font-bold text-gray-800">{totalCount}</span> orders
+                    </div>
+                    <div className="flex items-center gap-3">
+                        <Button
+                            variant="outline"
+                            onClick={() => handleQueryDatabase(page - 1)}
+                            disabled={page === 1 || dbLoading}
+                            className="rounded-xl font-bold h-10 px-4 border-gray-200 hover:bg-violet-50 transition-colors"
+                        >
+                            Previous
+                        </Button>
+                        <span className="text-sm font-bold text-gray-700 flex items-center gap-2">
+                            {dbLoading && <Loader2 className="h-4 w-4 text-violet-600 animate-spin" />}
+                            Page {page} of {Math.ceil(totalCount / 100)}
+                        </span>
+                        <Button
+                            variant="outline"
+                            onClick={() => handleQueryDatabase(page + 1)}
+                            disabled={page >= Math.ceil(totalCount / 100) || dbLoading}
+                            className="rounded-xl font-bold h-10 px-4 border-gray-200 hover:bg-violet-50 transition-colors"
+                        >
+                            Next
+                        </Button>
+                    </div>
+                </div>
+            )}
 
             {/* View Layout Content */}
             {viewMode === 'table' ? (
@@ -1165,5 +1267,6 @@ export default function OrderHistoryClient({ initialData }: OrderHistoryClientPr
                 variant="danger"
             />
         </div>
+        </>
     );
 }

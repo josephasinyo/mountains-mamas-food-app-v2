@@ -6,15 +6,34 @@ import { OrdersClient } from './OrdersClient';
 export default async function OrdersPage() {
     const supabase = createAdminClient();
 
-    const { data: orders } = await supabase
+    const { data: orders, count } = await supabase
         .from('orders')
-        .select('*, tour_companies(name, slug, prep_instructions), order_items(*)')
-        .order('created_at', { ascending: false });
+        .select('*, tour_companies(name, slug, prep_instructions), order_items(*)', { count: 'exact' })
+        .order('created_at', { ascending: false })
+        .range(0, 99);
+
+    const { count: initialPending } = await supabase
+        .from('orders')
+        .select('*', { count: 'exact', head: true })
+        .eq('status', 'pending');
+
+    const { data: initialLunchesData } = await supabase
+        .from('order_items')
+        .select('quantity');
+    const initialTotalLunches = (initialLunchesData || []).reduce((sum: number, item: any) => sum + (item.quantity || 1), 0);
 
     const { data: companies } = await supabase
         .from('tour_companies')
         .select('id, name, status, prep_instructions')
         .order('name');
 
-    return <OrdersClient initialOrders={orders || []} companies={companies || []} />;
+    return (
+        <OrdersClient 
+            initialOrders={orders || []} 
+            initialTotalCount={count || 0} 
+            initialTotalLunches={initialTotalLunches}
+            initialPendingCount={initialPending || 0}
+            companies={companies || []} 
+        />
+    );
 }

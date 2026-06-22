@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { updateOrderStatus, bulkUpdateStatus, exportOrdersCSV, updateOrderDetails, deleteOrder, bulkDeleteOrders } from './actions';
+import { updateOrderStatus, bulkUpdateStatus, exportOrdersCSV, updateOrderDetails, deleteOrder, bulkDeleteOrders, getPaginatedOrders } from './actions';
 import { Button, buttonVariants } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
@@ -24,7 +24,7 @@ import {
     ChevronRight, X, Building2, Pencil, Printer,
     MoreHorizontal, Trash2, Check, ListFilter,
     ArrowUpDown, ArrowUp, ArrowDown, LayoutGrid, List,
-    Search
+    Search, Loader2
 } from 'lucide-react';
 import { cn, formatDateUS, formatDateTimeUS } from '@/lib/utils';
 import {
@@ -204,6 +204,9 @@ interface Order {
 
 interface OrdersClientProps {
     initialOrders: Order[];
+    initialTotalCount?: number;
+    initialTotalLunches?: number;
+    initialPendingCount?: number;
     companies: { id: string; name: string; status: string; prep_instructions?: string | null }[];
 }
 
@@ -226,8 +229,19 @@ const formatBoxType = (box: string | null) => {
         .replace(/sandwich only/i, 'Sandwich only');
 };
 
-export function OrdersClient({ initialOrders, companies }: OrdersClientProps) {
+export function OrdersClient({ 
+    initialOrders, 
+    initialTotalCount = 0, 
+    initialTotalLunches = 0, 
+    initialPendingCount = 0, 
+    companies 
+}: OrdersClientProps) {
     const [orders, setOrders] = useState<Order[]>(initialOrders);
+    const [totalCount, setTotalCount] = useState(initialTotalCount);
+    const [totalLunches, setTotalLunches] = useState(initialTotalLunches);
+    const [pendingCount, setPendingCount] = useState(initialPendingCount);
+    const [page, setPage] = useState(1);
+    const [dbLoading, setDbLoading] = useState(false);
     const [selected, setSelected] = useState<Set<string>>(new Set());
     const [expanded, setExpanded] = useState<string | null>(null);
     const [dateRange, setDateRange] = useState('');
@@ -242,6 +256,61 @@ export function OrdersClient({ initialOrders, companies }: OrdersClientProps) {
     const [editItems, setEditItems] = useState<OrderItem[]>([]);
     const [loading, setLoading] = useState(false);
     const [isMounted, setIsMounted] = useState(false);
+
+    const handleQueryDatabase = async (targetPage = 1) => {
+        setDbLoading(true);
+        const result = await getPaginatedOrders({
+            page: targetPage,
+            limit: 100,
+            searchTerm,
+            dateFilterMode,
+            startDate,
+            endDate,
+            companyId: companyFilter,
+            status: statusFilter
+        });
+        if (result.success) {
+            setOrders(result.orders);
+            setTotalCount(result.totalCount);
+            setTotalLunches(result.totalLunches || 0);
+            setPendingCount(result.pendingCount || 0);
+            setPage(targetPage);
+        } else {
+            toast.error(result.error || 'Failed to query database');
+        }
+        setDbLoading(false);
+    };
+
+    const handleClearFilters = async () => {
+        setDateRange('');
+        setStartDate('');
+        setEndDate('');
+        setCompanyFilter('');
+        setStatusFilter('');
+        setSearchTerm('');
+        
+        setDbLoading(true);
+        const result = await getPaginatedOrders({
+            page: 1,
+            limit: 100,
+            dateFilterMode,
+            searchTerm: '',
+            startDate: '',
+            endDate: '',
+            companyId: '',
+            status: ''
+        });
+        if (result.success) {
+            setOrders(result.orders);
+            setTotalCount(result.totalCount);
+            setTotalLunches(result.totalLunches || 0);
+            setPendingCount(result.pendingCount || 0);
+            setPage(1);
+        } else {
+            toast.error(result.error || 'Failed to query database');
+        }
+        setDbLoading(false);
+    };
 
     const handleDateRangeChange = (range: string) => {
         setDateRange(range);
@@ -356,39 +425,7 @@ export function OrdersClient({ initialOrders, companies }: OrdersClientProps) {
         JSON.stringify(editItems) !== JSON.stringify(editingOrder.order_items)
     ) : false;
 
-    const filtered = orders.filter(o => {
-        // Date Filtering Logic
-        const targetDateStr = dateFilterMode === 'tour' ? o.tour_date : o.created_at.split('T')[0];
-        
-        if (startDate && targetDateStr < startDate) return false;
-        if (endDate && targetDateStr > endDate) return false;
-
-        if (companyFilter && o.company_id !== companyFilter) return false;
-        if (statusFilter && o.status !== statusFilter) return false;
-
-        if (searchTerm.trim()) {
-            const term = searchTerm.toLowerCase();
-            const matchesCustomer = o.customer_name?.toLowerCase().includes(term);
-            const matchesGuide = o.guide_name?.toLowerCase().includes(term);
-            const matchesCompany = o.tour_companies?.name?.toLowerCase().includes(term);
-            const matchesNotes = o.notes?.toLowerCase().includes(term);
-            const matchesId = o.id?.toLowerCase().includes(term);
-            const matchesItems = o.order_items?.some(item => {
-                return (
-                    item.meal_name?.toLowerCase().includes(term) ||
-                    item.guest_name?.toLowerCase().includes(term) ||
-                    item.box_type?.toLowerCase().includes(term) ||
-                    item.bread_type?.toLowerCase().includes(term) ||
-                    item.cookie_choice?.toLowerCase().includes(term) ||
-                    item.customizations?.toLowerCase().includes(term)
-                );
-            });
-            if (!matchesCustomer && !matchesGuide && !matchesCompany && !matchesNotes && !matchesId && !matchesItems) {
-                return false;
-            }
-        }
-        return true;
-    });
+    const filtered = orders;
 
     const sorted = [...filtered].sort((a, b) => {
         const aVal = a[sortConfig.key];
@@ -410,11 +447,7 @@ export function OrdersClient({ initialOrders, companies }: OrdersClientProps) {
         return sorted;
     }, [sorted, selected]);
 
-    const totalLunchItemsCount = React.useMemo(() => {
-        return filtered.reduce((sum: number, order: any) => {
-            return sum + (order.order_items?.reduce((acc: number, item: any) => acc + (item.quantity || 1), 0) || 0);
-        }, 0);
-    }, [filtered]);
+    const totalLunchItemsCount = totalLunches;
 
     function toggleSelect(id: string) {
         const next = new Set(selected);
@@ -561,12 +594,12 @@ export function OrdersClient({ initialOrders, companies }: OrdersClientProps) {
         }
     }
 
-    const pendingCount = filtered.filter(o => o.status === 'pending').length;
     const hasFilters = !!(dateRange || companyFilter || statusFilter || startDate || endDate || searchTerm);
     const allSelected = filtered.length > 0 && selected.size === filtered.length;
 
     return (
         <>
+
             <div className="space-y-6 dashboard-web-view no-print">
             {/* Header */}
             <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between mb-8">
@@ -574,9 +607,9 @@ export function OrdersClient({ initialOrders, companies }: OrdersClientProps) {
                     <div>
                         <h1 className="text-3xl font-extrabold tracking-tight text-gray-900">Orders</h1>
                         <p className="hidden md:block text-sm font-medium text-gray-500 mt-1">
-                            <span className="text-violet-600 font-bold">{filtered.length}</span> order{filtered.length !== 1 ? 's' : ''} total ·{' '}
-                            <span className="text-violet-600 font-bold">{totalLunchItemsCount}</span> total lunch{totalLunchItemsCount !== 1 ? 'es' : ''} ·{' '}
-                            <span className="text-amber-500 font-bold">{pendingCount}</span> pending
+                            <span className="text-violet-600 font-bold">{totalCount}</span> order{totalCount !== 1 ? 's' : ''} total ·{' '}
+                            <span className="text-violet-600 font-bold">{totalLunches}</span> total lunch{totalLunches !== 1 ? 'es' : ''} ·{' '}
+                            <span className="text-amber-500 font-bold">{pendingCount}</span> pending order{pendingCount !== 1 ? 's' : ''}
                         </p>
                     </div>
                     {/* Mobile View Mode Toggle */}
@@ -606,9 +639,9 @@ export function OrdersClient({ initialOrders, companies }: OrdersClientProps) {
 
                 {/* Mobile-only Stats */}
                 <p className="block md:hidden text-xs font-semibold text-gray-500 bg-gray-50 border border-gray-100/70 rounded-xl p-3 text-center">
-                    <span className="text-violet-600 font-black">{filtered.length}</span> orders ·{' '}
-                    <span className="text-violet-600 font-black">{totalLunchItemsCount}</span> lunches ·{' '}
-                    <span className="text-amber-500 font-black">{pendingCount}</span> pending
+                    <span className="text-violet-600 font-black">{totalCount}</span> orders ·{' '}
+                    <span className="text-violet-600 font-black">{totalLunches}</span> lunches ·{' '}
+                    <span className="text-amber-500 font-black">{pendingCount}</span> pending order{pendingCount !== 1 ? 's' : ''}
                 </p>
 
                 {/* Actions Grid */}
@@ -821,18 +854,21 @@ export function OrdersClient({ initialOrders, companies }: OrdersClientProps) {
                         </SelectContent>
                     </Select>
 
-                    {hasFilters && (
+                    <Button 
+                        onClick={() => handleQueryDatabase(1)} 
+                        disabled={dbLoading}
+                        className="bg-violet-600 hover:bg-violet-700 text-white rounded-xl h-10 px-5 font-bold text-sm transition-all flex items-center gap-2"
+                    >
+                        {dbLoading && <Loader2 className="h-4 w-4 animate-spin" />}
+                        {dbLoading ? 'Searching...' : 'Search'}
+                    </Button>
+
+                    {(hasFilters || page > 1) && (
                         <Button 
                             variant="ghost" 
                             size="sm" 
-                            onClick={() => { 
-                                setDateRange(''); 
-                                setStartDate('');
-                                setEndDate('');
-                                setCompanyFilter(''); 
-                                setStatusFilter(''); 
-                                setSearchTerm('');
-                            }} 
+                            onClick={handleClearFilters} 
+                            disabled={dbLoading}
                             className="gap-2 text-xs font-bold h-10 px-4 text-gray-400 hover:text-gray-900 transition-colors"
                         >
                             <X className="size-3.5" /> Clear
@@ -840,6 +876,39 @@ export function OrdersClient({ initialOrders, companies }: OrdersClientProps) {
                     )}
                 </CardContent>
             </Card>
+
+            {/* Pagination Controls */}
+            {totalCount > 100 && (
+                <div className="flex flex-col sm:flex-row items-center justify-between gap-4 p-4 bg-white rounded-2xl border border-gray-150 shadow-sm no-print mb-6">
+                    <div className="text-sm font-semibold text-gray-500">
+                        Showing <span className="font-bold text-gray-800">{Math.min(totalCount, (page - 1) * 100 + 1)}</span> to{' '}
+                        <span className="font-bold text-gray-800">{Math.min(totalCount, page * 100)}</span> of{' '}
+                        <span className="font-bold text-gray-800">{totalCount}</span> orders
+                    </div>
+                    <div className="flex items-center gap-3">
+                        <Button
+                            variant="outline"
+                            onClick={() => handleQueryDatabase(page - 1)}
+                            disabled={page === 1 || dbLoading}
+                            className="rounded-xl font-bold h-10 px-4 border-gray-200 hover:bg-violet-50 transition-colors"
+                        >
+                            Previous
+                        </Button>
+                        <span className="text-sm font-bold text-gray-700 flex items-center gap-2">
+                            {dbLoading && <Loader2 className="h-4 w-4 text-violet-600 animate-spin" />}
+                            Page {page} of {Math.ceil(totalCount / 100)}
+                        </span>
+                        <Button
+                            variant="outline"
+                            onClick={() => handleQueryDatabase(page + 1)}
+                            disabled={page >= Math.ceil(totalCount / 100) || dbLoading}
+                            className="rounded-xl font-bold h-10 px-4 border-gray-200 hover:bg-violet-50 transition-colors"
+                        >
+                            Next
+                        </Button>
+                    </div>
+                </div>
+            )}
 
             {/* Bulk Actions */}
             {selected.size > 0 && (

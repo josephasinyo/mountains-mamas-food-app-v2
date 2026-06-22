@@ -484,3 +484,126 @@ export async function completeForcedPasswordChange() {
         return { success: false, error: error.message };
     }
 }
+
+export async function getPaginatedCompanyOrders(filters: {
+    page: number;
+    limit: number;
+    searchTerm?: string;
+    dateFilterMode: 'tour' | 'order';
+    startDate?: string;
+    endDate?: string;
+    status?: string;
+}) {
+    try {
+        const companyId = await getCompanyId();
+        const supabase = await createClient();
+        const offset = (filters.page - 1) * filters.limit;
+
+        let query = supabase
+            .from('orders')
+            .select('*, order_items(*)', { count: 'exact' })
+            .eq('company_id', companyId)
+            .order('created_at', { ascending: false });
+
+        if (filters.status) {
+            query = query.eq('status', filters.status);
+        }
+
+        // Apply date range
+        const dateField = filters.dateFilterMode === 'tour' ? 'tour_date' : 'created_at';
+        if (filters.startDate) {
+            const val = filters.dateFilterMode === 'tour' ? filters.startDate : `${filters.startDate}T00:00:00.000Z`;
+            query = query.gte(dateField, val);
+        }
+        if (filters.endDate) {
+            const val = filters.dateFilterMode === 'tour' ? filters.endDate : `${filters.endDate}T23:59:59.999Z`;
+            query = query.lte(dateField, val);
+        }
+
+        // Apply search term
+        if (filters.searchTerm && filters.searchTerm.trim() !== '') {
+            const term = filters.searchTerm.trim();
+            // Search order items for matches
+            const { data: matchedItems } = await supabase
+                .from('order_items')
+                .select('order_id')
+                .or(`meal_name.ilike.%${term}%,guest_name.ilike.%${term}%,box_type.ilike.%${term}%,customizations.ilike.%${term}%`);
+
+            const orderIdsFromItems = Array.from(new Set((matchedItems || []).map((i: any) => i.order_id).filter(Boolean)));
+
+            // Construct OR query for order details
+            let orQuery = `customer_name.ilike.%${term}%,guide_name.ilike.%${term}%,notes.ilike.%${term}%`;
+            
+            const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(term);
+            if (isUuid) {
+                orQuery += `,id.eq.${term}`;
+            }
+
+            if (orderIdsFromItems.length > 0) {
+                orQuery += `,id.in.(${orderIdsFromItems.map((id: any) => `"${id}"`).join(',')})`;
+            }
+
+            query = query.or(orQuery);
+        }
+
+        const { data: orders, count, error } = await query.range(offset, offset + filters.limit - 1);
+        if (error) throw error;
+
+        // Apply filters to stats query to compute full aggregated stats
+        let statsQuery = supabase
+            .from('orders')
+            .select('id, status, order_items(quantity)')
+            .eq('company_id', companyId);
+
+        if (filters.status) {
+            statsQuery = statsQuery.eq('status', filters.status);
+        }
+        if (filters.startDate) {
+            const val = filters.dateFilterMode === 'tour' ? filters.startDate : `${filters.startDate}T00:00:00.000Z`;
+            statsQuery = statsQuery.gte(dateField, val);
+        }
+        if (filters.endDate) {
+            const val = filters.dateFilterMode === 'tour' ? filters.endDate : `${filters.endDate}T23:59:59.999Z`;
+            statsQuery = statsQuery.lte(dateField, val);
+        }
+        if (filters.searchTerm && filters.searchTerm.trim() !== '') {
+            const term = filters.searchTerm.trim();
+            const { data: matchedItems } = await supabase
+                .from('order_items')
+                .select('order_id')
+                .or(`meal_name.ilike.%${term}%,guest_name.ilike.%${term}%,box_type.ilike.%${term}%,customizations.ilike.%${term}%`);
+
+            const orderIdsFromItems = Array.from(new Set((matchedItems || []).map((i: any) => i.order_id).filter(Boolean)));
+
+            let orQuery = `customer_name.ilike.%${term}%,guide_name.ilike.%${term}%,notes.ilike.%${term}%`;
+            const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(term);
+            if (isUuid) {
+                orQuery += `,id.eq.${term}`;
+            }
+
+            if (orderIdsFromItems.length > 0) {
+                orQuery += `,id.in.(${orderIdsFromItems.map((id: any) => `"${id}"`).join(',')})`;
+            }
+
+            statsQuery = statsQuery.or(orQuery);
+        }
+
+        const { data: statsData } = await statsQuery;
+        const statsOrders = statsData || [];
+        const pendingCount = statsOrders.filter((o: any) => o.status === 'pending').length;
+        const totalLunches = statsOrders.reduce((sum: number, o: any) => {
+            return sum + (o.order_items?.reduce((s: number, item: any) => s + (item.quantity || 1), 0) || 0);
+        }, 0);
+
+        return {
+            success: true,
+            orders: orders || [],
+            totalCount: count || 0,
+            totalLunches,
+            pendingCount
+        };
+    } catch (e: any) {
+        console.error('Error fetching paginated company orders:', e);
+        return { success: false, error: e.message || String(e), orders: [], totalCount: 0, totalLunches: 0, pendingCount: 0 };
+    }
+}
