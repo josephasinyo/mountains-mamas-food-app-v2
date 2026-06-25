@@ -503,7 +503,7 @@ export async function getPaginatedCompanyOrders(filters: {
 
         let query = supabase
             .from('orders')
-            .select('*, order_items(*)', { count: 'exact' })
+            .select('*, order_items(*), order_change_requests(*)', { count: 'exact' })
             .eq('company_id', companyId)
             .order('created_at', { ascending: false });
 

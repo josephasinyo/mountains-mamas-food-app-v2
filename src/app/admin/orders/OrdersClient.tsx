@@ -2,6 +2,9 @@
 
 import React, { useState, useEffect } from 'react';
 import { updateOrderStatus, bulkUpdateStatus, exportOrdersCSV, updateOrderDetails, deleteOrder, bulkDeleteOrders, getPaginatedOrders } from './actions';
+import { handleOrderChangeRequest } from '@/app/company/orders/change-actions';
+import { createClient } from '@/lib/supabase/client';
+import { getGlobalSettings } from '@/lib/supabase/public-actions';
 import { Button, buttonVariants } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
@@ -24,7 +27,7 @@ import {
     ChevronRight, X, Building2, Pencil, Printer,
     MoreHorizontal, Trash2, Check, ListFilter,
     ArrowUpDown, ArrowUp, ArrowDown, LayoutGrid, List,
-    Search, Loader2
+    Search, Loader2, Plus
 } from 'lucide-react';
 import { cn, formatDateUS, formatDateTimeUS } from '@/lib/utils';
 import {
@@ -184,6 +187,7 @@ interface OrderItem {
     customizations: string | null;
     unit_price: number;
     custom_fields: Record<string, any> | null;
+    meal_id?: string | null;
 }
 
 interface Order {
@@ -208,6 +212,7 @@ interface OrdersClientProps {
     initialTotalLunches?: number;
     initialPendingCount?: number;
     companies: { id: string; name: string; status: string; prep_instructions?: string | null }[];
+    initialChangeRequests?: any[];
 }
 
 const STATUS_LABELS: Record<string, string> = {
@@ -234,7 +239,8 @@ export function OrdersClient({
     initialTotalCount = 0, 
     initialTotalLunches = 0, 
     initialPendingCount = 0, 
-    companies 
+    companies,
+    initialChangeRequests = []
 }: OrdersClientProps) {
     const [orders, setOrders] = useState<Order[]>(initialOrders);
     const [totalCount, setTotalCount] = useState(initialTotalCount);
@@ -256,6 +262,51 @@ export function OrdersClient({
     const [editItems, setEditItems] = useState<OrderItem[]>([]);
     const [loading, setLoading] = useState(false);
     const [isMounted, setIsMounted] = useState(false);
+
+    // Change Requests State
+    const [changeRequests, setChangeRequests] = useState<any[]>(initialChangeRequests);
+    const [activeTab, setActiveTab] = useState<'orders' | 'requests'>('orders');
+    const [declineDialogOpen, setDeclineDialogOpen] = useState(false);
+    const [selectedRequest, setSelectedRequest] = useState<any>(null);
+    const [declineReason, setDeclineReason] = useState('');
+    const [requestActionLoading, setRequestActionLoading] = useState<string | null>(null);
+
+    const handleRequestDecision = async (requestId: string, decision: 'approved' | 'declined', reason?: string) => {
+        setRequestActionLoading(requestId);
+        try {
+            const result = await handleOrderChangeRequest(requestId, decision, reason);
+            if (result.success) {
+                toast.success(`Request ${decision} successfully`);
+                setChangeRequests(prev => prev.filter(r => r.id !== requestId));
+                // Reload dashboard data
+                handleQueryDatabase(page);
+            } else {
+                toast.error(result.error || `Failed to ${decision} request`);
+            }
+        } catch (e: any) {
+            toast.error(e.message || String(e));
+        } finally {
+            setRequestActionLoading(null);
+            setDeclineDialogOpen(false);
+            setDeclineReason('');
+            setSelectedRequest(null);
+        }
+    };
+
+    const handleBadgeClick = (e: React.MouseEvent, orderId: string) => {
+        e.stopPropagation();
+        setActiveTab('requests');
+        setTimeout(() => {
+            const element = document.getElementById(`request-${orderId}`);
+            if (element) {
+                element.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                element.classList.add('ring-2', 'ring-violet-600', 'ring-offset-2');
+                setTimeout(() => {
+                    element.classList.remove('ring-2', 'ring-violet-600', 'ring-offset-2');
+                }, 2000);
+            }
+        }, 100);
+    };
 
     const handleQueryDatabase = async (targetPage = 1) => {
         setDbLoading(true);
@@ -415,6 +466,182 @@ export function OrdersClient({
     const [notes, setNotes] = useState('');
     const [companyId, setCompanyId] = useState<string | null>(null);
 
+    const [selectedCompanyConfig, setSelectedCompanyConfig] = useState<any | null>(null);
+    const [selectedCompanyMeals, setSelectedCompanyMeals] = useState<any[]>([]);
+    const [globalSettings, setGlobalSettings] = useState<any | null>(null);
+
+    useEffect(() => {
+        const fetchGlobal = async () => {
+            const res = await getGlobalSettings();
+            if (res.success) {
+                setGlobalSettings(res.settings);
+            }
+        };
+        fetchGlobal();
+    }, []);
+
+    useEffect(() => {
+        const fetchCompanyDetails = async () => {
+            const supabaseClient = createClient();
+            
+            const { data: allMeals } = await supabaseClient
+                .from('meals')
+                .select('*')
+                .eq('is_active', true);
+
+            if (!companyId) {
+                setSelectedCompanyConfig(null);
+                setSelectedCompanyMeals(allMeals || []);
+                return;
+            }
+            
+            const { data: configData } = await supabaseClient
+                .from('company_app_config')
+                .select('*')
+                .eq('company_id', companyId)
+                .single();
+            
+            const { data: selections } = await supabaseClient
+                .from('company_menu_selections')
+                .select('meal_id')
+                .eq('company_id', companyId)
+                .eq('is_selected', true);
+            
+            if (configData) {
+                setSelectedCompanyConfig(configData);
+            } else {
+                setSelectedCompanyConfig(null);
+            }
+
+            if (selections && allMeals) {
+                const selectedIds = new Set(selections.map((s: any) => s.meal_id));
+                const activeMeals = allMeals.filter((m: any) => selectedIds.has(m.id));
+                setSelectedCompanyMeals(activeMeals);
+            } else {
+                setSelectedCompanyMeals([]);
+            }
+        };
+        fetchCompanyDetails();
+    }, [companyId]);
+
+    const getBreadOptions = (currentItemValue?: string) => {
+        const mealOpts = selectedCompanyConfig?.meal_page_options;
+        const parsed = typeof mealOpts === 'string' ? JSON.parse(mealOpts) : mealOpts;
+        const globalBreads = (globalSettings?.bread_options && Array.isArray(globalSettings.bread_options)) 
+            ? globalSettings.bread_options 
+            : [];
+        let options: string[] = [];
+        if (parsed?.breads && Array.isArray(parsed.breads) && parsed.breads.length > 0) {
+            const activeBreads = parsed.breads.filter((b: string) => globalBreads.includes(b));
+            if (activeBreads.length > 0) {
+                options = activeBreads;
+            }
+        }
+        if (options.length === 0) {
+            options = globalBreads.length > 0 ? globalBreads : ['White Bread'];
+        }
+        if (currentItemValue && !options.includes(currentItemValue)) {
+            return [...options, currentItemValue];
+        }
+        return options;
+    };
+
+    const getCookieOptions = (currentItemValue?: string) => {
+        const mealOpts = selectedCompanyConfig?.meal_page_options;
+        const parsed = typeof mealOpts === 'string' ? JSON.parse(mealOpts) : mealOpts;
+        const globalCookies = (globalSettings?.cookie_options && Array.isArray(globalSettings.cookie_options)) 
+            ? globalSettings.cookie_options 
+            : [];
+        let options: string[] = [];
+        if (parsed?.cookies && Array.isArray(parsed.cookies) && parsed.cookies.length > 0) {
+            const activeCookies = parsed.cookies.filter((c: string) => globalCookies.includes(c));
+            if (activeCookies.length > 0) {
+                options = activeCookies;
+            }
+        }
+        if (options.length === 0) {
+            options = globalCookies.length > 0 ? globalCookies : ['Chocolate Chip'];
+        }
+        if (currentItemValue && !options.includes(currentItemValue)) {
+            return [...options, currentItemValue];
+        }
+        return options;
+    };
+
+    const getBoxTypeOptions = (item: any) => {
+        const meal = selectedCompanyMeals.find((m) => m.id === item.meal_id || m.name === item.meal_name);
+        const pkgLabel = meal ? (meal.lunch_package === 'bag' ? 'Bag' : 'Box') : 'Box';
+        const isSalad = meal ? (meal.category === 'salad' && !meal.name.toLowerCase().includes('sandwich')) : false;
+        
+        // Settings from selectedCompanyConfig (default to true if config not loaded yet)
+        const isSandwichAllowed = selectedCompanyConfig ? (selectedCompanyConfig.use_sandwich_only !== false && (meal ? meal.category === 'sandwich' : true)) : true;
+        const isBoxAllowed = selectedCompanyConfig ? (selectedCompanyConfig.show_box_lunch_category !== false) : true;
+        const isJuniorAllowed = selectedCompanyConfig ? (selectedCompanyConfig.show_junior_box_lunch_category !== false && (meal ? (meal.allow_split_box || meal.category === 'sandwich' || meal.name.toLowerCase().includes('sandwich')) : true)) : true;
+        
+        const enabledOptionsCount = (isSandwichAllowed ? 1 : 0) + (isBoxAllowed ? 1 : 0) + (isJuniorAllowed ? 1 : 0);
+        
+        const options: string[] = [];
+        
+        if (isSalad) {
+            options.push(`${pkgLabel} Lunch`);
+        } else {
+            if (enabledOptionsCount === 1) {
+                if (isBoxAllowed) {
+                    options.push(`This is a ${pkgLabel.toLowerCase()} lunch`);
+                }
+                if (isJuniorAllowed) {
+                    options.push(`This is a junior ${pkgLabel.toLowerCase()} lunch`);
+                }
+                if (isSandwichAllowed) {
+                    options.push(`This is a standalone sandwich`);
+                }
+            } else {
+                if (isBoxAllowed) {
+                    options.push(`${pkgLabel} Lunch`);
+                }
+                if (isJuniorAllowed) {
+                    options.push(`Junior ${pkgLabel} Lunch`);
+                }
+                if (isSandwichAllowed) {
+                    options.push(`Sandwich only`);
+                }
+            }
+        }
+        
+        // Always include the current box_type if it is set and not already in options
+        const currentVal = item.box_type;
+        if (currentVal && !options.includes(currentVal)) {
+            options.push(currentVal);
+        }
+        
+        return options;
+    };
+
+    const handleRemoveItem = (itemId: string) => {
+        setEditItems(prev => prev.filter(item => item.id !== itemId));
+    };
+
+    const handleAddItem = () => {
+        const defaultMeal = selectedCompanyMeals[0] || { id: null, name: 'Custom Selection', price: 0 };
+        const defaultBreadOptions = getBreadOptions();
+        const defaultCookieOptions = getCookieOptions();
+
+        const newItem = {
+            id: `temp-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+            meal_id: defaultMeal.id,
+            meal_name: defaultMeal.name,
+            quantity: 1,
+            box_type: 'Box Lunch',
+            bread_type: defaultBreadOptions[0] || '',
+            cookie_choice: defaultCookieOptions[0] || '',
+            guest_name: '',
+            customizations: '',
+            unit_price: defaultMeal.price || 0,
+            custom_fields: null
+        };
+        setEditItems(prev => [...prev, newItem]);
+    };
+
     const hasChanges = editingOrder ? (
         customerName !== (editingOrder.customer_name || '') ||
         guideName !== (editingOrder.guide_name || '') ||
@@ -509,6 +736,10 @@ export function OrdersClient({
     async function handleEditSubmit(e: React.FormEvent<HTMLFormElement>) {
         e.preventDefault();
         if (!editingOrder || !hasChanges) return;
+        if (editItems.length === 0) {
+            toast.error('Orders must contain at least one item.');
+            return;
+        }
         setLoading(true);
 
         const details = {
@@ -530,7 +761,10 @@ export function OrdersClient({
                 guest_name: item.guest_name,
                 box_type: item.box_type,
                 bread_type: item.bread_type,
-                cookie_choice: item.cookie_choice
+                cookie_choice: item.cookie_choice,
+                meal_id: item.meal_id,
+                meal_name: item.meal_name,
+                unit_price: item.unit_price
             }))
         );
 
@@ -593,6 +827,398 @@ export function OrdersClient({
             URL.revokeObjectURL(url);
         }
     }
+
+    const renderChangeRequests = () => {
+        if (changeRequests.length === 0) {
+            return (
+                <Card className="rounded-3xl border-gray-100 shadow-sm overflow-hidden bg-white">
+                    <CardContent className="flex flex-col items-center justify-center py-24 text-gray-400">
+                        <div className="size-20 rounded-full bg-violet-50 flex items-center justify-center mb-6">
+                            <CheckCircle className="size-10 text-violet-500 opacity-60" />
+                        </div>
+                        <p className="font-bold text-gray-900 text-lg">No pending change requests</p>
+                        <p className="text-sm mt-1 max-w-[320px] text-center text-gray-500">
+                            All requests submitted by partner companies have been processed.
+                        </p>
+                    </CardContent>
+                </Card>
+            );
+        }
+
+        return (
+            <div className="space-y-6">
+                {changeRequests.map((request) => {
+                    const originalOrder = request.orders;
+                    const proposedDetails = request.details || {};
+                    const isDeletion = request.type === 'delete';
+                    const isCancellation = request.type === 'cancel';
+
+                    // Compare values helpers
+                    const renderCompareRow = (label: string, original: any, proposed: any, formatFn?: (v: any) => string) => {
+                        const originalStr = formatFn ? formatFn(original) : String(original || '');
+                        const proposedStr = formatFn ? formatFn(proposed) : String(proposed || '');
+                        const isChanged = !isDeletion && !isCancellation && originalStr !== proposedStr;
+
+                        return (
+                            <div className="grid grid-cols-3 py-2 border-b border-gray-100/70 text-sm" key={label}>
+                                <span className="font-bold text-gray-500">{label}</span>
+                                <span className={cn("text-gray-700", isChanged && "line-through text-red-500 bg-red-50/50 px-1 rounded")}>
+                                    {originalStr || <span className="italic text-gray-400">None</span>}
+                                </span>
+                                <span className="text-gray-900 font-medium">
+                                    {!isDeletion && !isCancellation && isChanged ? (
+                                        <span className="text-emerald-700 bg-emerald-50 px-1.5 py-0.5 rounded-md font-bold">
+                                            {proposedStr || <span className="italic text-emerald-600">None</span>}
+                                        </span>
+                                    ) : (
+                                        <span>—</span>
+                                    )}
+                                </span>
+                            </div>
+                        );
+                    };
+
+                    return (
+                        <Card id={`request-${originalOrder?.id}`} key={request.id} className="rounded-3xl border-gray-100 shadow-md overflow-hidden bg-white transition-all duration-500">
+                            {/* Card Header */}
+                            <CardHeader className="bg-gray-50/50 px-6 py-5 border-b border-gray-100 flex flex-row items-center justify-between flex-wrap gap-4">
+                                <div className="space-y-1">
+                                    <div className="flex items-center gap-2 flex-wrap">
+                                        <Badge className={cn(
+                                            "font-bold uppercase tracking-wider text-[10px] px-2.5 py-0.5 rounded-lg border",
+                                            isDeletion 
+                                                ? "bg-rose-50 text-rose-700 border-rose-200" 
+                                                : isCancellation
+                                                    ? "bg-amber-50 text-amber-700 border-amber-200"
+                                                    : "bg-blue-50 text-blue-700 border-blue-200"
+                                        )}>
+                                            {isDeletion ? 'Deletion Request' : isCancellation ? 'Cancellation Request' : 'Update / Edit Request'}
+                                        </Badge>
+                                        <span className="text-sm font-bold text-gray-900">
+                                            Order #{originalOrder?.id?.slice(0, 8).toUpperCase() || 'UNKNOWN'}
+                                        </span>
+                                    </div>
+                                    <p className="text-xs text-gray-500 font-medium">
+                                        Submitted by <span className="font-bold text-gray-700">{request.tour_companies?.name}</span> ({request.tour_companies?.email}) · Placed {new Date(request.created_at).toLocaleString()}
+                                    </p>
+                                </div>
+                                <div className="flex items-center gap-2">
+                                    <Button
+                                        size="sm"
+                                        onClick={() => {
+                                            setSelectedRequest(request);
+                                            setDeclineReason('');
+                                            setDeclineDialogOpen(true);
+                                        }}
+                                        disabled={requestActionLoading !== null}
+                                        className="rounded-xl border border-red-200 bg-red-50 hover:bg-red-100 text-red-700 font-bold px-4 py-2 text-xs"
+                                    >
+                                        Decline
+                                    </Button>
+                                    <Button
+                                        size="sm"
+                                        onClick={() => handleRequestDecision(request.id, 'approved')}
+                                        disabled={requestActionLoading !== null}
+                                        className="rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold px-4 py-2 text-xs shadow-sm shadow-emerald-100 flex items-center gap-1"
+                                    >
+                                        {requestActionLoading === request.id ? (
+                                            <Loader2 className="size-3 animate-spin" />
+                                        ) : (
+                                            <Check className="size-3" />
+                                        )}
+                                        Approve
+                                    </Button>
+                                </div>
+                            </CardHeader>
+
+                            {/* Card Content */}
+                            <CardContent className="p-6 space-y-6">
+                                <div className="space-y-4">
+                                    <h3 className="text-xs font-black text-gray-400 uppercase tracking-widest">Order Details Comparison</h3>
+                                    <div className="border border-gray-100 rounded-2xl p-4 bg-gray-50/20 divide-y divide-gray-100">
+                                        <div className="grid grid-cols-3 pb-2 text-xs font-bold text-gray-400 uppercase tracking-wide">
+                                            <span>Field</span>
+                                            <span>Original Value</span>
+                                            <span>Proposed Value</span>
+                                        </div>
+                                        {renderCompareRow("Customer Name", originalOrder?.customer_name, proposedDetails.customer_name)}
+                                        {renderCompareRow("Guide Name", originalOrder?.guide_name, proposedDetails.guide_name)}
+                                        {renderCompareRow("Tour Date", originalOrder?.tour_date, proposedDetails.tour_date, (v) => v ? formatDateUS(v) : '')}
+                                        {renderCompareRow("Pickup Time", originalOrder?.pickup_time, proposedDetails.pickup_time)}
+                                        {renderCompareRow("Notes", originalOrder?.notes, proposedDetails.notes)}
+                                    </div>
+                                </div>
+
+                                {/* Items Comparison */}
+                                {!isDeletion && !isCancellation && (
+                                    <div className="space-y-4">
+                                        <h3 className="text-xs font-black text-gray-400 uppercase tracking-widest">Proposed Menu Selections</h3>
+                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                            {(() => {
+                                                const originalItems = originalOrder?.order_items || [];
+                                                const proposedItems = proposedDetails.items || [];
+
+                                                // Helper to check if item is identical
+                                                const isItemEqual = (a: any, b: any) => {
+                                                    return (
+                                                        a.meal_name === b.meal_name &&
+                                                        a.quantity === b.quantity &&
+                                                        a.guest_name === b.guest_name &&
+                                                        a.box_type === b.box_type &&
+                                                        a.bread_type === b.bread_type &&
+                                                        a.cookie_choice === b.cookie_choice &&
+                                                        a.customizations === b.customizations
+                                                    );
+                                                };
+
+                                                const allComparisons: {
+                                                    status: 'added' | 'removed' | 'modified' | 'unchanged';
+                                                    original?: any;
+                                                    proposed?: any;
+                                                }[] = [];
+
+                                                // Find added, modified, unchanged
+                                                proposedItems.forEach((pItem: any) => {
+                                                    const oItem = originalItems.find((o: any) => o.id === pItem.id);
+                                                    if (!oItem) {
+                                                        allComparisons.push({ status: 'added', proposed: pItem });
+                                                    } else if (!isItemEqual(oItem, pItem)) {
+                                                        allComparisons.push({ status: 'modified', original: oItem, proposed: pItem });
+                                                    } else {
+                                                        allComparisons.push({ status: 'unchanged', original: oItem, proposed: pItem });
+                                                    }
+                                                });
+
+                                                // Find removed
+                                                originalItems.forEach((oItem: any) => {
+                                                    const pItem = proposedItems.find((p: any) => p.id === oItem.id);
+                                                    if (!pItem) {
+                                                        allComparisons.push({ status: 'removed', original: oItem });
+                                                    }
+                                                });
+
+                                                if (allComparisons.length === 0) {
+                                                    return <p className="text-xs text-gray-400 italic">No menu selections submitted</p>;
+                                                }
+
+                                                // Helper to render field changes inline
+                                                const renderFieldDiff = (label: string, originalVal: any, proposedVal: any, formatFn?: (v: any) => string) => {
+                                                    const origStr = formatFn ? formatFn(originalVal) : (originalVal || '');
+                                                    const propStr = formatFn ? formatFn(proposedVal) : (proposedVal || '');
+                                                    const isChanged = origStr !== propStr;
+
+                                                    if (!isChanged) {
+                                                        if (!propStr) return null;
+                                                        return (
+                                                            <div className="text-xs text-gray-600 flex gap-1">
+                                                                <span className="font-bold text-gray-400">{label}:</span>
+                                                                <span className="text-gray-800">{propStr}</span>
+                                                            </div>
+                                                        );
+                                                    }
+
+                                                    return (
+                                                        <div className="text-xs flex items-center gap-1.5 flex-wrap">
+                                                            <span className="font-bold text-gray-400">{label}:</span>
+                                                            {origStr && (
+                                                                <span className="line-through text-red-500 bg-red-50 px-1 rounded">
+                                                                    {origStr}
+                                                                </span>
+                                                            )}
+                                                            <span className="text-emerald-700 bg-emerald-50 px-1.5 py-0.5 rounded font-bold">
+                                                                {propStr || <span className="italic text-emerald-600">None</span>}
+                                                            </span>
+                                                        </div>
+                                                    );
+                                                };
+
+                                                return allComparisons.map((comp, idx) => {
+                                                    const item = comp.proposed || comp.original;
+                                                    const key = item.id || `comp-${idx}`;
+                                                    
+                                                    if (comp.status === 'added') {
+                                                        return (
+                                                            <div key={key} className="border border-emerald-200 rounded-2xl p-4 bg-emerald-50/10 shadow-sm space-y-2 relative overflow-hidden">
+                                                                <div className="absolute top-3 right-3">
+                                                                    <Badge className="bg-emerald-500 hover:bg-emerald-600 text-white border-none font-bold text-[8px] tracking-wider uppercase px-2 py-0.5 rounded-md">
+                                                                        + Added
+                                                                    </Badge>
+                                                                </div>
+                                                                <div className="space-y-1">
+                                                                    <p className="font-bold text-sm text-gray-900 pr-16">{item.meal_name}</p>
+                                                                    <div className="text-xs text-gray-600 flex gap-1">
+                                                                        <span className="font-bold text-gray-400">Box Options:</span>
+                                                                        <span className="text-gray-800">
+                                                                            {[formatBoxType(item.box_type), item.bread_type, item.cookie_choice].filter(Boolean).join(' • ')}
+                                                                        </span>
+                                                                    </div>
+                                                                    {item.guest_name && (
+                                                                        <div className="text-xs text-gray-600 flex gap-1">
+                                                                            <span className="font-bold text-gray-400">Guest:</span>
+                                                                            <span className="font-bold text-violet-600">{item.guest_name}</span>
+                                                                        </div>
+                                                                    )}
+                                                                    {item.customizations && (
+                                                                        <div className="mt-2 border-t border-dashed border-gray-100 pt-2 text-xs">
+                                                                            <p className="font-bold text-amber-700">Customizations:</p>
+                                                                            <p className="text-gray-700 italic mt-0.5">{item.customizations}</p>
+                                                                        </div>
+                                                                    )}
+                                                                    <div className="pt-2 border-t border-gray-100 flex items-center gap-1.5 text-xs">
+                                                                        <span className="font-bold text-gray-400">Quantity:</span>
+                                                                        <span className="text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-md font-bold">{item.quantity}</span>
+                                                                    </div>
+                                                                </div>
+                                                            </div>
+                                                        );
+                                                    }
+
+                                                    if (comp.status === 'removed') {
+                                                        return (
+                                                            <div key={key} className="border border-rose-200 rounded-2xl p-4 bg-rose-50/5 shadow-sm space-y-2 relative overflow-hidden opacity-75">
+                                                                <div className="absolute top-3 right-3">
+                                                                    <Badge className="bg-rose-500 hover:bg-rose-600 text-white border-none font-bold text-[8px] tracking-wider uppercase px-2 py-0.5 rounded-md">
+                                                                        - Removed
+                                                                    </Badge>
+                                                                </div>
+                                                                <div className="space-y-1 text-gray-400">
+                                                                    <p className="font-bold text-sm line-through text-red-500 pr-16">{item.meal_name}</p>
+                                                                    <div className="text-xs line-through text-red-400 flex gap-1">
+                                                                        <span className="font-bold">Box Options:</span>
+                                                                        <span>
+                                                                            {[formatBoxType(item.box_type), item.bread_type, item.cookie_choice].filter(Boolean).join(' • ')}
+                                                                        </span>
+                                                                    </div>
+                                                                    {item.guest_name && (
+                                                                        <div className="text-xs line-through text-red-400 flex gap-1">
+                                                                            <span className="font-bold">Guest:</span>
+                                                                            <span>{item.guest_name}</span>
+                                                                        </div>
+                                                                    )}
+                                                                    {item.customizations && (
+                                                                        <div className="mt-2 border-t border-dashed border-gray-100 pt-2 text-xs">
+                                                                            <p className="font-bold text-red-400">Customizations:</p>
+                                                                            <p className="line-through text-red-400 italic mt-0.5">{item.customizations}</p>
+                                                                        </div>
+                                                                    )}
+                                                                    <div className="pt-2 border-t border-gray-100 flex items-center gap-1.5 text-xs">
+                                                                        <span className="font-bold">Quantity:</span>
+                                                                        <span className="line-through text-red-500 bg-red-50 px-2 py-0.5 rounded-md font-bold">{item.quantity}</span>
+                                                                    </div>
+                                                                </div>
+                                                            </div>
+                                                        );
+                                                    }
+
+                                                    if (comp.status === 'modified') {
+                                                        const orig = comp.original;
+                                                        const prop = comp.proposed;
+                                                        return (
+                                                            <div key={key} className="border border-blue-200 rounded-2xl p-4 bg-blue-50/5 shadow-sm space-y-3 relative overflow-hidden">
+                                                                <div className="absolute top-3 right-3">
+                                                                    <Badge className="bg-blue-500 hover:bg-blue-600 text-white border-none font-bold text-[8px] tracking-wider uppercase px-2 py-0.5 rounded-md">
+                                                                        Modified
+                                                                    </Badge>
+                                                                </div>
+                                                                <p className="font-bold text-sm text-gray-900 pr-16">{prop.meal_name}</p>
+                                                                <div className="space-y-1.5">
+                                                                    {renderFieldDiff("Box Type", orig.box_type, prop.box_type, formatBoxType)}
+                                                                    {renderFieldDiff("Bread / Style", orig.bread_type, prop.bread_type)}
+                                                                    {renderFieldDiff("Cookie / Treat", orig.cookie_choice, prop.cookie_choice)}
+                                                                    {renderFieldDiff("Guest Name", orig.guest_name, prop.guest_name)}
+                                                                    {renderFieldDiff("Customizations", orig.customizations, prop.customizations)}
+                                                                    {renderFieldDiff("Quantity", orig.quantity, prop.quantity)}
+                                                                </div>
+                                                            </div>
+                                                        );
+                                                    }
+
+                                                    // Unchanged
+                                                    return (
+                                                        <div key={key} className="border border-gray-100 rounded-2xl p-4 bg-white shadow-sm space-y-2 opacity-85">
+                                                            <div className="space-y-1">
+                                                                <p className="font-bold text-sm text-gray-800">{item.meal_name}</p>
+                                                                <div className="text-xs text-gray-500 flex gap-1">
+                                                                    <span className="font-bold text-gray-400">Box Options:</span>
+                                                                    <span>
+                                                                        {[formatBoxType(item.box_type), item.bread_type, item.cookie_choice].filter(Boolean).join(' • ')}
+                                                                    </span>
+                                                                </div>
+                                                                {item.guest_name && (
+                                                                    <div className="text-xs text-gray-500 flex gap-1">
+                                                                        <span className="font-bold text-gray-400">Guest:</span>
+                                                                        <span className="font-medium text-gray-700">{item.guest_name}</span>
+                                                                    </div>
+                                                                )}
+                                                                {item.customizations && (
+                                                                    <div className="mt-2 border-t border-dashed border-gray-100 pt-2 text-xs">
+                                                                        <p className="font-bold text-gray-400">Customizations:</p>
+                                                                        <p className="text-gray-600 italic mt-0.5">{item.customizations}</p>
+                                                                    </div>
+                                                                )}
+                                                                <div className="pt-2 border-t border-gray-100 flex items-center gap-1.5 text-xs">
+                                                                    <span className="font-bold text-gray-400">Quantity:</span>
+                                                                    <span className="text-gray-800 font-bold">{item.quantity}</span>
+                                                                </div>
+                                                            </div>
+                                                        </div>
+                                                    );
+                                                });
+                                            })()}
+                                        </div>
+                                    </div>
+                                )}
+                                {(isDeletion || isCancellation) && (
+                                    <div className="space-y-4">
+                                        <h3 className={cn("text-xs font-black uppercase tracking-widest mt-6", isDeletion ? "text-rose-500" : "text-amber-500")}>
+                                            {isDeletion ? "Order Items to Delete" : "Order Items to Cancel"}
+                                        </h3>
+                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                            {originalOrder?.order_items?.map((item: any, idx: number) => {
+                                                const key = item.id || `del-item-${idx}`;
+                                                return (
+                                                    <div key={key} className={cn("border rounded-2xl p-4 shadow-sm space-y-2 opacity-85", isDeletion ? "border-rose-100 bg-rose-50/5" : "border-amber-100 bg-amber-50/5")}>
+                                                        <div className="space-y-1">
+                                                            <p className="font-bold text-sm text-gray-900 pr-16">{item.meal_name}</p>
+                                                            <div className="text-xs text-gray-500 flex gap-1">
+                                                                <span className="font-bold text-gray-400">Box Options:</span>
+                                                                <span>
+                                                                    {[formatBoxType(item.box_type), item.bread_type, item.cookie_choice].filter(Boolean).join(' • ')}
+                                                                </span>
+                                                            </div>
+                                                            {item.guest_name && (
+                                                                <div className="text-xs text-gray-500 flex gap-1">
+                                                                    <span className="font-bold text-gray-400">Guest:</span>
+                                                                    <span className="font-medium text-gray-700">{item.guest_name}</span>
+                                                                </div>
+                                                            )}
+                                                            {item.customizations && (
+                                                                <div className="mt-2 border-t border-dashed border-gray-100 pt-2 text-xs">
+                                                                    <p className="font-bold text-gray-400">Customizations:</p>
+                                                                    <p className="text-gray-600 italic mt-0.5">{item.customizations}</p>
+                                                                </div>
+                                                            )}
+                                                            <div className="pt-2 border-t border-gray-100 flex items-center gap-1.5 text-xs">
+                                                                <span className="font-bold text-gray-400">Quantity:</span>
+                                                                <span className="text-gray-800 font-bold">{item.quantity}</span>
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                );
+                                            })}
+                                            {(!originalOrder?.order_items || originalOrder.order_items.length === 0) && (
+                                                <p className="text-xs text-gray-400 italic">No order items</p>
+                                            )}
+                                        </div>
+                                    </div>
+                                )}
+                            </CardContent>
+                        </Card>
+                    );
+                })}
+            </div>
+        );
+    };
 
     const hasFilters = !!(dateRange || companyFilter || statusFilter || startDate || endDate || searchTerm);
     const allSelected = filtered.length > 0 && selected.size === filtered.length;
@@ -730,8 +1356,41 @@ export function OrdersClient({
                 </div>
             </div>
 
-            {/* Filters */}
-            <Card className="rounded-2xl border-gray-100 shadow-sm mb-6">
+            {/* Tabs Selector */}
+            <div className="flex items-center gap-2 border-b border-gray-200 pb-px mb-6 no-print">
+                <button
+                    onClick={() => setActiveTab('orders')}
+                    className={cn(
+                        "pb-3 px-4 text-sm font-bold border-b-2 transition-all relative outline-none",
+                        activeTab === 'orders'
+                            ? "border-violet-600 text-violet-600"
+                            : "border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300"
+                    )}
+                >
+                    Active Orders
+                </button>
+                <button
+                    onClick={() => setActiveTab('requests')}
+                    className={cn(
+                        "pb-3 px-4 text-sm font-bold border-b-2 transition-all relative flex items-center gap-1.5 outline-none",
+                        activeTab === 'requests'
+                            ? "border-violet-600 text-violet-600"
+                            : "border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300"
+                    )}
+                >
+                    Change Requests
+                    {changeRequests.length > 0 && (
+                        <Badge className="bg-violet-600 hover:bg-violet-700 text-white border-none text-[10px] px-1.5 py-0.5 min-w-[18px] h-[18px] flex items-center justify-center rounded-full font-bold">
+                            {changeRequests.length}
+                        </Badge>
+                    )}
+                </button>
+            </div>
+
+            {activeTab === 'orders' ? (
+                <>
+                    {/* Filters */}
+                    <Card className="rounded-2xl border-gray-100 shadow-sm mb-6">
                 <CardContent className="p-3 flex flex-wrap items-center gap-4">
                     <div className="relative w-full sm:w-[260px] md:w-[320px]">
                         <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 size-4 text-gray-400" />
@@ -1109,14 +1768,31 @@ export function OrdersClient({
                                             </div>
                                         </TableCell>
                                         <TableCell className="py-3">
-                                            <Badge variant="outline" className={`
-                                                ${order.status === 'pending' ? 'bg-amber-50 text-amber-700 border-amber-200' : ''}
-                                                ${order.status === 'ticket_created' ? 'bg-blue-50 text-blue-700 border-blue-200' : ''}
-                                                ${order.status === 'fulfilled' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : ''}
-                                                ${order.status === 'cancelled' ? 'bg-rose-50 text-rose-700 border-rose-200' : ''}
-                                            `}>
-                                                {STATUS_LABELS[order.status] || order.status}
-                                            </Badge>
+                                            <div className="flex items-center gap-1.5 flex-wrap">
+                                                <Badge variant="outline" className={`
+                                                    ${order.status === 'pending' ? 'bg-amber-50 text-amber-700 border-amber-200' : ''}
+                                                    ${order.status === 'ticket_created' ? 'bg-blue-50 text-blue-700 border-blue-200' : ''}
+                                                    ${order.status === 'fulfilled' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : ''}
+                                                    ${order.status === 'cancelled' ? 'bg-rose-50 text-rose-700 border-rose-200' : ''}
+                                                `}>
+                                                    {STATUS_LABELS[order.status] || order.status}
+                                                </Badge>
+                                                {(() => {
+                                                    const pendingReq = (order as any).order_change_requests?.find((r: any) => r.status === 'pending');
+                                                    if (pendingReq) {
+                                                        return (
+                                                            <Badge 
+                                                                variant="outline" 
+                                                                onClick={(e) => handleBadgeClick(e, order.id)}
+                                                                className="rounded-lg px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wider bg-blue-50 text-blue-700 border-blue-200 animate-pulse cursor-pointer hover:bg-blue-100 transition-colors"
+                                                            >
+                                                                Pending {pendingReq.type === 'delete' ? 'Deletion' : pendingReq.type === 'cancel' ? 'Cancellation' : 'Edit'}
+                                                            </Badge>
+                                                        );
+                                                    }
+                                                    return null;
+                                                })()}
+                                            </div>
                                         </TableCell>
                                         <TableCell className="py-4 text-center pr-6" onClick={e => e.stopPropagation()}>
                                             <DropdownMenu>
@@ -1374,15 +2050,32 @@ export function OrdersClient({
                                     </div>
 
                                     <div className="flex items-center justify-between pt-2 border-t border-gray-50">
-                                        <Badge variant="outline" className={cn(
-                                            "rounded-lg px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wider",
-                                            order.status === 'pending' ? 'bg-amber-50 text-amber-700 border-amber-200' : '',
-                                            order.status === 'ticket_created' ? 'bg-blue-50 text-blue-700 border-blue-200' : '',
-                                            order.status === 'fulfilled' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : '',
-                                            order.status === 'cancelled' ? 'bg-rose-50 text-rose-700 border-rose-200' : ''
-                                        )}>
-                                            {STATUS_LABELS[order.status] || order.status.replace('_', ' ')}
-                                        </Badge>
+                                        <div className="flex items-center gap-1.5 flex-wrap">
+                                            <Badge variant="outline" className={cn(
+                                                "rounded-lg px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wider",
+                                                order.status === 'pending' ? 'bg-amber-50 text-amber-700 border-amber-200' : '',
+                                                order.status === 'ticket_created' ? 'bg-blue-50 text-blue-700 border-blue-200' : '',
+                                                order.status === 'fulfilled' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : '',
+                                                order.status === 'cancelled' ? 'bg-rose-50 text-rose-700 border-rose-200' : ''
+                                            )}>
+                                                {STATUS_LABELS[order.status] || order.status.replace('_', ' ')}
+                                            </Badge>
+                                            {(() => {
+                                                const pendingReq = (order as any).order_change_requests?.find((r: any) => r.status === 'pending');
+                                                if (pendingReq) {
+                                                    return (
+                                                        <Badge 
+                                                            variant="outline" 
+                                                            onClick={(e) => handleBadgeClick(e, order.id)}
+                                                            className="rounded-lg px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wider bg-blue-50 text-blue-700 border-blue-200 animate-pulse cursor-pointer hover:bg-blue-100 transition-colors"
+                                                        >
+                                                            Pending {pendingReq.type === 'delete' ? 'Deletion' : pendingReq.type === 'cancel' ? 'Cancellation' : 'Edit'}
+                                                        </Badge>
+                                                    );
+                                                }
+                                                return null;
+                                            })()}
+                                        </div>
                                         
                                         <div className="text-right">
                                             <span className="text-[10px] text-gray-400 font-bold uppercase block">Total Price</span>
@@ -1527,20 +2220,59 @@ export function OrdersClient({
                                 <div className="space-y-6">
                                     {editItems.map((item) => (
                                         <div key={item.id} className="p-5 rounded-2xl border border-gray-100 bg-gray-50/20 space-y-5 transition-all hover:border-violet-100/50 hover:bg-violet-50/5">
-                                            <div className="flex items-center justify-between border-b border-gray-100/50 pb-4">
-                                                <div className="flex flex-col gap-0.5">
-                                                    <span className="text-sm font-bold text-gray-900 tracking-tight">{item.meal_name}</span>
-                                                    <span className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider">Meal Configuration</span>
+                                            <div className="flex items-start justify-between border-b border-gray-100/50 pb-4 gap-4">
+                                                <div className="flex-grow min-w-0 space-y-1">
+                                                    <Label className="text-[10px] font-bold text-gray-400 uppercase tracking-wide">Meal Selection</Label>
+                                                    <Select
+                                                        value={item.meal_name || ''}
+                                                        onValueChange={(val) => {
+                                                            const selectedMeal = selectedCompanyMeals.find((m) => m.name === val);
+                                                            if (selectedMeal) {
+                                                                updateEditItem(item.id, {
+                                                                    meal_id: selectedMeal.id,
+                                                                    meal_name: selectedMeal.name,
+                                                                    unit_price: selectedMeal.price || 0
+                                                                });
+                                                            }
+                                                        }}
+                                                    >
+                                                        <SelectTrigger className="!h-9 !w-full rounded-lg border-gray-200 text-[12px] font-bold bg-white">
+                                                            <SelectValue placeholder="Select a meal..." />
+                                                        </SelectTrigger>
+                                                        <SelectContent className="bg-white border-gray-200 max-h-[200px] overflow-y-auto">
+                                                            {selectedCompanyMeals.map((m: any) => (
+                                                                <SelectItem key={m.id} value={m.name} className="text-[12px] font-bold">
+                                                                    {m.name} (${Number(m.price || 0).toFixed(2)})
+                                                                </SelectItem>
+                                                            ))}
+                                                            {item.meal_name && !selectedCompanyMeals.some((m) => m.name === item.meal_name) && (
+                                                                <SelectItem key="fallback" value={item.meal_name} className="text-[12px] font-bold">
+                                                                    {item.meal_name} (Current - Inactive)
+                                                                </SelectItem>
+                                                            )}
+                                                        </SelectContent>
+                                                    </Select>
                                                 </div>
-                                                <div className="flex items-center gap-3">
-                                                    <Label className="text-[10px] font-bold text-gray-400 uppercase">Qty</Label>
-                                                    <Input 
-                                                        type="number" 
-                                                        min="1"
-                                                        value={item.quantity} 
-                                                        onChange={(e) => updateEditItem(item.id, { quantity: parseInt(e.target.value) || 1 })}
-                                                        className="w-14 h-8 rounded-lg border-gray-200 font-bold text-center focus:ring-violet-500/20"
-                                                    />
+                                                <div className="flex items-center gap-3 shrink-0 pt-5">
+                                                    <div className="flex items-center gap-1.5">
+                                                        <Label className="text-[10px] font-bold text-gray-400 uppercase">Qty</Label>
+                                                        <Input 
+                                                            type="number" 
+                                                            min="1"
+                                                            value={item.quantity} 
+                                                            onChange={(e) => updateEditItem(item.id, { quantity: parseInt(e.target.value) || 1 })}
+                                                            className="w-14 h-8 rounded-lg border-gray-200 font-bold text-center focus:ring-violet-500/20"
+                                                        />
+                                                    </div>
+                                                    <Button
+                                                        type="button"
+                                                        variant="ghost"
+                                                        size="icon"
+                                                        onClick={() => handleRemoveItem(item.id)}
+                                                        className="h-8 w-8 text-rose-500 hover:text-rose-700 hover:bg-rose-50 rounded-lg"
+                                                    >
+                                                        <Trash2 className="size-4" />
+                                                    </Button>
                                                 </div>
                                             </div>
 
@@ -1548,30 +2280,57 @@ export function OrdersClient({
                                             <div className="grid grid-cols-3 gap-4">
                                                 <div className="space-y-1.5">
                                                     <Label className="text-[10px] font-bold text-gray-400 uppercase tracking-wide">Type</Label>
-                                                    <Input 
-                                                        value={item.box_type || ''} 
-                                                        onChange={(e) => updateEditItem(item.id, { box_type: e.target.value })}
-                                                        placeholder="Box Lunch"
-                                                        className="h-9 rounded-lg border-gray-200 text-[12px] font-medium"
-                                                    />
+                                                    <Select
+                                                        value={item.box_type || ''}
+                                                        onValueChange={(val) => updateEditItem(item.id, { box_type: val })}
+                                                    >
+                                                        <SelectTrigger className="!h-9 !w-full rounded-lg border-gray-200 text-[12px] font-medium bg-white">
+                                                            <SelectValue placeholder="Select type..." />
+                                                        </SelectTrigger>
+                                                        <SelectContent className="bg-white border-gray-200">
+                                                            {getBoxTypeOptions(item).map((opt: string) => (
+                                                                <SelectItem key={opt} value={opt} className="text-[12px] font-medium">
+                                                                    {opt}
+                                                                </SelectItem>
+                                                            ))}
+                                                        </SelectContent>
+                                                    </Select>
                                                 </div>
                                                 <div className="space-y-1.5">
                                                     <Label className="text-[10px] font-bold text-gray-400 uppercase tracking-wide">Bread / Style</Label>
-                                                    <Input 
-                                                        value={item.bread_type || ''} 
-                                                        onChange={(e) => updateEditItem(item.id, { bread_type: e.target.value })}
-                                                        placeholder="Sandwich"
-                                                        className="h-9 rounded-lg border-gray-200 text-[12px] font-medium"
-                                                    />
+                                                    <Select
+                                                        value={item.bread_type || ''}
+                                                        onValueChange={(val) => updateEditItem(item.id, { bread_type: val })}
+                                                    >
+                                                        <SelectTrigger className="!h-9 !w-full rounded-lg border-gray-200 text-[12px] font-medium bg-white">
+                                                            <SelectValue placeholder="Select bread..." />
+                                                        </SelectTrigger>
+                                                        <SelectContent className="bg-white border-gray-200">
+                                                            {getBreadOptions(item.bread_type || '').map((opt: string) => (
+                                                                <SelectItem key={opt} value={opt} className="text-[12px] font-medium">
+                                                                    {opt}
+                                                                </SelectItem>
+                                                            ))}
+                                                        </SelectContent>
+                                                    </Select>
                                                 </div>
                                                 <div className="space-y-1.5">
                                                     <Label className="text-[10px] font-bold text-gray-400 uppercase tracking-wide">Cookie Choice</Label>
-                                                    <Input 
-                                                        value={item.cookie_choice || ''} 
-                                                        onChange={(e) => updateEditItem(item.id, { cookie_choice: e.target.value })}
-                                                        placeholder="Cookie"
-                                                        className="h-9 rounded-lg border-gray-200 text-[12px] font-medium"
-                                                    />
+                                                    <Select
+                                                        value={item.cookie_choice || ''}
+                                                        onValueChange={(val) => updateEditItem(item.id, { cookie_choice: val })}
+                                                    >
+                                                        <SelectTrigger className="!h-9 !w-full rounded-lg border-gray-200 text-[12px] font-medium bg-white">
+                                                            <SelectValue placeholder="Select cookie..." />
+                                                        </SelectTrigger>
+                                                        <SelectContent className="bg-white border-gray-200">
+                                                            {getCookieOptions(item.cookie_choice || '').map((opt: string) => (
+                                                                <SelectItem key={opt} value={opt} className="text-[12px] font-medium">
+                                                                    {opt}
+                                                                </SelectItem>
+                                                            ))}
+                                                        </SelectContent>
+                                                    </Select>
                                                 </div>
                                             </div>
 
@@ -1597,19 +2356,34 @@ export function OrdersClient({
                                             </div>
                                         </div>
                                     ))}
+
+                                    {/* Add Selection Button */}
+                                    <Button
+                                        type="button"
+                                        variant="outline"
+                                        onClick={handleAddItem}
+                                        className="w-full py-4 border-dashed border-2 border-violet-200 hover:border-violet-400 hover:bg-violet-50 text-violet-600 font-bold rounded-2xl flex items-center justify-center gap-2 transition-all mt-4"
+                                    >
+                                        <Plus className="size-4" />
+                                        Add Selection
+                                    </Button>
                                 </div>
                             </div>
                         </div>
 
                         <DialogFooter className="bg-gray-50/50 px-8 py-6 border-t border-gray-100">
                             <Button type="button" variant="ghost" className="rounded-xl font-bold text-gray-500" onClick={() => setIsEditDialogOpen(false)}>Cancel</Button>
-                            <Button type="submit" disabled={loading || !hasChanges} className="rounded-xl bg-violet-600 hover:bg-violet-700 font-bold px-10 shadow-lg shadow-violet-100">
+                            <Button type="submit" disabled={loading || !hasChanges || editItems.length === 0} className="rounded-xl bg-violet-600 hover:bg-violet-700 font-bold px-10 shadow-lg shadow-violet-100">
                                 {loading ? 'Saving...' : 'Update Order'}
                             </Button>
                         </DialogFooter>
                     </form>
                 </DialogContent>
             </Dialog>
+                </>
+            ) : (
+                renderChangeRequests()
+            )}
         </div>
             {/* Print Tickets Layout */}
             {(() => {
@@ -2333,6 +3107,51 @@ export function OrdersClient({
                     }}
                 />
             )}
+
+            <Dialog open={declineDialogOpen} onOpenChange={setDeclineDialogOpen}>
+                <DialogContent className="sm:max-w-[425px] rounded-2xl">
+                    <DialogHeader>
+                        <DialogTitle className="text-lg font-bold text-gray-900">Decline Change Request</DialogTitle>
+                        <DialogDescription className="text-sm text-gray-500">
+                            Please provide a reason for declining this request. This will be sent directly to the tour company.
+                        </DialogDescription>
+                    </DialogHeader>
+                    <div className="grid gap-4 py-4">
+                        <div className="flex flex-col gap-2">
+                            <Label htmlFor="reason" className="text-xs font-bold text-gray-700 uppercase tracking-wide">Reason for Decline</Label>
+                            <Textarea
+                                id="reason"
+                                placeholder="e.g., The requested changes cannot be accommodated for tomorrow's pickup schedule."
+                                value={declineReason}
+                                onChange={(e) => setDeclineReason(e.target.value)}
+                                className="min-h-[100px] rounded-xl border-gray-200 focus-visible:ring-violet-600"
+                            />
+                        </div>
+                    </div>
+                    <DialogFooter className="gap-2 sm:gap-0">
+                        <Button 
+                            type="button"
+                            variant="ghost" 
+                            className="rounded-xl font-bold text-gray-500"
+                            onClick={() => { setDeclineDialogOpen(false); setDeclineReason(''); setSelectedRequest(null); }}
+                        >
+                            Cancel
+                        </Button>
+                        <Button 
+                            type="button"
+                            disabled={!declineReason.trim() || requestActionLoading !== null}
+                            onClick={() => {
+                                if (selectedRequest) {
+                                    handleRequestDecision(selectedRequest.id, 'declined', declineReason);
+                                }
+                            }}
+                            className="rounded-xl bg-red-600 hover:bg-red-700 text-white font-bold px-6 shadow-lg shadow-red-100"
+                        >
+                            {requestActionLoading ? 'Declining...' : 'Confirm Decline'}
+                        </Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
         </>
     );
 }

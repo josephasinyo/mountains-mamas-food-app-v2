@@ -34,6 +34,9 @@ export async function updateOrderDetails(orderId: string, details: {
     box_type: string | null;
     bread_type: string | null;
     cookie_choice: string | null;
+    meal_id?: string | null;
+    meal_name?: string;
+    unit_price?: number;
 }[]) {
     try {
         const supabase = createAdminClient();
@@ -54,22 +57,70 @@ export async function updateOrderDetails(orderId: string, details: {
         const { error: orderError } = await supabase.from('orders').update(details).eq('id', orderId);
         if (orderError) return { success: false, error: orderError.message };
 
-        // 2. Update Items if provided
-        if (items && items.length > 0) {
-            for (const item of items) {
-                const { error: itemError } = await supabase
+        // 2. Sync Items if provided
+        if (items) {
+            // Get all current item IDs in the database for this order
+            const { data: dbItems, error: getErr } = await supabase
+                .from('order_items')
+                .select('id')
+                .eq('order_id', orderId);
+            if (getErr) return { success: false, error: getErr.message };
+
+            const dbItemIds = (dbItems || []).map((di: any) => di.id);
+
+            // Identify proposed item IDs (non-temporary ones)
+            const proposedItemIds = items
+                .filter((item: any) => item.id && !item.id.startsWith('temp-'))
+                .map((item: any) => item.id);
+
+            // Delete items that are in DB but NOT in proposed list
+            const idsToDelete = dbItemIds.filter((id: string) => !proposedItemIds.includes(id));
+            if (idsToDelete.length > 0) {
+                const { error: delItemsErr } = await supabase
                     .from('order_items')
-                    .update({ 
-                        quantity: item.quantity, 
-                        customizations: item.customizations,
-                        guest_name: item.guest_name,
-                        box_type: item.box_type,
-                        bread_type: item.bread_type,
-                        cookie_choice: item.cookie_choice
-                    })
-                    .eq('id', item.id);
-                
-                if (itemError) return { success: false, error: `Item Error: ${itemError.message}` };
+                    .delete()
+                    .in('id', idsToDelete);
+                if (delItemsErr) return { success: false, error: delItemsErr.message };
+            }
+
+            // Update existing items and insert new items
+            for (const item of items) {
+                if (item.id && item.id.startsWith('temp-')) {
+                    // Insert new item
+                    const { error: insertErr } = await supabase
+                        .from('order_items')
+                        .insert({
+                            order_id: orderId,
+                            meal_id: item.meal_id || null,
+                            meal_name: item.meal_name || 'Custom Selection',
+                            quantity: item.quantity,
+                            box_type: item.box_type || null,
+                            bread_type: item.bread_type || null,
+                            cookie_choice: item.cookie_choice || null,
+                            guest_name: item.guest_name || null,
+                            customizations: item.customizations || null,
+                            unit_price: item.unit_price || 0
+                        });
+                    if (insertErr) return { success: false, error: insertErr.message };
+                } else {
+                    // Update existing item
+                    const { error: itemError } = await supabase
+                        .from('order_items')
+                        .update({ 
+                            meal_id: item.meal_id !== undefined ? item.meal_id : undefined,
+                            meal_name: item.meal_name !== undefined ? item.meal_name : undefined,
+                            quantity: item.quantity, 
+                            customizations: item.customizations,
+                            guest_name: item.guest_name,
+                            box_type: item.box_type,
+                            bread_type: item.bread_type,
+                            cookie_choice: item.cookie_choice,
+                            unit_price: item.unit_price !== undefined ? item.unit_price : undefined
+                        })
+                        .eq('id', item.id);
+                    
+                    if (itemError) return { success: false, error: `Item Error: ${itemError.message}` };
+                }
             }
         }
 
@@ -358,7 +409,7 @@ export async function getPaginatedOrders(filters: {
 
         let query = supabase
             .from('orders')
-            .select('*, tour_companies(name, slug, prep_instructions), order_items(*)', { count: 'exact' })
+            .select('*, tour_companies(name, slug, prep_instructions), order_items(*), order_change_requests(*)', { count: 'exact' })
             .order('created_at', { ascending: false });
 
         if (filters.companyId) {

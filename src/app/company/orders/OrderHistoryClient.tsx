@@ -9,11 +9,12 @@ import {
     ChevronRight, ListFilter, Download, Printer, 
     Ticket, Building2, X, MoreHorizontal, Pencil,
     Trash2, Check, ArrowUpDown, ArrowUp, ArrowDown,
-    LayoutGrid, List, Loader2,
+    LayoutGrid, List, Loader2, Plus,
 } from 'lucide-react';
 import { Button, buttonVariants } from '@/components/ui/button';
 import { cn, formatDateUS } from '@/lib/utils';
 import { OrderItemDetails } from '@/components/ui/OrderItemCustomFields';
+import { useCompany } from '@/components/context/CompanyProvider';
 
 const DATE_RANGE_LABELS: Record<string, string> = {
     '': 'All Dates',
@@ -57,7 +58,8 @@ import {
 import { Label } from '@/components/ui/label';
 import { motion, AnimatePresence } from 'framer-motion';
 import { updateCompanyOrderStatus, deleteCompanyOrder, getCompanyMenuSelections, getPaginatedCompanyOrders } from '../actions';
-import { updateOrderDetails } from '../../admin/orders/actions';
+import { createOrderChangeRequest } from './change-actions';
+import { isMoreThan24HoursAway } from './date-utils';
 import { toast } from 'sonner';
 import { OrderItemCustomFields } from '@/components/ui/OrderItemCustomFields';
 
@@ -257,8 +259,35 @@ export default function OrderHistoryClient({ initialData }: OrderHistoryClientPr
         }));
     };
 
+    const [availableMeals, setAvailableMeals] = useState<any[]>([]);
+    const [companyConfig, setCompanyConfig] = useState<any | null>(null);
+    const [globalSettings, setGlobalSettings] = useState<any | null>(null);
+
     useEffect(() => {
         setIsMounted(true);
+        const fetchSelections = async () => {
+            const res = await getCompanyMenuSelections();
+            if (res.success) {
+                const selectedMealIds = new Set(
+                    (res.selections || [])
+                        .filter((s: any) => s.is_selected)
+                        .map((s: any) => s.meal_id)
+                );
+                const activeSelectedMeals = (res.meals || []).filter((m: any) => selectedMealIds.has(m.id));
+                setAvailableMeals(activeSelectedMeals);
+                setCompanyConfig(res.config || null);
+            }
+        };
+        fetchSelections();
+
+        const fetchGlobal = async () => {
+            const { getGlobalSettings } = await import('@/lib/supabase/public-actions');
+            const res = await getGlobalSettings();
+            if (res.success) {
+                setGlobalSettings(res.settings);
+            }
+        };
+        fetchGlobal();
     }, []);
 
     // Edit Dialog State
@@ -270,6 +299,123 @@ export default function OrderHistoryClient({ initialData }: OrderHistoryClientPr
     const [pickupTime, setPickupTime] = useState('');
     const [notes, setNotes] = useState('');
     const [editItems, setEditItems] = useState<any[]>([]);
+
+    const getBreadOptions = (currentItemValue?: string) => {
+        const mealOpts = companyConfig?.meal_page_options;
+        const parsed = typeof mealOpts === 'string' ? JSON.parse(mealOpts) : mealOpts;
+        const globalBreads = (globalSettings?.bread_options && Array.isArray(globalSettings.bread_options)) 
+            ? globalSettings.bread_options 
+            : [];
+        let options: string[] = [];
+        if (parsed?.breads && Array.isArray(parsed.breads) && parsed.breads.length > 0) {
+            const activeBreads = parsed.breads.filter((b: string) => globalBreads.includes(b));
+            if (activeBreads.length > 0) {
+                options = activeBreads;
+            }
+        }
+        if (options.length === 0) {
+            options = globalBreads.length > 0 ? globalBreads : ['White Bread'];
+        }
+        if (currentItemValue && !options.includes(currentItemValue)) {
+            return [...options, currentItemValue];
+        }
+        return options;
+    };
+
+    const getCookieOptions = (currentItemValue?: string) => {
+        const mealOpts = companyConfig?.meal_page_options;
+        const parsed = typeof mealOpts === 'string' ? JSON.parse(mealOpts) : mealOpts;
+        const globalCookies = (globalSettings?.cookie_options && Array.isArray(globalSettings.cookie_options)) 
+            ? globalSettings.cookie_options 
+            : [];
+        let options: string[] = [];
+        if (parsed?.cookies && Array.isArray(parsed.cookies) && parsed.cookies.length > 0) {
+            const activeCookies = parsed.cookies.filter((c: string) => globalCookies.includes(c));
+            if (activeCookies.length > 0) {
+                options = activeCookies;
+            }
+        }
+        if (options.length === 0) {
+            options = globalCookies.length > 0 ? globalCookies : ['Chocolate Chip'];
+        }
+        if (currentItemValue && !options.includes(currentItemValue)) {
+            return [...options, currentItemValue];
+        }
+        return options;
+    };
+
+    const getBoxTypeOptions = (item: any) => {
+        const meal = availableMeals.find((m) => m.id === item.meal_id || m.name === item.meal_name);
+        const pkgLabel = meal ? (meal.lunch_package === 'bag' ? 'Bag' : 'Box') : 'Box';
+        const isSalad = meal ? (meal.category === 'salad' && !meal.name.toLowerCase().includes('sandwich')) : false;
+        
+        // Settings from companyConfig (default to true if config not loaded yet)
+        const isSandwichAllowed = companyConfig ? (companyConfig.use_sandwich_only !== false && (meal ? meal.category === 'sandwich' : true)) : true;
+        const isBoxAllowed = companyConfig ? (companyConfig.show_box_lunch_category !== false) : true;
+        const isJuniorAllowed = companyConfig ? (companyConfig.show_junior_box_lunch_category !== false && (meal ? (meal.allow_split_box || meal.category === 'sandwich' || meal.name.toLowerCase().includes('sandwich')) : true)) : true;
+        
+        const enabledOptionsCount = (isSandwichAllowed ? 1 : 0) + (isBoxAllowed ? 1 : 0) + (isJuniorAllowed ? 1 : 0);
+        
+        const options: string[] = [];
+        
+        if (isSalad) {
+            options.push(`${pkgLabel} Lunch`);
+        } else {
+            if (enabledOptionsCount === 1) {
+                if (isBoxAllowed) {
+                    options.push(`This is a ${pkgLabel.toLowerCase()} lunch`);
+                }
+                if (isJuniorAllowed) {
+                    options.push(`This is a junior ${pkgLabel.toLowerCase()} lunch`);
+                }
+                if (isSandwichAllowed) {
+                    options.push(`This is a standalone sandwich`);
+                }
+            } else {
+                if (isBoxAllowed) {
+                    options.push(`${pkgLabel} Lunch`);
+                }
+                if (isJuniorAllowed) {
+                    options.push(`Junior ${pkgLabel} Lunch`);
+                }
+                if (isSandwichAllowed) {
+                    options.push(`Sandwich only`);
+                }
+            }
+        }
+        
+        // Always include the current box_type if it is set and not already in options
+        const currentVal = item.box_type;
+        if (currentVal && !options.includes(currentVal)) {
+            options.push(currentVal);
+        }
+        
+        return options;
+    };
+
+    const handleRemoveItem = (itemId: string) => {
+        setEditItems(prev => prev.filter(item => item.id !== itemId));
+    };
+
+    const handleAddItem = () => {
+        const defaultMeal = availableMeals[0] || { id: null, name: 'Custom Selection', price: 0 };
+        const defaultBreadOptions = getBreadOptions();
+        const defaultCookieOptions = getCookieOptions();
+
+        const newItem = {
+            id: `temp-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+            meal_id: defaultMeal.id,
+            meal_name: defaultMeal.name,
+            quantity: 1,
+            box_type: 'Box Lunch',
+            bread_type: defaultBreadOptions[0] || '',
+            cookie_choice: defaultCookieOptions[0] || '',
+            guest_name: '',
+            customizations: '',
+            unit_price: defaultMeal.price || 0
+        };
+        setEditItems(prev => [...prev, newItem]);
+    };
 
     const filteredOrders = allOrders || [];
 
@@ -315,6 +461,27 @@ export default function OrderHistoryClient({ initialData }: OrderHistoryClientPr
     }
 
     async function handleStatus(id: string, status: string) {
+        if (status === 'cancelled') {
+            const order = allOrders.find(o => o.id === id);
+            if (order && !isMoreThan24HoursAway(order.tour_date, order.pickup_time)) {
+                toast.error('Order changes or cancellations are only possible at least 24 hours prior to scheduled tour pickup.');
+                return;
+            }
+            setLoading(true);
+            const result = await createOrderChangeRequest(id, 'cancel');
+            if (result.success) {
+                toast.success('Cancellation request submitted to admin for approval');
+                setAllOrders(prev => prev.map(o => o.id === id ? {
+                    ...o,
+                    order_change_requests: [{ type: 'cancel', status: 'pending' }]
+                } : o));
+            } else {
+                toast.error(result.error || 'Failed to submit cancellation request');
+            }
+            setLoading(false);
+            return;
+        }
+
         setLoading(true);
         const result = await updateCompanyOrderStatus(id, status);
         if (result.success) {
@@ -332,13 +499,22 @@ export default function OrderHistoryClient({ initialData }: OrderHistoryClientPr
 
     async function executeDelete() {
         if (!orderToDelete) return;
+        const order = allOrders.find(o => o.id === orderToDelete);
+        if (order && !isMoreThan24HoursAway(order.tour_date, order.pickup_time)) {
+            toast.error('Order changes or deletions are only possible at least 24 hours prior to scheduled tour pickup.');
+            setOrderToDelete(null);
+            return;
+        }
         setLoading(true);
-        const result = await deleteCompanyOrder(orderToDelete);
+        const result = await createOrderChangeRequest(orderToDelete, 'delete');
         if (result.success) {
-            toast.success('Order deleted successfully');
-            setAllOrders(prev => prev.filter(o => o.id !== orderToDelete));
+            toast.success('Deletion request submitted to admin for approval');
+            setAllOrders(prev => prev.map(o => o.id === orderToDelete ? {
+                ...o,
+                order_change_requests: [{ type: 'delete', status: 'pending' }]
+            } : o));
         } else {
-            toast.error(result.error || 'Failed to delete order');
+            toast.error(result.error || 'Failed to submit deletion request');
         }
         setLoading(false);
         setOrderToDelete(null);
@@ -346,30 +522,33 @@ export default function OrderHistoryClient({ initialData }: OrderHistoryClientPr
 
     async function handleSaveEdit() {
         if (!editingOrder) return;
+        if (editItems.length === 0) {
+            toast.error('Orders must contain at least one item.');
+            return;
+        }
+        if (!isMoreThan24HoursAway(tourDate, pickupTime)) {
+            toast.error('Order changes or deletions are only possible at least 24 hours prior to scheduled tour pickup.');
+            return;
+        }
         setLoading(true);
-        const result = await updateOrderDetails(editingOrder.id, {
+        const result = await createOrderChangeRequest(editingOrder.id, 'update', {
             customer_name: customerName,
             guide_name: guideName || null,
             tour_date: tourDate,
             pickup_time: pickupTime || null,
             notes: notes || null,
-            company_id: editingOrder.company_id
-        }, editItems);
+            items: editItems
+        });
 
         if (result.success) {
-            toast.success('Order updated successfully');
+            toast.success('Update request submitted to admin for approval');
             setAllOrders(prev => prev.map(o => o.id === editingOrder.id ? { 
                 ...o, 
-                customer_name: customerName,
-                guide_name: guideName || null,
-                tour_date: tourDate,
-                pickup_time: pickupTime || null,
-                notes: notes || null,
-                order_items: editItems
+                order_change_requests: [{ type: 'update', status: 'pending' }]
             } : o));
             setIsEditDialogOpen(false);
         } else {
-            toast.error(result.error || 'Failed to update order');
+            toast.error(result.error || 'Failed to submit update request');
         }
         setLoading(false);
     }
@@ -751,17 +930,30 @@ export default function OrderHistoryClient({ initialData }: OrderHistoryClientPr
                                                     </div>
                                                 </TableCell>
                                                 <TableCell className="py-3">
-                                                    <Badge variant="outline" className={`
-                                                        rounded-lg px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wider
-                                                        ${order.status === 'pending' ? 'bg-amber-50 text-amber-700 border-amber-200' : ''}
-                                                        ${order.status === 'fulfilled' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : ''}
-                                                        ${order.status === 'cancelled' ? 'bg-rose-50 text-rose-700 border-rose-200' : ''}
-                                                    `}>
-                                                        {STATUS_LABELS[order.status] || order.status.replace('_', ' ')}
-                                                    </Badge>
+                                                    <div className="flex items-center gap-1.5 flex-wrap">
+                                                        <Badge variant="outline" className={`
+                                                            rounded-lg px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wider
+                                                            ${order.status === 'pending' ? 'bg-amber-50 text-amber-700 border-amber-200' : ''}
+                                                            ${order.status === 'fulfilled' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : ''}
+                                                            ${order.status === 'cancelled' ? 'bg-rose-50 text-rose-700 border-rose-200' : ''}
+                                                        `}>
+                                                            {STATUS_LABELS[order.status] || order.status.replace('_', ' ')}
+                                                        </Badge>
+                                                        {(() => {
+                                                            const pendingReq = order.order_change_requests?.find((r: any) => r.status === 'pending');
+                                                            if (pendingReq) {
+                                                                return (
+                                                                    <Badge variant="outline" className="rounded-lg px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wider bg-blue-50 text-blue-700 border-blue-200">
+                                                                        Pending {pendingReq.type === 'delete' ? 'Deletion' : pendingReq.type === 'cancel' ? 'Cancellation' : 'Edit'}
+                                                                    </Badge>
+                                                                );
+                                                            }
+                                                            return null;
+                                                        })()}
+                                                    </div>
                                                 </TableCell>
                                                 <TableCell className="py-4 text-center pr-6" onClick={e => e.stopPropagation()}>
-                                                    {order.status !== 'fulfilled' && (
+                                                    {order.status !== 'fulfilled' && !order.order_change_requests?.some((r: any) => r.status === 'pending') && (
                                                         <DropdownMenu>
                                                             <DropdownMenuTrigger className={cn(
                                                                 buttonVariants({ variant: 'ghost', size: 'icon' }),
@@ -946,7 +1138,7 @@ export default function OrderHistoryClient({ initialData }: OrderHistoryClientPr
                                             
                                             {/* Action Dropdown inside Card */}
                                             <div onClick={e => e.stopPropagation()}>
-                                                {order.status !== 'fulfilled' && (
+                                                {order.status !== 'fulfilled' && !order.order_change_requests?.some((r: any) => r.status === 'pending') && (
                                                     <DropdownMenu>
                                                         <DropdownMenuTrigger className={cn(
                                                             buttonVariants({ variant: 'ghost', size: 'icon' }),
@@ -1029,14 +1221,27 @@ export default function OrderHistoryClient({ initialData }: OrderHistoryClientPr
 
                                         {/* Status and Items Summary */}
                                         <div className="flex items-center justify-between pt-2 border-t border-gray-50">
-                                            <Badge variant="outline" className={cn(
-                                                "rounded-lg px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wider",
-                                                order.status === 'pending' ? 'bg-amber-50 text-amber-700 border-amber-200' : '',
-                                                order.status === 'fulfilled' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : '',
-                                                order.status === 'cancelled' ? 'bg-rose-50 text-rose-700 border-rose-200' : ''
-                                            )}>
-                                                {STATUS_LABELS[order.status] || order.status.replace('_', ' ')}
-                                            </Badge>
+                                            <div className="flex items-center gap-1.5 flex-wrap">
+                                                <Badge variant="outline" className={cn(
+                                                    "rounded-lg px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wider",
+                                                    order.status === 'pending' ? 'bg-amber-50 text-amber-700 border-amber-200' : '',
+                                                    order.status === 'fulfilled' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : '',
+                                                    order.status === 'cancelled' ? 'bg-rose-50 text-rose-700 border-rose-200' : ''
+                                                )}>
+                                                    {STATUS_LABELS[order.status] || order.status.replace('_', ' ')}
+                                                </Badge>
+                                                {(() => {
+                                                    const pendingReq = order.order_change_requests?.find((r: any) => r.status === 'pending');
+                                                    if (pendingReq) {
+                                                        return (
+                                                            <Badge variant="outline" className="rounded-lg px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wider bg-blue-50 text-blue-700 border-blue-200">
+                                                                Pending {pendingReq.type === 'delete' ? 'Deletion' : pendingReq.type === 'cancel' ? 'Cancellation' : 'Edit'}
+                                                            </Badge>
+                                                        );
+                                                    }
+                                                    return null;
+                                                })()}
+                                            </div>
                                             
                                             <div className="text-right">
                                                 <span className="text-[10px] text-gray-400 font-bold uppercase block">Placed At</span>
@@ -1188,20 +1393,59 @@ export default function OrderHistoryClient({ initialData }: OrderHistoryClientPr
                                 <div className="space-y-6">
                                     {editItems.map((item) => (
                                         <div key={item.id} className="p-5 rounded-2xl border border-gray-100 bg-gray-50/20 space-y-5 transition-all hover:border-violet-100/50 hover:bg-violet-50/5">
-                                            <div className="flex items-center justify-between border-b border-gray-100/50 pb-4">
-                                                <div className="flex flex-col gap-0.5">
-                                                    <span className="text-sm font-bold text-gray-900 tracking-tight">{item.meal_name}</span>
-                                                    <span className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider">Meal Configuration</span>
+                                            <div className="flex items-start justify-between border-b border-gray-100/50 pb-4 gap-4">
+                                                <div className="flex-grow min-w-0 space-y-1">
+                                                    <Label className="text-[10px] font-bold text-gray-400 uppercase tracking-wide">Meal Selection</Label>
+                                                    <Select
+                                                        value={item.meal_name || ''}
+                                                        onValueChange={(val) => {
+                                                            const selectedMeal = availableMeals.find((m) => m.name === val);
+                                                            if (selectedMeal) {
+                                                                updateEditItem(item.id, {
+                                                                    meal_id: selectedMeal.id,
+                                                                    meal_name: selectedMeal.name,
+                                                                    unit_price: selectedMeal.price || 0
+                                                                });
+                                                            }
+                                                        }}
+                                                    >
+                                                        <SelectTrigger className="!h-9 !w-full rounded-lg border-gray-200 text-[12px] font-bold bg-white">
+                                                            <SelectValue placeholder="Select a meal..." />
+                                                        </SelectTrigger>
+                                                        <SelectContent className="bg-white border-gray-200 max-h-[200px] overflow-y-auto">
+                                                            {availableMeals.map((m: any) => (
+                                                                <SelectItem key={m.id} value={m.name} className="text-[12px] font-bold">
+                                                                    {m.name} (${Number(m.price || 0).toFixed(2)})
+                                                                </SelectItem>
+                                                            ))}
+                                                            {item.meal_name && !availableMeals.some((m) => m.name === item.meal_name) && (
+                                                                <SelectItem key="fallback" value={item.meal_name} className="text-[12px] font-bold">
+                                                                    {item.meal_name} (Current - Inactive)
+                                                                </SelectItem>
+                                                            )}
+                                                        </SelectContent>
+                                                    </Select>
                                                 </div>
-                                                <div className="flex items-center gap-3">
-                                                    <Label className="text-[10px] font-bold text-gray-400 uppercase">Qty</Label>
-                                                    <Input 
-                                                        type="number" 
-                                                        min="1"
-                                                        value={item.quantity} 
-                                                        onChange={(e) => updateEditItem(item.id, { quantity: parseInt(e.target.value) || 1 })}
-                                                        className="w-14 h-8 rounded-lg border-gray-200 font-bold text-center focus:ring-violet-500/20"
-                                                    />
+                                                <div className="flex items-center gap-3 shrink-0 pt-5">
+                                                    <div className="flex items-center gap-1.5">
+                                                        <Label className="text-[10px] font-bold text-gray-400 uppercase">Qty</Label>
+                                                        <Input 
+                                                            type="number" 
+                                                            min="1"
+                                                            value={item.quantity} 
+                                                            onChange={(e) => updateEditItem(item.id, { quantity: parseInt(e.target.value) || 1 })}
+                                                            className="w-14 h-8 rounded-lg border-gray-200 font-bold text-center focus:ring-violet-500/20"
+                                                        />
+                                                    </div>
+                                                    <Button
+                                                        type="button"
+                                                        variant="ghost"
+                                                        size="icon"
+                                                        onClick={() => handleRemoveItem(item.id)}
+                                                        className="h-8 w-8 text-rose-500 hover:text-rose-700 hover:bg-rose-50 rounded-lg"
+                                                    >
+                                                        <Trash2 className="size-4" />
+                                                    </Button>
                                                 </div>
                                             </div>
 
@@ -1209,30 +1453,57 @@ export default function OrderHistoryClient({ initialData }: OrderHistoryClientPr
                                             <div className="grid grid-cols-3 gap-4">
                                                 <div className="space-y-1.5">
                                                     <Label className="text-[10px] font-bold text-gray-400 uppercase tracking-wide">Type</Label>
-                                                    <Input 
-                                                        value={item.box_type || ''} 
-                                                        onChange={(e) => updateEditItem(item.id, { box_type: e.target.value })}
-                                                        placeholder="Box Lunch"
-                                                        className="h-9 rounded-lg border-gray-200 text-[12px] font-medium"
-                                                    />
+                                                    <Select
+                                                        value={item.box_type || ''}
+                                                        onValueChange={(val) => updateEditItem(item.id, { box_type: val })}
+                                                    >
+                                                        <SelectTrigger className="!h-9 !w-full rounded-lg border-gray-200 text-[12px] font-medium bg-white">
+                                                            <SelectValue placeholder="Select type..." />
+                                                        </SelectTrigger>
+                                                        <SelectContent className="bg-white border-gray-200">
+                                                            {getBoxTypeOptions(item).map((opt: string) => (
+                                                                <SelectItem key={opt} value={opt} className="text-[12px] font-medium">
+                                                                    {opt}
+                                                                </SelectItem>
+                                                            ))}
+                                                        </SelectContent>
+                                                    </Select>
                                                 </div>
                                                 <div className="space-y-1.5">
                                                     <Label className="text-[10px] font-bold text-gray-400 uppercase tracking-wide">Bread / Style</Label>
-                                                    <Input 
-                                                        value={item.bread_type || ''} 
-                                                        onChange={(e) => updateEditItem(item.id, { bread_type: e.target.value })}
-                                                        placeholder="Sandwich"
-                                                        className="h-9 rounded-lg border-gray-200 text-[12px] font-medium"
-                                                    />
+                                                    <Select
+                                                        value={item.bread_type || ''}
+                                                        onValueChange={(val) => updateEditItem(item.id, { bread_type: val })}
+                                                    >
+                                                        <SelectTrigger className="!h-9 !w-full rounded-lg border-gray-200 text-[12px] font-medium bg-white">
+                                                            <SelectValue placeholder="Select bread..." />
+                                                        </SelectTrigger>
+                                                        <SelectContent className="bg-white border-gray-200">
+                                                            {getBreadOptions(item.bread_type).map((opt: string) => (
+                                                                <SelectItem key={opt} value={opt} className="text-[12px] font-medium">
+                                                                    {opt}
+                                                                </SelectItem>
+                                                            ))}
+                                                        </SelectContent>
+                                                    </Select>
                                                 </div>
                                                 <div className="space-y-1.5">
                                                     <Label className="text-[10px] font-bold text-gray-400 uppercase tracking-wide">Cookie / Treat</Label>
-                                                    <Input 
-                                                        value={item.cookie_choice || ''} 
-                                                        onChange={(e) => updateEditItem(item.id, { cookie_choice: e.target.value })}
-                                                        placeholder="Cookie"
-                                                        className="h-9 rounded-lg border-gray-200 text-[12px] font-medium"
-                                                    />
+                                                    <Select
+                                                        value={item.cookie_choice || ''}
+                                                        onValueChange={(val) => updateEditItem(item.id, { cookie_choice: val })}
+                                                    >
+                                                        <SelectTrigger className="!h-9 !w-full rounded-lg border-gray-200 text-[12px] font-medium bg-white">
+                                                            <SelectValue placeholder="Select cookie..." />
+                                                        </SelectTrigger>
+                                                        <SelectContent className="bg-white border-gray-200">
+                                                            {getCookieOptions(item.cookie_choice).map((opt: string) => (
+                                                                <SelectItem key={opt} value={opt} className="text-[12px] font-medium">
+                                                                    {opt}
+                                                                </SelectItem>
+                                                            ))}
+                                                        </SelectContent>
+                                                    </Select>
                                                 </div>
                                             </div>
 
@@ -1258,13 +1529,24 @@ export default function OrderHistoryClient({ initialData }: OrderHistoryClientPr
                                             </div>
                                         </div>
                                     ))}
+
+                                    {/* Add Selection Button */}
+                                    <Button
+                                        type="button"
+                                        variant="outline"
+                                        onClick={handleAddItem}
+                                        className="w-full py-4 border-dashed border-2 border-violet-200 hover:border-violet-400 hover:bg-violet-50 text-violet-600 font-bold rounded-2xl flex items-center justify-center gap-2 transition-all mt-4"
+                                    >
+                                        <Plus className="size-4" />
+                                        Add Selection
+                                    </Button>
                                 </div>
                             </div>
                         </div>
 
                         <DialogFooter className="bg-gray-50/50 px-8 py-6 border-t border-gray-100">
                             <Button type="button" variant="ghost" className="rounded-xl font-bold text-gray-500" onClick={() => setIsEditDialogOpen(false)}>Cancel</Button>
-                            <Button type="submit" disabled={loading || !hasChanges} className="rounded-xl bg-violet-600 hover:bg-violet-700 font-bold px-10 shadow-lg shadow-violet-100">
+                            <Button type="submit" disabled={loading || !hasChanges || editItems.length === 0} className="rounded-xl bg-violet-600 hover:bg-violet-700 font-bold px-10 shadow-lg shadow-violet-100">
                                 {loading ? 'Saving...' : 'Save Changes'}
                             </Button>
                         </DialogFooter>

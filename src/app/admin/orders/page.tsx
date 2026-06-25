@@ -8,7 +8,7 @@ export default async function OrdersPage() {
 
     const { data: orders, count } = await supabase
         .from('orders')
-        .select('*, tour_companies(name, slug, prep_instructions), order_items(*)', { count: 'exact' })
+        .select('*, tour_companies(name, slug, prep_instructions), order_items(*), order_change_requests(*)', { count: 'exact' })
         .order('created_at', { ascending: false })
         .range(0, 99);
 
@@ -27,6 +27,12 @@ export default async function OrdersPage() {
         .select('id, name, status, prep_instructions')
         .order('name');
 
+    const { data: changeRequests } = await supabase
+        .from('order_change_requests')
+        .select('*, orders(*, order_items(*)), tour_companies(name, email)')
+        .eq('status', 'pending')
+        .order('created_at', { ascending: false });
+
     return (
         <OrdersClient 
             initialOrders={orders || []} 
@@ -34,6 +40,7 @@ export default async function OrdersPage() {
             initialTotalLunches={initialTotalLunches}
             initialPendingCount={initialPending || 0}
             companies={companies || []} 
+            initialChangeRequests={changeRequests || []}
         />
     );
 }
