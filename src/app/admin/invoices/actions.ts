@@ -60,8 +60,8 @@ export async function sendInvoiceToCompany(invoiceId: string) {
             throw new Error(invError?.message || 'Invoice not found');
         }
 
-        if (invoice.status !== 'draft') {
-            throw new Error('Invoice has already been sent or paid.');
+        if (invoice.status !== 'draft' && invoice.status !== 'sent') {
+            throw new Error('Invoice has already been paid or is in an invalid status.');
         }
 
         const company = invoice.tour_companies;
@@ -69,35 +69,53 @@ export async function sendInvoiceToCompany(invoiceId: string) {
             throw new Error('Company details not found.');
         }
 
-        // 2. Finalize Stripe Invoice to get the PDF and Payment URLs
-        // Note: Stripe won't email the customer directly because we will NOT call "sendInvoice" on Stripe,
-        // we'll just finalize it here and fetch the details to send manually.
-        const finalizedInvoice = await stripe.invoices.finalizeInvoice(invoice.stripe_invoice_id);
+        let pdfUrl = invoice.pdf_url;
+        let stripeLink = invoice.stripe_payment_link;
+        let totalCents = 0;
 
-        const pdfUrl = finalizedInvoice.invoice_pdf;
-        const stripeLink = finalizedInvoice.hosted_invoice_url;
-        
+        if (invoice.status === 'draft') {
+            // 2. Finalize Stripe Invoice to get the PDF and Payment URLs
+            // Note: Stripe won't email the customer directly because we will NOT call "sendInvoice" on Stripe,
+            // we'll just finalize it here and fetch the details to send manually.
+            const finalizedInvoice = await stripe.invoices.finalizeInvoice(invoice.stripe_invoice_id);
+            pdfUrl = finalizedInvoice.invoice_pdf;
+            stripeLink = finalizedInvoice.hosted_invoice_url;
+            totalCents = finalizedInvoice.total;
+
+            // 3. Update database record to 'sent'
+            const { error: updateError } = await supabase
+                .from('invoices')
+                .update({
+                    status: 'sent',
+                    pdf_url: pdfUrl,
+                    stripe_payment_link: stripeLink, // Keep original Stripe link as fallback
+                    sent_at: new Date().toISOString()
+                })
+                .eq('id', invoiceId);
+
+            if (updateError) throw updateError;
+        } else {
+            // It's already sent, retrieve details from Stripe or DB to resend email
+            const stripeInvoice = await stripe.invoices.retrieve(invoice.stripe_invoice_id);
+            pdfUrl = stripeInvoice.invoice_pdf || invoice.pdf_url;
+            stripeLink = stripeInvoice.hosted_invoice_url || invoice.stripe_payment_link;
+            totalCents = stripeInvoice.total;
+
+            // Update sent_at timestamp in database
+            await supabase
+                .from('invoices')
+                .update({
+                    sent_at: new Date().toISOString()
+                })
+                .eq('id', invoiceId);
+        }
+
         // Build our custom payment page URL (enables tipping)
         const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
         const customPayLink = `${appUrl}/invoice/${invoiceId}/pay`;
 
-        // 3. Update database record to 'sent'
-        const { error: updateError } = await supabase
-            .from('invoices')
-            .update({
-                status: 'sent',
-                pdf_url: pdfUrl,
-                stripe_payment_link: stripeLink, // Keep original Stripe link as fallback
-                sent_at: new Date().toISOString()
-            })
-            .eq('id', invoiceId);
-
-        if (updateError) throw updateError;
-
-        // Note: Orders stay as 'invoiced' until actual payment is confirmed via Stripe webhook
-
         // 4. Construct Brevo Email
-        const formattedTotal = (finalizedInvoice.total / 100).toFixed(2);
+        const formattedTotal = (totalCents / 100).toFixed(2);
         const adminEmail = process.env.ADMIN_EMAIL || 'mountainmamascafe@gmail.com';
         
         const htmlContent = `

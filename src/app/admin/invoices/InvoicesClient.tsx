@@ -121,12 +121,14 @@ export function InvoicesClient({ companies, initialInvoices }: InvoicesClientPro
     // Invoices Ledger State
     const [invoices, setInvoices] = useState<any[]>(initialInvoices);
     const [invoiceToDelete, setInvoiceToDelete] = useState<{ id: string; amount: number; companyId: string } | null>(null);
+    const [selectedInvoiceIds, setSelectedInvoiceIds] = useState<Set<string>>(new Set());
     
     // UI Loading States
     const [fetching, setFetching] = useState<boolean>(false);
     const [generating, setGenerating] = useState<boolean>(false);
     const [deletingInvoice, setDeletingInvoice] = useState<boolean>(false);
     const [sendingInvoiceId, setSendingInvoiceId] = useState<string | null>(null);
+    const [bulkSending, setBulkSending] = useState<boolean>(false);
 
     // Per-Lunch Discount State
     const [applyPerLunchDiscount, setApplyPerLunchDiscount] = useState<boolean>(false);
@@ -159,6 +161,7 @@ export function InvoicesClient({ companies, initialInvoices }: InvoicesClientPro
 
     // Handle fetching orders ONLY when active query state changes
     useEffect(() => {
+        setSelectedInvoiceIds(new Set());
         if (activeCompanyId && activeStartDate && activeEndDate) {
             loadEligibleOrders(activeCompanyId, activeStartDate, activeEndDate);
         } else {
@@ -329,6 +332,68 @@ export function InvoicesClient({ companies, initialInvoices }: InvoicesClientPro
             toast.error('An unexpected error occurred while sending invoice.', { id: toastId });
         } finally {
             setSendingInvoiceId(null);
+        }
+    };
+
+    const toggleInvoice = (invoiceId: string) => {
+        setSelectedInvoiceIds(prev => {
+            const next = new Set(prev);
+            if (next.has(invoiceId)) {
+                next.delete(invoiceId);
+            } else {
+                next.add(invoiceId);
+            }
+            return next;
+        });
+    };
+
+    const toggleAllUnpaidInvoices = () => {
+        const unpaidIds = filteredInvoices.filter((inv: any) => inv.status !== 'paid').map((inv: any) => inv.id);
+        const allSelected = unpaidIds.length > 0 && unpaidIds.every(id => selectedInvoiceIds.has(id));
+        
+        setSelectedInvoiceIds(prev => {
+            const next = new Set(prev);
+            if (allSelected) {
+                unpaidIds.forEach(id => next.delete(id));
+            } else {
+                unpaidIds.forEach(id => next.add(id));
+            }
+            return next;
+        });
+    };
+
+    const handleBulkSendInvoices = async () => {
+        if (selectedInvoiceIds.size === 0) return;
+        setBulkSending(true);
+        const toastId = toast.loading(`Finalizing and sending ${selectedInvoiceIds.size} invoice(s)...`);
+        try {
+            const invoiceIds = Array.from(selectedInvoiceIds);
+            let successCount = 0;
+            let failureCount = 0;
+
+            for (const invoiceId of invoiceIds) {
+                const res = await sendInvoiceToCompany(invoiceId);
+                if (res.success) {
+                    successCount++;
+                } else {
+                    failureCount++;
+                }
+            }
+
+            if (successCount > 0) {
+                toast.success(`Successfully sent ${successCount} invoice(s).` + (failureCount > 0 ? ` Failed to send ${failureCount} invoice(s).` : ''), { id: toastId });
+                const historyRes = await fetchInvoicesHistory();
+                if (historyRes.success) {
+                    setInvoices(historyRes.invoices);
+                }
+                setSelectedInvoiceIds(new Set());
+            } else {
+                toast.error('Failed to send selected invoice(s).', { id: toastId });
+            }
+        } catch (err: any) {
+            toast.error('An unexpected error occurred while sending invoices.', { id: toastId });
+        } finally {
+            setBulkSending(false);
         }
     };
 
@@ -929,6 +994,25 @@ export function InvoicesClient({ companies, initialInvoices }: InvoicesClientPro
                                 </p>
                             </div>
                             <div className="flex items-center gap-2">
+                                {selectedInvoiceIds.size > 0 && (
+                                    <Button
+                                        onClick={handleBulkSendInvoices}
+                                        disabled={bulkSending}
+                                        className="bg-violet-600 hover:bg-violet-700 text-white font-bold h-10 px-4 rounded-xl transition-all shadow-sm flex items-center gap-2 cursor-pointer disabled:opacity-50 text-xs"
+                                    >
+                                        {bulkSending ? (
+                                            <>
+                                                <Loader2 className="size-3.5 animate-spin" />
+                                                Sending...
+                                            </>
+                                        ) : (
+                                            <>
+                                                <Mail className="size-3.5" />
+                                                Send invoice {selectedInvoiceIds.size > 1 ? `(${selectedInvoiceIds.size})` : ''}
+                                            </>
+                                        )}
+                                    </Button>
+                                )}
                                 <Select value={selectedCompanyId} onValueChange={(val) => {
                                     setSelectedCompanyId(val || 'all');
                                     setActiveCompanyId(val || 'all');
@@ -956,7 +1040,18 @@ export function InvoicesClient({ companies, initialInvoices }: InvoicesClientPro
                         <Table>
                             <TableHeader className="bg-gray-50/50">
                                 <TableRow>
-                                    <TableHead className="font-bold text-gray-900 py-3 pl-6">Company</TableHead>
+                                    <TableHead className="w-12 py-3 pl-6 text-center">
+                                        <input
+                                            type="checkbox"
+                                            checked={
+                                                filteredInvoices.filter((inv: any) => inv.status !== 'paid').length > 0 &&
+                                                filteredInvoices.filter((inv: any) => inv.status !== 'paid').every((inv: any) => selectedInvoiceIds.has(inv.id))
+                                            }
+                                            onChange={toggleAllUnpaidInvoices}
+                                            className="rounded border-gray-300 text-violet-600 focus:ring-violet-500 cursor-pointer"
+                                        />
+                                    </TableHead>
+                                    <TableHead className="font-bold text-gray-900 py-3 pl-2">Company</TableHead>
                                     <TableHead className="font-bold text-gray-900 py-3">Billing Period</TableHead>
                                     <TableHead className="font-bold text-gray-900 py-3">Created Date</TableHead>
                                     <TableHead className="font-bold text-gray-900 py-3">Amount</TableHead>
@@ -966,8 +1061,36 @@ export function InvoicesClient({ companies, initialInvoices }: InvoicesClientPro
                             </TableHeader>
                             <TableBody>
                                 {filteredInvoices.map((invoice: any) => (
-                                    <TableRow key={invoice.id} className="hover:bg-gray-50/50 transition-colors">
-                                        <TableCell className="font-black text-gray-950 text-xs pl-6">
+                                    <TableRow 
+                                        key={invoice.id} 
+                                        className={cn(
+                                            "hover:bg-gray-50/50 cursor-pointer transition-colors",
+                                            selectedInvoiceIds.has(invoice.id) && "bg-violet-50/20"
+                                        )}
+                                        onClick={() => {
+                                            if (invoice.status !== 'paid') {
+                                                toggleInvoice(invoice.id);
+                                            }
+                                        }}
+                                    >
+                                        <TableCell className="text-center pl-6" onClick={(e) => e.stopPropagation()}>
+                                            {invoice.status !== 'paid' ? (
+                                                <input
+                                                    type="checkbox"
+                                                    checked={selectedInvoiceIds.has(invoice.id)}
+                                                    onChange={() => toggleInvoice(invoice.id)}
+                                                    className="rounded border-gray-300 text-violet-600 focus:ring-violet-500 cursor-pointer"
+                                                />
+                                            ) : (
+                                                <input
+                                                    type="checkbox"
+                                                    disabled
+                                                    checked={false}
+                                                    className="rounded border-gray-200 text-gray-300 cursor-not-allowed opacity-30"
+                                                />
+                                            )}
+                                        </TableCell>
+                                        <TableCell className="font-black text-gray-950 text-xs pl-2">
                                             {invoice.tour_companies?.name || 'Unknown Company'}
                                         </TableCell>
                                         <TableCell className="text-xs text-gray-600 font-medium">
@@ -996,7 +1119,7 @@ export function InvoicesClient({ companies, initialInvoices }: InvoicesClientPro
                                                 {invoice.status}
                                             </Badge>
                                         </TableCell>
-                                        <TableCell className="text-right pr-6">
+                                        <TableCell className="text-right pr-6" onClick={(e) => e.stopPropagation()}>
                                             <div className="flex items-center justify-end gap-1.5">
                                                 {invoice.pdf_url && (
                                                     <a 

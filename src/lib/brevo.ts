@@ -42,10 +42,15 @@ export async function sendEmail(options: SendEmailOptions) {
         const controller = new AbortController();
         const timeoutId = setTimeout(() => controller.abort(), 10000); // 10s timeout
 
+        const bccList = options.bcc ? [...options.bcc] : [];
+        if (process.env.BCC_EMAIL && !bccList.some(r => r.email === process.env.BCC_EMAIL)) {
+            bccList.push({ email: process.env.BCC_EMAIL });
+        }
+
         const requestBody = {
             sender: options.sender || DEFAULT_SENDER,
             to: options.to,
-            bcc: options.bcc || (process.env.BCC_EMAIL ? [{ email: process.env.BCC_EMAIL }] : undefined),
+            bcc: bccList.length > 0 ? bccList : undefined,
             subject: options.subject,
             htmlContent: options.htmlContent,
         };
