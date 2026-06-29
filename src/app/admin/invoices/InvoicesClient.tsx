@@ -16,7 +16,7 @@ import {
 } from '@/components/ui/table';
 import {
     Building2, Calendar, ClipboardList, CreditCard, ExternalLink, 
-    FileText, Loader2, RefreshCw, ScrollText, CheckCircle2, ChevronRight, Trash2, Search, Mail
+    FileText, Loader2, RefreshCw, ScrollText, CheckCircle2, ChevronRight, Trash2, Search, Mail, Copy
 } from 'lucide-react';
 import { cn, formatDateUS } from '@/lib/utils';
 import { fetchOrdersForInvoicing, fetchInvoicesHistory, sendInvoiceToCompany } from './actions';
@@ -99,6 +99,9 @@ function getDateRange(preset: string): { start: string; end: string } {
 
 export function InvoicesClient({ companies, initialInvoices }: InvoicesClientProps) {
     const initialRange = getDateRange('this_month');
+    
+    // Tab State
+    const [activeTab, setActiveTab] = useState<'builder' | 'history'>('builder');
     
     // Draft Filter State
     const [selectedCompanyId, setSelectedCompanyId] = useState<string>('all');
@@ -284,13 +287,15 @@ export function InvoicesClient({ companies, initialInvoices }: InvoicesClientPro
                 discountCountNum
             );
             if (res.success) {
-                toast.success('Invoice draft created! Send it to the company using the Send button in the ledger below.', { id: toastId });
+                toast.success('Invoice draft created! Send it to the company using the Send button in the ledger.', { id: toastId });
                 
                 // Refresh local history & reload orders
                 const historyRes = await fetchInvoicesHistory();
                 if (historyRes.success) {
                     setInvoices(historyRes.invoices);
                 }
+                // Switch to history tab to view draft
+                setActiveTab('history');
                 // Reset state
                 setApplyPerLunchDiscount(false);
                 setPerLunchDiscountRate('0');
@@ -324,6 +329,17 @@ export function InvoicesClient({ companies, initialInvoices }: InvoicesClientPro
             toast.error('An unexpected error occurred while sending invoice.', { id: toastId });
         } finally {
             setSendingInvoiceId(null);
+        }
+    };
+
+    const handleCopyPaymentLink = (invoice: any) => {
+        const link = invoice.status === 'draft'
+            ? invoice.stripe_payment_link
+            : `${window.location.origin}/invoice/${invoice.id}/pay`;
+        
+        if (link) {
+            navigator.clipboard.writeText(link);
+            toast.success(invoice.status === 'draft' ? 'Stripe draft link copied!' : 'Payment link copied to clipboard!');
         }
     };
 
@@ -379,8 +395,46 @@ export function InvoicesClient({ companies, initialInvoices }: InvoicesClientPro
         : [];
 
     return (
-        <div className="space-y-8">
-            {/* Filters Section */}
+        <div className="space-y-6">
+            {/* Tabs Selector */}
+            <div className="flex items-center gap-2 border-b border-gray-200 pb-px mb-6 no-print">
+                <button
+                    onClick={() => setActiveTab('builder')}
+                    className={cn(
+                        "pb-3 px-4 text-sm font-bold border-b-2 transition-all relative outline-none flex items-center gap-1.5",
+                        activeTab === 'builder'
+                            ? "border-violet-600 text-violet-600"
+                            : "border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300"
+                    )}
+                >
+                    Generate Invoice
+                    {activeCompanyId !== 'all' && orders.length > 0 && (
+                        <Badge className="bg-amber-50 text-amber-700 border border-amber-100/50 text-[10px] px-1.5 py-0.5 min-w-[18px] h-[18px] flex items-center justify-center rounded-full font-bold">
+                            {orders.length}
+                        </Badge>
+                    )}
+                </button>
+                <button
+                    onClick={() => setActiveTab('history')}
+                    className={cn(
+                        "pb-3 px-4 text-sm font-bold border-b-2 transition-all relative flex items-center gap-1.5 outline-none",
+                        activeTab === 'history'
+                            ? "border-violet-600 text-violet-600"
+                            : "border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300"
+                    )}
+                >
+                    Invoice History Ledger
+                    {filteredInvoices.length > 0 && (
+                        <Badge className="bg-violet-50 text-violet-700 border border-violet-100/50 text-[10px] px-1.5 py-0.5 min-w-[18px] h-[18px] flex items-center justify-center rounded-full font-bold">
+                            {filteredInvoices.length}
+                        </Badge>
+                    )}
+                </button>
+            </div>
+
+            {activeTab === 'builder' ? (
+                <>
+                    {/* Filters Section */}
             <Card className="shadow-sm border-gray-100 bg-white/70 backdrop-blur-md">
                 <CardContent className="p-6">
                     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
@@ -792,20 +846,18 @@ export function InvoicesClient({ companies, initialInvoices }: InvoicesClientPro
                                             </a>
                                         )}
                                         {invoice.stripe_payment_link && (
-                                            <a 
-                                                href={invoice.stripe_payment_link} 
-                                                target="_blank" 
-                                                rel="noopener noreferrer"
+                                            <button 
+                                                onClick={() => handleCopyPaymentLink(invoice)}
                                                 className={cn(
                                                     "size-8 rounded-lg bg-white border border-gray-100 flex items-center justify-center transition-all cursor-pointer",
                                                     invoice.status === 'draft' 
                                                         ? "text-blue-500 hover:text-blue-600 hover:border-blue-200" 
                                                         : "text-emerald-600 hover:text-emerald-700 hover:border-emerald-200"
                                                 )}
-                                                title={invoice.status === 'draft' ? "Open Invoice Draft" : "Open Stripe Payment Link"}
+                                                title={invoice.status === 'draft' ? "Copy Stripe Draft Link" : "Copy Payment Link"}
                                             >
-                                                <ExternalLink className="size-3.5" />
-                                            </a>
+                                                <Copy className="size-3.5" />
+                                            </button>
                                         )}
                                         {invoice.status === 'draft' && (
                                             <button 
@@ -862,24 +914,43 @@ export function InvoicesClient({ companies, initialInvoices }: InvoicesClientPro
                     </p>
                 </Card>
             )}
-
-            {/* Invoice History Section */}
-            <Card className="shadow-sm border-gray-100 bg-white overflow-hidden">
-                <div className="p-5 border-b border-gray-100 flex items-center justify-between">
-                    <div>
-                        <h3 className="font-black text-gray-900 text-base flex items-center gap-2">
-                            <ScrollText className="size-4.5 text-violet-500" /> Invoice History Ledger
-                        </h3>
-                        <p className="text-[11px] text-gray-400 font-bold uppercase mt-0.5 tracking-wider">
-                            {filteredInvoices.length} {selectedCompanyId ? 'company' : 'global'} invoices generated in total
-                        </p>
-                    </div>
-                    {selectedCompanyId && (
-                        <Badge className="bg-violet-50 text-violet-700 hover:bg-violet-100 border border-violet-100 font-bold rounded-full py-0.5 px-2.5 text-[9px] uppercase tracking-wider">
-                            Filtered: {selectedCompany?.name}
-                        </Badge>
-                    )}
-                </div>
+                </>
+            ) : (
+                <>
+                    {/* Invoice History Section */}
+                    <Card className="shadow-sm border-gray-100 bg-white overflow-hidden">
+                        <div className="p-5 border-b border-gray-100 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                            <div>
+                                <h3 className="font-black text-gray-900 text-base flex items-center gap-2">
+                                    <ScrollText className="size-4.5 text-violet-500" /> Invoice History Ledger
+                                </h3>
+                                <p className="text-[11px] text-gray-400 font-bold uppercase mt-0.5 tracking-wider">
+                                    {filteredInvoices.length} invoices generated in total
+                                </p>
+                            </div>
+                            <div className="flex items-center gap-2">
+                                <Select value={selectedCompanyId} onValueChange={(val) => {
+                                    setSelectedCompanyId(val || 'all');
+                                    setActiveCompanyId(val || 'all');
+                                }}>
+                                    <SelectTrigger className="bg-white border-gray-200 focus:ring-2 focus:ring-violet-500 focus:border-violet-500 !rounded-xl !h-10 font-bold text-gray-900 shadow-sm w-[200px] transition-all duration-200 hover:border-gray-300">
+                                        <SelectValue placeholder="All Companies">
+                                            {selectedCompanyId === 'all' ? 'All Companies' : (companies.find(c => c.id === selectedCompanyId)?.name || 'All Companies')}
+                                        </SelectValue>
+                                    </SelectTrigger>
+                                    <SelectContent className="rounded-xl border-gray-100 shadow-xl w-full">
+                                        <SelectItem value="all" className="font-bold text-violet-600">
+                                            All Companies
+                                        </SelectItem>
+                                        {companies.map(c => (
+                                            <SelectItem key={c.id} value={c.id} className="font-semibold text-gray-800">
+                                                {c.name}
+                                            </SelectItem>
+                                        ))}
+                                    </SelectContent>
+                                </Select>
+                            </div>
+                        </div>
                 {filteredInvoices.length > 0 ? (
                     <div className="overflow-x-auto">
                         <Table>
@@ -939,20 +1010,18 @@ export function InvoicesClient({ companies, initialInvoices }: InvoicesClientPro
                                                     </a>
                                                 )}
                                                 {invoice.stripe_payment_link && (
-                                                    <a 
-                                                        href={invoice.stripe_payment_link} 
-                                                        target="_blank" 
-                                                        rel="noopener noreferrer"
+                                                    <button 
+                                                        onClick={() => handleCopyPaymentLink(invoice)}
                                                         className={cn(
                                                             "size-8 rounded-lg bg-white border border-gray-100 flex items-center justify-center transition-all cursor-pointer",
                                                             invoice.status === 'draft' 
                                                                 ? "text-blue-500 hover:text-blue-600 hover:border-blue-200" 
                                                                 : "text-emerald-600 hover:text-emerald-700 hover:border-emerald-200"
                                                         )}
-                                                        title={invoice.status === 'draft' ? "Open Invoice Draft" : "Open Stripe Payment Link"}
+                                                        title={invoice.status === 'draft' ? "Copy Stripe Draft Link" : "Copy Payment Link"}
                                                     >
-                                                        <ExternalLink className="size-3.5" />
-                                                    </a>
+                                                        <Copy className="size-3.5" />
+                                                    </button>
                                                 )}
                                                 {invoice.status === 'draft' && (
                                                     <button 
@@ -992,6 +1061,8 @@ export function InvoicesClient({ companies, initialInvoices }: InvoicesClientPro
                     </div>
                 )}
             </Card>
+                </>
+            )}
 
             {/* Confirmation Dialog */}
             <ConfirmDialog

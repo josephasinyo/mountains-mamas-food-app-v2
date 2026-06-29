@@ -634,15 +634,17 @@ export function CompaniesClient({ initialCompanies }: CompaniesClientProps) {
                                                                                         </a>
                                                                                     )}
                                                                                     {invoice.stripe_payment_link && (
-                                                                                        <a 
-                                                                                            href={invoice.stripe_payment_link} 
-                                                                                            target="_blank" 
-                                                                                            rel="noopener noreferrer"
+                                                                                        <button 
+                                                                                            onClick={() => {
+                                                                                                const link = invoice.status === 'draft' ? invoice.stripe_payment_link : `${window.location.origin}/invoice/${invoice.id}/pay`;
+                                                                                                navigator.clipboard.writeText(link);
+                                                                                                toast.success(invoice.status === 'draft' ? 'Stripe draft link copied!' : 'Payment link copied to clipboard!');
+                                                                                            }}
                                                                                             className="size-8 rounded-lg bg-white border border-gray-100 flex items-center justify-center text-gray-400 hover:text-emerald-600 hover:border-emerald-200 transition-all cursor-pointer"
-                                                                                            title="Open Stripe Payment Link"
+                                                                                            title={invoice.status === 'draft' ? "Copy Stripe Draft Link" : "Copy Payment Link"}
                                                                                         >
-                                                                                            <ExternalLink className="size-3.5" />
-                                                                                        </a>
+                                                                                            <Copy className="size-3.5" />
+                                                                                        </button>
                                                                                     )}
                                                                                     <button 
                                                                                         onClick={() => setInvoiceToDelete({ id: invoice.id, amount: invoice.total_amount, companyId: company.id })}
