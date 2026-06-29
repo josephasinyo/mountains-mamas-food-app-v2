@@ -106,6 +106,17 @@ export async function getCompanyMeals(companyId: string): Promise<{ success: boo
 
 export async function submitSupabaseOrder(orderData: any, items: any[]) {
     try {
+        // Server-side check: enforce that order date cannot be in the past (Mountain Time - America/Denver)
+        if (orderData.tourDate) {
+            const options = { timeZone: 'America/Denver', year: 'numeric', month: '2-digit', day: '2-digit' } as const;
+            const formatter = new Intl.DateTimeFormat('en-CA', options); // en-CA format is YYYY-MM-DD
+            const mountainTodayStr = formatter.format(new Date());
+
+            if (orderData.tourDate < mountainTodayStr) {
+                return { success: false, error: 'Cannot place orders for past dates.' };
+            }
+        }
+
         const supabase = createAdminClient(); // Use admin to bypass RLS for public orders
 
         // 1. Create the order

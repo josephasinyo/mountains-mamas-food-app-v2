@@ -15,6 +15,7 @@
     "@supabase/supabase-js": "^2.105.3",
     "@tailwindcss/postcss": "^4.2.4",
     "class-variance-authority": "^0.7.1",
+    "google-translate-api-x": "^10.7.3",
     "next": "16.1.4",
     "papaparse": "^5.5.3",
     "react": "19.2.3",

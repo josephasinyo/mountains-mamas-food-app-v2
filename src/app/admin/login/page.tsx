@@ -7,7 +7,8 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Mountain, Loader2 } from 'lucide-react';
+import { Mountain, Loader2, Eye, EyeOff } from 'lucide-react';
+import { sendAdminPasswordReset } from './actions';
 
 export default function AdminLoginPage() {
     return (
@@ -18,10 +19,13 @@ export default function AdminLoginPage() {
 }
 
 function AdminLoginForm() {
+    const [mode, setMode] = useState<'login' | 'forgot'>('login');
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
+    const [showPassword, setShowPassword] = useState(false);
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState('');
+    const [successMessage, setSuccessMessage] = useState('');
     const router = useRouter();
     const searchParams = useSearchParams();
 
@@ -76,6 +80,26 @@ function AdminLoginForm() {
         router.refresh();
     }
 
+    async function handleForgotPassword(e: React.FormEvent) {
+        e.preventDefault();
+        if (!email) {
+            setError('Please enter your email address.');
+            return;
+        }
+        setLoading(true);
+        setError('');
+        setSuccessMessage('');
+
+        const result = await sendAdminPasswordReset(email, window.location.origin);
+
+        if (!result.success) {
+            setError(result.error || 'Failed to send password reset email.');
+        } else {
+            setSuccessMessage('A password reset link has been sent to your email.');
+        }
+        setLoading(false);
+    }
+
     return (
         <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-violet-50 via-white to-purple-50 px-4">
             {/* Decorative elements */}
@@ -90,31 +114,92 @@ function AdminLoginForm() {
                         <Mountain className="size-7" />
                     </div>
                     <CardTitle className="text-xl font-bold">Mountain Mama&apos;s Café</CardTitle>
-                    <CardDescription>Sign in to the admin dashboard</CardDescription>
+                    <CardDescription>
+                        {mode === 'login' ? 'Sign in to the admin dashboard' : 'Reset your password'}
+                    </CardDescription>
                 </CardHeader>
                 <CardContent>
-                    <form onSubmit={handleLogin} className="space-y-4">
-                        {error && (
-                            <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2.5 text-sm text-red-700">
-                                {error}
+                    {mode === 'login' ? (
+                        <form onSubmit={handleLogin} className="space-y-4">
+                            {error && (
+                                <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2.5 text-sm text-red-700">
+                                    {error}
+                                </div>
+                            )}
+                            <div className="space-y-1.5">
+                                <Label htmlFor="email">Email</Label>
+                                <Input id="email" type="email" required placeholder="admin@example.com"
+                                    value={email} onChange={e => setEmail(e.target.value)}
+                                    className="h-10" />
                             </div>
-                        )}
-                        <div className="space-y-1.5">
-                            <Label htmlFor="email">Email</Label>
-                            <Input id="email" type="email" required placeholder="admin@example.com"
-                                value={email} onChange={e => setEmail(e.target.value)}
-                                className="h-10" />
-                        </div>
-                        <div className="space-y-1.5">
-                            <Label htmlFor="password">Password</Label>
-                            <Input id="password" type="password" required placeholder="••••••••"
-                                value={password} onChange={e => setPassword(e.target.value)}
-                                className="h-10" />
-                        </div>
-                        <Button type="submit" className="w-full h-10 bg-gradient-to-r from-violet-600 to-purple-600 hover:from-violet-700 hover:to-purple-700 shadow-md shadow-violet-200 transition-all" disabled={loading}>
-                            {loading ? <><Loader2 className="size-4 mr-2 animate-spin" /> Signing in...</> : 'Sign In'}
-                        </Button>
-                    </form>
+                            <div className="space-y-1.5">
+                                <Label htmlFor="password">Password</Label>
+                                <div className="relative">
+                                    <Input id="password" type={showPassword ? 'text' : 'password'} required placeholder="••••••••"
+                                        value={password} onChange={e => setPassword(e.target.value)}
+                                        className="h-10 pr-10" />
+                                    <button
+                                        type="button"
+                                        onClick={() => setShowPassword(!showPassword)}
+                                        className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 focus:outline-none"
+                                    >
+                                        {showPassword ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
+                                    </button>
+                                </div>
+                            </div>
+                            <Button type="submit" className="w-full h-10 bg-gradient-to-r from-violet-600 to-purple-600 hover:from-violet-700 hover:to-purple-700 shadow-md shadow-violet-200 transition-all" disabled={loading}>
+                                {loading ? <><Loader2 className="size-4 mr-2 animate-spin" /> Signing in...</> : 'Sign In'}
+                            </Button>
+                            <div className="text-center pt-2">
+                                <button 
+                                    type="button" 
+                                    onClick={() => {
+                                        setMode('forgot');
+                                        setError('');
+                                        setSuccessMessage('');
+                                    }}
+                                    className="text-xs text-violet-600 hover:text-violet-700 font-semibold hover:underline transition-all"
+                                >
+                                    Forgot password?
+                                </button>
+                            </div>
+                        </form>
+                    ) : (
+                        <form onSubmit={handleForgotPassword} className="space-y-4">
+                            {error && (
+                                <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2.5 text-sm text-red-700">
+                                    {error}
+                                </div>
+                            )}
+                            {successMessage && (
+                                <div className="rounded-lg border border-green-200 bg-green-50 px-3 py-2.5 text-sm text-green-700">
+                                    {successMessage}
+                                </div>
+                            )}
+                            <div className="space-y-1.5">
+                                <Label htmlFor="reset-email">Email Address</Label>
+                                <Input id="reset-email" type="email" required placeholder="admin@example.com"
+                                    value={email} onChange={e => setEmail(e.target.value)}
+                                    className="h-10" />
+                            </div>
+                            <Button type="submit" className="w-full h-10 bg-gradient-to-r from-violet-600 to-purple-600 hover:from-violet-700 hover:to-purple-700 shadow-md shadow-violet-200 transition-all" disabled={loading}>
+                                {loading ? <><Loader2 className="size-4 mr-2 animate-spin" /> Sending...</> : 'Send Reset Link'}
+                            </Button>
+                            <div className="text-center pt-2">
+                                <button 
+                                    type="button" 
+                                    onClick={() => {
+                                        setMode('login');
+                                        setError('');
+                                        setSuccessMessage('');
+                                    }}
+                                    className="text-xs text-gray-500 hover:text-gray-700 font-semibold"
+                                >
+                                    Back to login
+                                </button>
+                            </div>
+                        </form>
+                    )}
                 </CardContent>
             </Card>
         </div>

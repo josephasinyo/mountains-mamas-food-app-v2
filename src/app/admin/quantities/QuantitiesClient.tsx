@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
@@ -13,6 +13,8 @@ import {
 import { Printer, ShoppingCart, X, FileText, CheckSquare, ChevronDown, ChevronUp, Loader2 } from 'lucide-react';
 import { formatDateTimeUS } from '@/lib/utils';
 import { getQuantitiesOrders } from './actions';
+import { translateCustomizations, getMealTranslations } from './translate-action';
+import { t as tLookup } from '@/lib/translations/es';
 import { toast } from 'sonner';
 
 interface OrderItem {
@@ -235,6 +237,139 @@ export function QuantitiesClient({ initialOrders, companies }: QuantitiesClientP
     const [smartPerspective, setSmartPerspective] = useState<'sandwich' | 'company'>('sandwich');
     const [expandedCompanies, setExpandedCompanies] = useState<Record<string, boolean>>({});
     const [activePrintMode, setActivePrintMode] = useState<'smart' | 'summary' | null>(null);
+
+    // ─── Language Toggle State ───
+    const [locale, setLocale] = useState<'en' | 'es'>('en');
+    const [translatingEs, setTranslatingEs] = useState(false);
+    const [translatedCustomizations, setTranslatedCustomizations] = useState<Record<string, string>>({});
+    const [mealNameTranslations, setMealNameTranslations] = useState<Record<string, string>>({});
+    // When true, sandwich/cookie/bread names are translated. Checked by default.
+    const [translateFoodNames, setTranslateFoodNames] = useState(true);
+
+    // Translation helper
+    const t = useCallback((key: string) => tLookup(key, locale), [locale]);
+
+    // Translate a meal/cookie name using the database name_es lookup
+    const tMeal = useCallback((name: string) => {
+        if (locale === 'en' || !translateFoodNames) return name;
+        return mealNameTranslations[name] || name;
+    }, [locale, mealNameTranslations, translateFoodNames]);
+
+    // Translate a customization note using the Gemini-translated cache
+    const tCustom = useCallback((text: string | null) => {
+        if (!text || locale === 'en') return text;
+        const normalized = text.replace(/\r\n/g, '\n').trim();
+        return translatedCustomizations[normalized] || text;
+    }, [locale, translatedCustomizations]);
+
+    // Conditional helper specifically for sandwich/cookie/bread names
+    const tFood = useCallback((name: string | null | undefined, customFallback: string | null = null) => {
+        if (!name) return name;
+        if (locale === 'en' || !translateFoodNames) return name;
+        // Check Gemini custom translation first, then fallback to static/meal lookup
+        const normalized = name.replace(/\r\n/g, '\n').trim();
+        return translatedCustomizations[normalized] || customFallback || name;
+    }, [locale, translateFoodNames, translatedCustomizations]);
+
+    // Cache ref to avoid useEffect dependency loop when modifying translatedCustomizations
+    const translatedCacheRef = React.useRef<Record<string, string>>({});
+    useEffect(() => {
+        translatedCacheRef.current = translatedCustomizations;
+    }, [translatedCustomizations]);
+
+    // Eager translation: fire when locale switches to Spanish or when orders/companies update
+    useEffect(() => {
+        if (locale !== 'es') {
+            // Clear cache when switching away so we always get fresh translations on next toggle
+            if (translatedCacheRef.current && Object.keys(translatedCacheRef.current).length > 0) {
+                translatedCacheRef.current = {};
+                setTranslatedCustomizations({});
+            }
+            return;
+        }
+
+        // Always clear cache on entering Spanish so stale English fallbacks don't block Gemini
+        translatedCacheRef.current = {};
+
+        let cancelled = false;
+        setTranslatingEs(true);
+
+        (async () => {
+            try {
+                // 1. Fetch meal name translations from database
+                const mealTrans = await getMealTranslations();
+                if (!cancelled) setMealNameTranslations(mealTrans);
+
+                // 2. Collect all unique texts: customizations, prep notes, cookie names, bread types
+                const uniqueTexts = new Set<string>();
+                
+                orders.forEach(order => {
+                    order.order_items?.forEach(item => {
+                        if (item.customizations && item.customizations.trim()) {
+                            uniqueTexts.add(item.customizations.replace(/\r\n/g, '\n').trim());
+                        }
+                        // Cookie names
+                        if (item.cookie_choice && item.cookie_choice.trim() && item.cookie_choice !== 'No Cookie') {
+                            uniqueTexts.add(item.cookie_choice.trim());
+                        }
+                        // Bread types
+                        if (item.bread_type && item.bread_type.trim() &&
+                            !['none', 'no bread', 'standard', 'sandwich'].includes(item.bread_type.toLowerCase())) {
+                            uniqueTexts.add(item.bread_type.trim());
+                        }
+                    });
+                    if (order.tour_companies?.prep_instructions && order.tour_companies.prep_instructions.trim()) {
+                        uniqueTexts.add(order.tour_companies.prep_instructions.replace(/\r\n/g, '\n').trim());
+                    }
+                });
+
+                companies.forEach(co => {
+                    if (co.prep_instructions && co.prep_instructions.trim()) {
+                        uniqueTexts.add(co.prep_instructions.replace(/\r\n/g, '\n').trim());
+                    }
+                });
+
+                const allTextsToTranslate = [...uniqueTexts];
+                const textsToTranslate = allTextsToTranslate.filter(text => !translatedCacheRef.current[text]);
+
+                // 3. Call Gemini to translate customizations & prep notes
+                if (textsToTranslate.length > 0) {
+                    console.log(
+                        '%c[Gemini Translation] Starting translation for untranslated texts:',
+                        'color: #7c3aed; font-weight: bold; font-size: 11px;',
+                        textsToTranslate
+                    );
+                    
+                    const customTrans = await translateCustomizations(textsToTranslate);
+                    
+                    console.log(
+                        '%c[Gemini Translation] Finished successfully. Received mapping:',
+                        'color: #10b981; font-weight: bold; font-size: 11px;',
+                        customTrans
+                    );
+                    
+                    if (!cancelled) {
+                        setTranslatedCustomizations(prev => ({
+                            ...prev,
+                            ...customTrans
+                        }));
+                    }
+                } else {
+                    console.log(
+                        '%c[Gemini Translation] All texts are already translated and cached.',
+                        'color: #6b7280; font-weight: bold; font-size: 11px;'
+                    );
+                }
+            } catch (e) {
+                console.error('%c[Gemini Translation] Error during translation:', 'color: #ef4444; font-weight: bold;', e);
+            } finally {
+                if (!cancelled) setTranslatingEs(false);
+            }
+        })();
+
+        return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [locale, orders, companies]);
 
     useEffect(() => {
         if (activePrintMode) {
@@ -589,23 +724,92 @@ export function QuantitiesClient({ initialOrders, companies }: QuantitiesClientP
                 {/* Header */}
                 <div className="flex items-start justify-between mb-8">
                     <div>
-                        <h1 className="text-3xl font-extrabold tracking-tight text-gray-900">Prep Quantities</h1>
-                        <p className="text-sm text-gray-500 mt-1">Generate kitchen prep sheets and totals for any date range.</p>
+                        <h1 className="text-3xl font-extrabold tracking-tight text-gray-900">{t('Prep Quantities')}</h1>
+                        <p className="text-sm text-gray-500 mt-1">{t('Generate kitchen prep sheets and totals for any date range.')}</p>
                     </div>
-                    <div className="flex gap-2">
+                    <div className="flex items-center gap-2 relative">
+                        {/* Custom Language Switch Container */}
+                        <div className="relative shrink-0">
+                            {/* Custom Language Switch */}
+                            <div 
+                                onClick={() => setLocale(prev => prev === 'en' ? 'es' : 'en')}
+                                className="relative flex items-center justify-between w-[160px] h-10 bg-gray-100 rounded-full border border-gray-200 p-1 cursor-pointer select-none shadow-inner"
+                                title={locale === 'en' ? 'Switch to Spanish' : 'Cambiar a Inglés'}
+                            >
+                                {/* Sliding Bubble */}
+                                <div 
+                                    className={`absolute top-1 bottom-1 w-[74px] bg-white rounded-full shadow-sm border border-gray-200/50 transition-all duration-300 ${
+                                        locale === 'en' ? 'left-1' : 'left-[81px]'
+                                    }`} 
+                                />
+                                
+                                {/* EN side */}
+                                <div className={`w-[74px] h-full flex items-center justify-center gap-1.5 z-10 text-[9px] font-black transition-all ${
+                                    locale === 'en' ? 'text-violet-600' : 'text-gray-400'
+                                }`}>
+                                    {/* US Flag SVG */}
+                                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 60 30" className="w-4 h-2.5 rounded-[1px] shrink-0 overflow-hidden">
+                                        <rect width="60" height="30" fill="#B22234"/>
+                                        <rect y="2.31" width="60" height="2.31" fill="#fff"/>
+                                        <rect y="6.92" width="60" height="2.31" fill="#fff"/>
+                                        <rect y="11.54" width="60" height="2.31" fill="#fff"/>
+                                        <rect y="16.15" width="60" height="2.31" fill="#fff"/>
+                                        <rect y="20.77" width="60" height="2.31" fill="#fff"/>
+                                        <rect y="25.38" width="60" height="2.31" fill="#fff"/>
+                                        <rect width="24" height="16.15" fill="#3C3B6E"/>
+                                    </svg>
+                                    <span>English</span>
+                                </div>
+                                
+                                {/* ES side */}
+                                <div className={`w-[74px] h-full flex items-center justify-center gap-1.5 z-10 text-[9px] font-black transition-all ${
+                                    locale === 'es' ? 'text-violet-600' : 'text-gray-400'
+                                }`}>
+                                    {/* Spain Flag SVG */}
+                                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 60 30" className="w-4 h-2.5 rounded-[1px] shrink-0 overflow-hidden">
+                                        <rect width="60" height="30" fill="#c60b1e"/>
+                                        <rect y="7.5" width="60" height="15" fill="#ffc400"/>
+                                    </svg>
+                                    <span>Spanish</span>
+                                </div>
+                            </div>
+
+                            {/* Checkbox positioned absolutely below language switch to avoid pushing buttons up/down */}
+                            {locale === 'es' && (
+                                <div className="absolute top-[48px] left-1 z-30">
+                                    <label
+                                        htmlFor="translate-food-names"
+                                        className="flex items-center gap-2 cursor-pointer select-none py-1 hover:bg-violet-50/50 rounded-lg transition-colors px-1"
+                                        title="When checked, sandwich, cookie, and bread names are translated to Spanish"
+                                    >
+                                        <input
+                                            id="translate-food-names"
+                                            type="checkbox"
+                                            checked={translateFoodNames}
+                                            onChange={e => setTranslateFoodNames(e.target.checked)}
+                                            className="w-4 h-4 accent-violet-600 cursor-pointer"
+                                        />
+                                        <span className="text-xs font-bold text-violet-700 leading-tight whitespace-nowrap">
+                                            Traducir nombres de sándwich, galletas y pan
+                                        </span>
+                                    </label>
+                                </div>
+                            )}
+                        </div>
+
                         <Button 
                             variant="outline" 
                             className="gap-2 h-11 px-4 rounded-xl border-gray-200 hover:border-violet-200 hover:bg-violet-50 transition-all font-bold shadow-sm" 
                             onClick={() => setActivePrintMode('smart')}
                         >
-                            <Printer className="size-4 text-violet-600" /> Print Smart Prep Sheet
+                            <Printer className="size-4 text-violet-600" /> {t('Print Smart Prep Sheet')}
                         </Button>
                         <Button 
                             variant="outline" 
                             className="gap-2 h-11 px-4 rounded-xl border-gray-200 hover:border-violet-200 hover:bg-violet-50 transition-all font-bold shadow-sm" 
                             onClick={() => setActivePrintMode('summary')}
                         >
-                            <Printer className="size-4 text-violet-600" /> Print Standard Totals
+                            <Printer className="size-4 text-violet-600" /> {t('Print Standard Totals')}
                         </Button>
                     </div>
                 </div>
@@ -636,31 +840,31 @@ export function QuantitiesClient({ initialOrders, companies }: QuantitiesClientP
                                         : 'text-gray-400 hover:text-gray-600'
                                     }`}
                             >
-                                Order Date
+                                {t('Order Date')}
                             </Button>
                         </div>
 
                         <Select value={dateRange} onValueChange={(v) => handleDateRangeChange(v || '')}>
                             <SelectTrigger className="w-[180px] h-10 rounded-xl border-gray-200 font-semibold text-sm bg-white">
-                                <SelectValue placeholder="All Dates">
-                                    {DATE_RANGE_LABELS[dateRange] || dateRange}
+                                <SelectValue placeholder={t('All Dates')}>
+                                    {t(DATE_RANGE_LABELS[dateRange] || dateRange)}
                                 </SelectValue>
                             </SelectTrigger>
                             <SelectContent>
-                                <SelectItem value="">All Dates</SelectItem>
-                                <SelectItem value="custom">Custom Range</SelectItem>
-                                <SelectItem value="today">Today</SelectItem>
-                                <SelectItem value="yesterday">Yesterday</SelectItem>
-                                <SelectItem value="tomorrow">Tomorrow</SelectItem>
-                                <SelectItem value="this_week">This Week</SelectItem>
-                                <SelectItem value="last_week">Last Week</SelectItem>
-                                <SelectItem value="next_week">Next Week</SelectItem>
-                                <SelectItem value="this_month">This Month</SelectItem>
-                                <SelectItem value="last_month">Last Month</SelectItem>
-                                <SelectItem value="next_month">Next Month</SelectItem>
-                                <SelectItem value="next_3_months">Next 3 Months</SelectItem>
-                                <SelectItem value="next_6_months">Next 6 Months</SelectItem>
-                                <SelectItem value="next_12_months">Next 12 Months</SelectItem>
+                                <SelectItem value="">{t('All Dates')}</SelectItem>
+                                <SelectItem value="custom">{t('Custom Range')}</SelectItem>
+                                <SelectItem value="today">{t('Today')}</SelectItem>
+                                <SelectItem value="yesterday">{t('Yesterday')}</SelectItem>
+                                <SelectItem value="tomorrow">{t('Tomorrow')}</SelectItem>
+                                <SelectItem value="this_week">{t('This Week')}</SelectItem>
+                                <SelectItem value="last_week">{t('Last Week')}</SelectItem>
+                                <SelectItem value="next_week">{t('Next Week')}</SelectItem>
+                                <SelectItem value="this_month">{t('This Month')}</SelectItem>
+                                <SelectItem value="last_month">{t('Last Month')}</SelectItem>
+                                <SelectItem value="next_month">{t('Next Month')}</SelectItem>
+                                <SelectItem value="next_3_months">{t('Next 3 Months')}</SelectItem>
+                                <SelectItem value="next_6_months">{t('Next 6 Months')}</SelectItem>
+                                <SelectItem value="next_12_months">{t('Next 12 Months')}</SelectItem>
                             </SelectContent>
                         </Select>
 
@@ -674,7 +878,7 @@ export function QuantitiesClient({ initialOrders, companies }: QuantitiesClientP
                                 }}
                                 className="w-[150px] h-8 rounded-lg border-0 bg-transparent text-sm font-semibold focus-visible:ring-0 focus-visible:ring-offset-0" 
                             />
-                            <span className="text-gray-400 text-xs font-semibold">to</span>
+                            <span className="text-gray-400 text-xs font-semibold">{t('to')}</span>
                             <Input 
                                 type="date" 
                                 value={endDate} 
@@ -688,27 +892,27 @@ export function QuantitiesClient({ initialOrders, companies }: QuantitiesClientP
 
                         <Select value={companyFilter} onValueChange={(v) => setCompanyFilter(v || '')}>
                             <SelectTrigger className="w-[180px] h-10 rounded-xl border-gray-200 font-semibold text-sm bg-white">
-                                <SelectValue placeholder="All Companies">
-                                    {companies.find(c => c.id === companyFilter)?.name || 'All Companies'}
+                                <SelectValue placeholder={t('All Companies')}>
+                                    {companies.find(c => c.id === companyFilter)?.name || t('All Companies')}
                                 </SelectValue>
                             </SelectTrigger>
                             <SelectContent>
-                                <SelectItem value="">All Companies</SelectItem>
+                                <SelectItem value="">{t('All Companies')}</SelectItem>
                                 {companies.map(c => <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}
                             </SelectContent>
                         </Select>
 
                         <Select value={statusFilter} onValueChange={(v) => setStatusFilter(v || '')}>
                             <SelectTrigger className="w-[160px] h-10 rounded-xl border-gray-200 font-semibold text-sm bg-white">
-                                <SelectValue placeholder="All Statuses">
-                                    {STATUS_LABELS[statusFilter] || 'All Statuses'}
+                                <SelectValue placeholder={t('All Statuses')}>
+                                    {t(STATUS_LABELS[statusFilter] || 'All Statuses')}
                                 </SelectValue>
                             </SelectTrigger>
                             <SelectContent>
-                                <SelectItem value="">All Statuses</SelectItem>
-                                <SelectItem value="pending">Pending</SelectItem>
-                                <SelectItem value="fulfilled">Fulfilled</SelectItem>
-                                <SelectItem value="cancelled">Cancelled</SelectItem>
+                                <SelectItem value="">{t('All Statuses')}</SelectItem>
+                                <SelectItem value="pending">{t('Pending')}</SelectItem>
+                                <SelectItem value="fulfilled">{t('Fulfilled')}</SelectItem>
+                                <SelectItem value="cancelled">{t('Cancelled')}</SelectItem>
                             </SelectContent>
                         </Select>
 
@@ -718,7 +922,7 @@ export function QuantitiesClient({ initialOrders, companies }: QuantitiesClientP
                             className="bg-violet-600 hover:bg-violet-700 text-white rounded-xl h-10 px-5 font-bold text-sm transition-all flex items-center gap-2"
                         >
                             {dbLoading && <Loader2 className="h-4 w-4 animate-spin" />}
-                            {dbLoading ? 'Searching...' : 'Search'}
+                            {dbLoading ? t('Searching...') : t('Search')}
                         </Button>
 
                         {hasFilters && (
@@ -729,7 +933,7 @@ export function QuantitiesClient({ initialOrders, companies }: QuantitiesClientP
                                 disabled={dbLoading}
                                 className="gap-2 text-xs font-bold h-10 px-4 text-gray-400 hover:text-rose-600 transition-colors"
                             >
-                                <X className="size-3.5" /> Clear Filters
+                                <X className="size-3.5" /> {t('Clear Filters')}
                             </Button>
                         )}
                     </CardContent>
@@ -745,7 +949,7 @@ export function QuantitiesClient({ initialOrders, companies }: QuantitiesClientP
                                 : 'text-gray-500 hover:text-gray-900 hover:bg-gray-100/50'
                         }`}
                     >
-                        <CheckSquare className="size-4" /> Smart Prep Sheet
+                        <CheckSquare className="size-4" /> {t('Smart Prep')}
                     </button>
                     <button
                         onClick={() => setActiveTab('summary')}
@@ -755,7 +959,7 @@ export function QuantitiesClient({ initialOrders, companies }: QuantitiesClientP
                                 : 'text-gray-500 hover:text-gray-900 hover:bg-gray-100/50'
                         }`}
                     >
-                        <FileText className="size-4" /> Standard Totals
+                        <FileText className="size-4" /> {t('Summary')}
                     </button>
                 </div>
 
@@ -820,13 +1024,13 @@ export function QuantitiesClient({ initialOrders, companies }: QuantitiesClientP
                                                     {/* Card Header */}
                                                     <div className="px-5 py-4 border-b border-gray-100 bg-gradient-to-r from-gray-50 to-white flex justify-between items-center">
                                                         <div>
-                                                            <h3 className="text-lg font-black text-gray-900 tracking-tight">{item.mealName}</h3>
+                                                            <h3 className="text-lg font-black text-gray-900 tracking-tight">{tFood(item.mealName, tMeal(item.mealName))}</h3>
                                                             <p className="text-[11px] font-bold text-gray-400 mt-0.5 uppercase tracking-wider">
-                                                                {item.boxTypes.standard > 0 && `${item.boxTypes.standard} Standard`}
+                                                                {item.boxTypes.standard > 0 && `${item.boxTypes.standard} ${t('Standard')}`}
                                                                 {item.boxTypes.standard > 0 && (item.boxTypes.junior > 0 || item.boxTypes.sandwichOnly > 0) && ' · '}
-                                                                {item.boxTypes.junior > 0 && `${item.boxTypes.junior} Junior`}
+                                                                {item.boxTypes.junior > 0 && `${item.boxTypes.junior} ${t('Junior')}`}
                                                                 {(item.boxTypes.standard > 0 || item.boxTypes.junior > 0) && item.boxTypes.sandwichOnly > 0 && ' · '}
-                                                                {item.boxTypes.sandwichOnly > 0 && `${item.boxTypes.sandwichOnly} Sandwich Only`}
+                                                                {item.boxTypes.sandwichOnly > 0 && `${item.boxTypes.sandwichOnly} ${t('Sandwich Only')}`}
                                                             </p>
                                                         </div>
                                                         <div className="flex items-center gap-2">
@@ -834,7 +1038,7 @@ export function QuantitiesClient({ initialOrders, companies }: QuantitiesClientP
                                                                 variant="ghost"
                                                                 size="icon"
                                                                 className="h-8 w-8 rounded-lg text-gray-500 hover:text-violet-600 hover:bg-violet-50 transition-colors"
-                                                                title="Expand/Collapse All"
+                                                                title={t('Expand/Collapse All')}
                                                                 onClick={() => toggleAllCompaniesForMeal(item.mealName, item.companies)}
                                                             >
                                                                 {item.companies.every(co => !!expandedCompanies[`${item.mealName}-${co.companyName}`]) ? (
@@ -866,11 +1070,11 @@ export function QuantitiesClient({ initialOrders, companies }: QuantitiesClientP
                                                                             </span>
                                                                             {co.prepInstructions && (
                                                                                 <span className="bg-amber-100 text-amber-800 text-[9px] font-black px-2 py-0.5 rounded uppercase tracking-wider flex items-center gap-1">
-                                                                                    <span>📝 Prep Notes</span>
+                                                                                    <span>📝 {t('Prep Notes')}</span>
                                                                                 </span>
                                                                             )}
                                                                             <span className="bg-violet-100 text-violet-800 text-[10px] font-black px-2 py-0.5 rounded-full">
-                                                                                {co.totalQty} lunch{co.totalQty > 1 ? 'es' : ''}
+                                                                                {co.totalQty} {co.totalQty > 1 ? t('lunches') : t('lunch')}
                                                                             </span>
                                                                         </div>
                                                                         <div className="text-gray-400">
@@ -882,9 +1086,9 @@ export function QuantitiesClient({ initialOrders, companies }: QuantitiesClientP
                                                                     {isExpanded && (
                                                                         <div className="p-3 bg-white border-t border-gray-100 space-y-2 max-h-96 overflow-y-auto">
                                                                             {co.prepInstructions && (
-                                                                                <div className="mb-3 p-3 rounded-lg bg-amber-50/40 border border-amber-100/60 text-xs text-amber-800 flex items-start gap-1.5 leading-relaxed">
-                                                                                    <span className="font-bold shrink-0">📌 Prep Notes:</span>
-                                                                                    <span className="whitespace-pre-wrap">{co.prepInstructions}</span>
+                                                                                <div className="mb-3 p-3 rounded-lg bg-amber-50/40 border border-amber-100/60 text-xs text-amber-800 flex flex-col gap-1.5 leading-relaxed">
+                                                                                    <span className="font-bold shrink-0">📌 {t('Prep Notes')}:</span>
+                                                                                    <span className="whitespace-pre-wrap pl-1">{tCustom(co.prepInstructions)}</span>
                                                                                 </div>
                                                                             )}
                                                                             {co.lunches.map((lunch, lIdx) => (
@@ -895,24 +1099,20 @@ export function QuantitiesClient({ initialOrders, companies }: QuantitiesClientP
                                                                                                 {lunch.quantity}x
                                                                                             </span>
                                                                                             <span className="text-gray-400 font-semibold text-[10px] uppercase mr-1">
-                                                                                                {lunch.boxType || 'No Box'}
+                                                                                                {lunch.boxType ? t(lunch.boxType) : t('No Box')}
                                                                                             </span>
                                                                                             {/* Bread Choice */}
-                                                                                            {lunch.breadType && !['sandwich', 'none', 'no bread', 'standard'].includes(lunch.breadType.toLowerCase()) && (
-                                                                                                <span className="px-2 py-0.5 rounded-md bg-amber-50 text-amber-700 border border-amber-100/70 text-[10px] font-bold">
-                                                                                                    🍞 {lunch.breadType === 'gluten-free' || lunch.breadType === 'gf' ? 'Gluten-Free' : lunch.breadType}
-                                                                                                </span>
-                                                                                            )}
+                                                                                                    🍞 {lunch.breadType === 'gluten-free' || lunch.breadType === 'gf' ? t('Gluten-Free') : tFood(lunch.breadType, t(lunch.breadType!))}
                                                                                             {/* Customizations */}
                                                                                             {lunch.customizations && (
                                                                                                 <span className="px-2 py-0.5 rounded-md bg-rose-50 text-rose-700 border border-rose-100/70 text-[10px] font-bold italic">
-                                                                                                    ⚠️ {lunch.customizations}
+                                                                                                    ⚠️ {tCustom(lunch.customizations)}
                                                                                                 </span>
                                                                                             )}
                                                                                             {/* Standard notice if nothing custom */}
                                                                                             {!lunch.customizations && 
                                                                                              (!lunch.breadType || ['sandwich', 'none', 'no bread', 'standard'].includes(lunch.breadType.toLowerCase())) && (
-                                                                                                <span className="text-[10px] text-gray-400 italic font-medium">Standard preparation</span>
+                                                                                                <span className="text-[10px] text-gray-400 italic font-medium">{t('Standard preparation')}</span>
                                                                                              )}
                                                                                         </div>
                                                                                     </div>
@@ -938,11 +1138,11 @@ export function QuantitiesClient({ initialOrders, companies }: QuantitiesClientP
                                                         });
                                                         return (
                                                             <div className="px-5 py-3.5 bg-violet-50/30 border-t border-violet-100/50 flex flex-col gap-2.5 text-xs rounded-b-2xl">
-                                                                <span className="font-extrabold uppercase text-[10px] tracking-wider text-violet-800 text-left">Bread Prep Totals</span>
+                                                                <span className="font-extrabold uppercase text-[10px] tracking-wider text-violet-800 text-left">{t('Bread Prep Totals')}</span>
                                                                 <div className="flex flex-wrap gap-2 justify-start">
                                                                     {Object.entries(breadCounts).map(([bread, count], bIdx) => (
                                                                         <span key={bIdx} className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-white border border-violet-100 text-violet-800 font-bold shadow-sm shadow-violet-100/50 text-[10px]">
-                                                                            <span className="text-gray-500 font-medium">{bread}:</span>
+                                                                            <span className="text-gray-500 font-medium">{t(bread)}:</span>
                                                                             <span className="font-black text-violet-700">{count}</span>
                                                                         </span>
                                                                     ))}
@@ -971,7 +1171,7 @@ export function QuantitiesClient({ initialOrders, companies }: QuantitiesClientP
                                                         <div>
                                                             <h3 className="text-lg font-black text-gray-900 tracking-tight">{company.companyName}</h3>
                                                             <p className="text-[11px] font-bold text-gray-400 mt-0.5 uppercase tracking-wider">
-                                                                {company.meals.length} meal type{company.meals.length > 1 ? 's' : ''} ordered
+                                                                {company.meals.length} {company.meals.length > 1 ? t('lunches') : t('lunch')} {t('ordered')}
                                                             </p>
                                                         </div>
                                                         <div className="flex items-center gap-2">
@@ -979,7 +1179,7 @@ export function QuantitiesClient({ initialOrders, companies }: QuantitiesClientP
                                                                 variant="ghost"
                                                                 size="icon"
                                                                 className="h-8 w-8 rounded-lg text-gray-500 hover:text-violet-600 hover:bg-violet-50 transition-colors"
-                                                                title="Expand/Collapse All"
+                                                                title={t("Expand/Collapse All")}
                                                                 onClick={() => toggleAllMealsForCompany(company.companyName, company.meals)}
                                                             >
                                                                 {company.meals.every(meal => !!expandedCompanies[`${company.companyName}-${meal.mealName}`]) ? (
@@ -999,8 +1199,8 @@ export function QuantitiesClient({ initialOrders, companies }: QuantitiesClientP
                                                         <div className="px-5 py-3.5 bg-amber-50/50 border-b border-amber-100/60 text-xs text-amber-900 flex items-start gap-2 leading-relaxed">
                                                             <span className="text-base shrink-0 mt-0.5">📝</span>
                                                             <div className="space-y-1">
-                                                                <p className="font-extrabold uppercase text-[9px] tracking-wider text-amber-800">Private Prep Instructions</p>
-                                                                <p className="whitespace-pre-wrap">{company.prepInstructions}</p>
+                                                                <p className="font-extrabold uppercase text-[9px] tracking-wider text-amber-800">{t('Prep Notes')}</p>
+                                                                <p className="whitespace-pre-wrap">{tCustom(company.prepInstructions)}</p>
                                                             </div>
                                                         </div>
                                                     )}
@@ -1018,10 +1218,10 @@ export function QuantitiesClient({ initialOrders, companies }: QuantitiesClientP
                                                                     >
                                                                         <div className="flex items-center gap-2 flex-1">
                                                                             <span className="font-bold text-sm text-gray-800">
-                                                                                {meal.mealName}
+                                                                                {tMeal(meal.mealName)}
                                                                             </span>
                                                                             <span className="bg-violet-100 text-violet-800 text-[10px] font-black px-2 py-0.5 rounded-full">
-                                                                                {meal.totalQty} lunch{meal.totalQty > 1 ? 'es' : ''}
+                                                                                {meal.totalQty} {meal.totalQty > 1 ? t('lunches') : t('lunch')}
                                                                             </span>
                                                                         </div>
                                                                         <div className="text-gray-400">
@@ -1040,24 +1240,22 @@ export function QuantitiesClient({ initialOrders, companies }: QuantitiesClientP
                                                                                                 {lunch.quantity}x
                                                                                             </span>
                                                                                             <span className="text-gray-400 font-semibold text-[10px] uppercase mr-1">
-                                                                                                {lunch.boxType || 'No Box'}
+                                                                                                {lunch.boxType ? t(lunch.boxType) : t('No Box')}
                                                                                             </span>
                                                                                             {/* Bread Choice */}
-                                                                                            {lunch.breadType && !['sandwich', 'none', 'no bread', 'standard'].includes(lunch.breadType.toLowerCase()) && (
-                                                                                                <span className="px-2 py-0.5 rounded-md bg-amber-50 text-amber-700 border border-amber-100/70 text-[10px] font-bold">
-                                                                                                    🍞 {lunch.breadType === 'gluten-free' || lunch.breadType === 'gf' ? 'Gluten-Free' : lunch.breadType}
-                                                                                                </span>
-                                                                                            )}
+                                                                                            <span className="px-2 py-0.5 rounded-md bg-amber-50 text-amber-700 border border-amber-100/70 text-[10px] font-bold">
+                                                                                                🍞 {lunch.breadType === 'gluten-free' || lunch.breadType === 'gf' ? t('Gluten-Free') : tFood(lunch.breadType, t(lunch.breadType!))}
+                                                                                            </span>
                                                                                             {/* Customizations */}
                                                                                             {lunch.customizations && (
                                                                                                 <span className="px-2 py-0.5 rounded-md bg-rose-50 text-rose-700 border border-rose-100/70 text-[10px] font-bold italic">
-                                                                                                    ⚠️ {lunch.customizations}
+                                                                                                    ⚠️ {tCustom(lunch.customizations)}
                                                                                                 </span>
                                                                                             )}
                                                                                             {/* Standard notice if nothing custom */}
                                                                                             {!lunch.customizations && 
                                                                                              (!lunch.breadType || ['sandwich', 'none', 'no bread', 'standard'].includes(lunch.breadType.toLowerCase())) && (
-                                                                                                <span className="text-[10px] text-gray-400 italic font-medium">Standard preparation</span>
+                                                                                                <span className="text-[10px] text-gray-400 italic font-medium">{t('Standard preparation')}</span>
                                                                                              )}
                                                                                         </div>
                                                                                     </div>
@@ -1083,11 +1281,11 @@ export function QuantitiesClient({ initialOrders, companies }: QuantitiesClientP
                                                         });
                                                         return (
                                                             <div className="px-5 py-3.5 bg-violet-50/30 border-t border-violet-100/50 flex flex-col gap-2.5 text-xs rounded-b-2xl">
-                                                                <span className="font-extrabold uppercase text-[10px] tracking-wider text-violet-800 text-left">Bread Prep Totals</span>
+                                                                <span className="font-extrabold uppercase text-[10px] tracking-wider text-violet-800 text-left">{t('Bread Prep Totals')}</span>
                                                                 <div className="flex flex-wrap gap-2 justify-start">
                                                                     {Object.entries(breadCounts).map(([bread, count], bIdx) => (
                                                                         <span key={bIdx} className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-white border border-violet-100 text-violet-800 font-bold shadow-sm shadow-violet-100/50 text-[10px]">
-                                                                            <span className="text-gray-500 font-medium">{bread}:</span>
+                                                                            <span className="text-gray-500 font-medium">{tFood(bread, t(bread))}:</span>
                                                                             <span className="font-black text-violet-700">{count}</span>
                                                                         </span>
                                                                     ))}
@@ -1099,7 +1297,7 @@ export function QuantitiesClient({ initialOrders, companies }: QuantitiesClientP
                                             ))
                                         ) : (
                                             <div className="col-span-full py-12 text-center text-gray-400 font-semibold">
-                                                No customized lunches found for this selection.
+                                                {t('No customized lunches found for this selection.')}
                                             </div>
                                         )}
                                     </div>
@@ -1110,29 +1308,29 @@ export function QuantitiesClient({ initialOrders, companies }: QuantitiesClientP
                             <div className="mt-8 max-w-4xl">
                                 <Card className="rounded-2xl border-gray-100 shadow-sm overflow-hidden bg-white">
                                     <div className="px-6 py-4 border-b border-gray-100 bg-white">
-                                        <h2 className="text-lg font-bold text-gray-900">House-made Cookies</h2>
+                                        <h2 className="text-lg font-bold text-gray-900">{t('House-made Cookies')}</h2>
                                     </div>
                                     <div className="p-0">
                                         <Table>
                                             <TableHeader className="bg-violet-100/50">
                                                 <TableRow className="hover:bg-transparent border-violet-100">
-                                                    <TableHead className="font-bold text-gray-900 py-3 pl-6 text-left">House-made Cookie</TableHead>
-                                                    <TableHead className="font-bold text-gray-900 py-3 text-center w-36">Junior Box</TableHead>
-                                                    <TableHead className="font-bold text-gray-900 py-3 text-center w-36">Standard Box</TableHead>
-                                                    <TableHead className="font-bold text-gray-900 py-3 text-center w-36">Total</TableHead>
+                                                    <TableHead className="font-bold text-gray-900 py-3 pl-6 text-left">{t('House-made Cookie')}</TableHead>
+                                                    <TableHead className="font-bold text-gray-900 py-3 text-center w-36">{t('Junior Box')}</TableHead>
+                                                    <TableHead className="font-bold text-gray-900 py-3 text-center w-36">{t('Standard Box')}</TableHead>
+                                                    <TableHead className="font-bold text-gray-900 py-3 text-center w-36">{t('Total')}</TableHead>
                                                 </TableRow>
                                             </TableHeader>
                                             <TableBody>
                                                 {aggregatedCookies.map((item, i) => (
                                                     <TableRow key={i} className="hover:bg-gray-50/50 border-b border-gray-100 last:border-0 transition-colors">
-                                                        <TableCell className="font-semibold text-sm text-amber-700 py-2.5 pl-6">{item.name}</TableCell>
+                                                        <TableCell className="font-semibold text-sm text-amber-700 py-2.5 pl-6">{tFood(item.name, tMeal(item.name))}</TableCell>
                                                         <TableCell className="py-2.5 text-center text-gray-600 font-semibold">{item.junior}</TableCell>
                                                         <TableCell className="py-2.5 text-center text-gray-600 font-semibold">{item.standard}</TableCell>
                                                         <TableCell className="py-2.5 text-center font-bold text-violet-700 w-36">{item.junior + item.standard}</TableCell>
                                                     </TableRow>
                                                 ))}
                                                 <TableRow className="bg-violet-50/50 border-t-2 border-violet-200">
-                                                    <TableCell className="font-black text-gray-900 pl-6 py-3">TOTAL</TableCell>
+                                                    <TableCell className="font-black text-gray-900 pl-6 py-3">{t('TOTAL')}</TableCell>
                                                     <TableCell className="py-3 text-center font-black text-violet-600 text-base">{cookiesJuniorTotal}</TableCell>
                                                     <TableCell className="py-3 text-center font-black text-violet-600 text-base">{cookiesStandardTotal}</TableCell>
                                                     <TableCell className="py-3 text-center font-black text-violet-600 text-base w-36">{cookiesJuniorTotal + cookiesStandardTotal}</TableCell>
@@ -1151,29 +1349,29 @@ export function QuantitiesClient({ initialOrders, companies }: QuantitiesClientP
                                 {aggregatedMeals.length > 0 && (
                                     <Card className="rounded-3xl border-gray-100 shadow-xl shadow-gray-200/50 overflow-hidden bg-white">
                                         <div className="px-6 py-4 border-b border-gray-100 bg-white">
-                                            <h2 className="text-lg font-bold text-gray-900">Sandwiches & Salads</h2>
+                                            <h2 className="text-lg font-bold text-gray-900">{t('Summary Totals')}</h2>
                                         </div>
                                         <div className="p-0">
                                             <Table>
                                                 <TableHeader className="bg-violet-100/50">
                                                     <TableRow className="hover:bg-transparent border-violet-100">
-                                                        <TableHead className="font-bold text-gray-900 py-3 pl-6 text-left">Sandwich</TableHead>
-                                                        <TableHead className="font-bold text-gray-900 py-3 text-center w-36">Junior Box</TableHead>
-                                                        <TableHead className="font-bold text-gray-900 py-3 text-center w-36">Standard Box</TableHead>
-                                                        <TableHead className="font-bold text-gray-900 py-3 text-center w-36">Sandwich Only</TableHead>
+                                                        <TableHead className="font-bold text-gray-900 py-3 pl-6 text-left">{t('Sandwich / Salad')}</TableHead>
+                                                        <TableHead className="font-bold text-gray-900 py-3 text-center w-36">{t('Junior Box')}</TableHead>
+                                                        <TableHead className="font-bold text-gray-900 py-3 text-center w-36">{t('Standard Box')}</TableHead>
+                                                        <TableHead className="font-bold text-gray-900 py-3 text-center w-36">{t('Sandwich Only')}</TableHead>
                                                     </TableRow>
                                                 </TableHeader>
                                                 <TableBody>
                                                     {aggregatedMeals.map((item, i) => (
                                                         <TableRow key={i} className="hover:bg-gray-50/50 border-b border-gray-100 last:border-0 transition-colors">
-                                                            <TableCell className="font-semibold text-sm text-gray-900 py-2.5 pl-6">{item.name}</TableCell>
+                                                            <TableCell className="font-semibold text-sm text-gray-900 py-2.5 pl-6">{tFood(item.name, tMeal(item.name))}</TableCell>
                                                             <TableCell className="py-2.5 text-center text-gray-600 font-semibold">{item.junior}</TableCell>
                                                             <TableCell className="py-2.5 text-center text-gray-600 font-semibold">{item.standard}</TableCell>
                                                             <TableCell className="py-2.5 text-center text-gray-600 font-semibold">{item.sandwich || 0}</TableCell>
                                                         </TableRow>
                                                     ))}
                                                     <TableRow className="bg-violet-50/50 border-t-2 border-violet-200">
-                                                        <TableCell className="font-black text-gray-900 pl-6 py-3">TOTAL</TableCell>
+                                                        <TableCell className="font-black text-gray-900 pl-6 py-3">{t('TOTAL')}</TableCell>
                                                         <TableCell className="py-3 text-center font-black text-violet-600 text-base">{mealsJuniorTotal}</TableCell>
                                                         <TableCell className="py-3 text-center font-black text-violet-600 text-base">{mealsStandardTotal}</TableCell>
                                                         <TableCell className="py-3 text-center font-black text-violet-600 text-base">{mealsSandwichTotal}</TableCell>
@@ -1188,29 +1386,29 @@ export function QuantitiesClient({ initialOrders, companies }: QuantitiesClientP
                                 {aggregatedCookies.length > 0 && (
                                     <Card className="rounded-2xl border-gray-100 shadow-sm overflow-hidden">
                                         <div className="px-6 py-4 border-b border-gray-100 bg-white">
-                                            <h2 className="text-lg font-bold text-gray-900">House-made Cookies</h2>
+                                            <h2 className="text-lg font-bold text-gray-900">{t('House-made Cookies')}</h2>
                                         </div>
                                         <div className="p-0">
                                             <Table>
                                                 <TableHeader className="bg-violet-100/50">
                                                     <TableRow className="hover:bg-transparent border-violet-100">
-                                                        <TableHead className="font-bold text-gray-900 py-3 pl-6 text-left">House-made Cookie</TableHead>
-                                                        <TableHead className="font-bold text-gray-900 py-3 text-center w-36">Junior Box</TableHead>
-                                                        <TableHead className="font-bold text-gray-900 py-3 text-center w-36">Standard Box</TableHead>
-                                                        <TableHead className="font-bold text-gray-900 py-3 text-center w-36">Total</TableHead>
+                                                        <TableHead className="font-bold text-gray-900 py-3 pl-6 text-left">{t('House-made Cookie')}</TableHead>
+                                                        <TableHead className="font-bold text-gray-900 py-3 text-center w-36">{t('Junior Box')}</TableHead>
+                                                        <TableHead className="font-bold text-gray-900 py-3 text-center w-36">{t('Standard Box')}</TableHead>
+                                                        <TableHead className="font-bold text-gray-900 py-3 text-center w-36">{t('Total')}</TableHead>
                                                     </TableRow>
                                                 </TableHeader>
                                                 <TableBody>
                                                     {aggregatedCookies.map((item, i) => (
                                                         <TableRow key={i} className="hover:bg-gray-50/50 border-b border-gray-100 last:border-0 transition-colors">
-                                                            <TableCell className="font-semibold text-sm text-amber-700 py-2.5 pl-6">{item.name}</TableCell>
+                                                            <TableCell className="font-semibold text-sm text-amber-700 py-2.5 pl-6">{tFood(item.name, tMeal(item.name))}</TableCell>
                                                             <TableCell className="py-2.5 text-center text-gray-600 font-semibold">{item.junior}</TableCell>
                                                             <TableCell className="py-2.5 text-center text-gray-600 font-semibold">{item.standard}</TableCell>
                                                             <TableCell className="py-2.5 text-center font-bold text-violet-700 w-36">{item.junior + item.standard}</TableCell>
                                                         </TableRow>
                                                     ))}
                                                     <TableRow className="bg-violet-50/50 border-t-2 border-violet-200">
-                                                        <TableCell className="font-black text-gray-900 pl-6 py-3">TOTAL</TableCell>
+                                                        <TableCell className="font-black text-gray-900 pl-6 py-3">{t('TOTAL')}</TableCell>
                                                         <TableCell className="py-3 text-center font-black text-violet-600 text-base">{cookiesJuniorTotal}</TableCell>
                                                         <TableCell className="py-3 text-center font-black text-violet-600 text-base">{cookiesStandardTotal}</TableCell>
                                                         <TableCell className="py-3 text-center font-black text-violet-600 text-base w-36">{cookiesJuniorTotal + cookiesStandardTotal}</TableCell>
@@ -1231,11 +1429,11 @@ export function QuantitiesClient({ initialOrders, companies }: QuantitiesClientP
                 <div className="p-8">
                     <div className="flex justify-between items-end mb-4 border-b-2 border-black pb-2">
                         <div>
-                            <h1 className="text-2xl font-black uppercase tracking-tighter">Kitchen Prep Report</h1>
-                            <p className="text-sm font-bold text-gray-600">Mountain Mama's Café · Prep & Customization Sheet</p>
+                            <h1 className="text-2xl font-black uppercase tracking-tighter">{t('Kitchen Prep Report')}</h1>
+                            <p className="text-sm font-bold text-gray-600">{t("Mountain Mama's Café · Prep & Customization Sheet")}</p>
                         </div>
                         <div className="text-right">
-                            <p className="text-[10px] font-black uppercase tracking-widest text-gray-400">Printed On</p>
+                            <p className="text-[10px] font-black uppercase tracking-widest text-gray-400">{t('Printed On')}</p>
                             <p className="text-sm font-bold" suppressHydrationWarning>
                                 {formatDateTimeUS(new Date())}
                             </p>
@@ -1245,24 +1443,24 @@ export function QuantitiesClient({ initialOrders, companies }: QuantitiesClientP
                     {/* Filter Summary for Context */}
                     <div className="mb-4 p-3 bg-gray-50 border border-gray-200 rounded-md flex flex-wrap gap-x-6 gap-y-1">
                         <div>
-                            <span className="text-[9px] font-bold uppercase text-gray-500 block tracking-wider">Date Mode</span>
-                            <span className="font-semibold uppercase text-xs">{dateFilterMode} Date</span>
+                            <span className="text-[9px] font-bold uppercase text-gray-500 block tracking-wider">{t('Date Mode')}</span>
+                            <span className="font-semibold uppercase text-xs">{dateFilterMode} {t('Date')}</span>
                         </div>
                         <div>
-                            <span className="text-[9px] font-bold uppercase text-gray-500 block tracking-wider">Range</span>
+                            <span className="text-[9px] font-bold uppercase text-gray-500 block tracking-wider">{t('Range')}</span>
                             <span className="font-semibold text-xs">
                                 {dateRange === 'custom' 
-                                    ? `${startDate || 'Start'} to ${endDate || 'End'}` 
-                                    : (DATE_RANGE_LABELS[dateRange] || dateRange)}
+                                    ? `${startDate || t('Start')} ${t('to')} ${endDate || t('End')}` 
+                                    : t(DATE_RANGE_LABELS[dateRange] || dateRange)}
                             </span>
                         </div>
                         <div>
-                            <span className="text-[9px] font-bold uppercase text-gray-500 block tracking-wider">Company</span>
-                            <span className="font-semibold text-xs">{companies.find(c => c.id === companyFilter)?.name || 'All Companies'}</span>
+                            <span className="text-[9px] font-bold uppercase text-gray-500 block tracking-wider">{t('Company')}</span>
+                            <span className="font-semibold text-xs">{companies.find(c => c.id === companyFilter)?.name || t('All Companies')}</span>
                         </div>
                         <div>
-                            <span className="text-[9px] font-bold uppercase text-gray-500 block tracking-wider">Status</span>
-                            <span className="font-semibold text-xs">{STATUS_LABELS[statusFilter] || 'All Statuses'}</span>
+                            <span className="text-[9px] font-bold uppercase text-gray-500 block tracking-wider">{t('Status')}</span>
+                            <span className="font-semibold text-xs">{t(STATUS_LABELS[statusFilter] || 'All Statuses')}</span>
                         </div>
                     </div>
 
@@ -1270,22 +1468,22 @@ export function QuantitiesClient({ initialOrders, companies }: QuantitiesClientP
                     {(activePrintMode === null || activePrintMode === 'summary') && (
                         <div className="mb-8 print-section">
                             <h2 className="text-md font-black uppercase tracking-wider mb-3 pb-1 border-b border-gray-200 text-gray-800">
-                                1. Summary Totals
+                                1. {t('1. Summary Totals').replace('1. ', '')}
                             </h2>
                             {aggregatedMeals.length > 0 && (
                                 <table className="w-full border-collapse text-sm mb-6">
                                     <thead>
                                         <tr className="bg-gray-100 text-black">
-                                            <th className="p-1.5 px-3 text-left font-bold border-b-2 border-gray-300">Sandwich / Salad</th>
-                                            <th className="p-1.5 px-3 text-center font-bold border-b-2 border-gray-300 w-28">Junior Box</th>
-                                            <th className="p-1.5 px-3 text-center font-bold border-b-2 border-gray-300 w-28">Standard Box</th>
-                                            <th className="p-1.5 px-3 text-center font-bold border-b-2 border-gray-300 w-28">Sandwich Only</th>
+                                            <th className="p-1.5 px-3 text-left font-bold border-b-2 border-gray-300">{t('Sandwich / Salad')}</th>
+                                            <th className="p-1.5 px-3 text-center font-bold border-b-2 border-gray-300 w-28">{t('Junior Box')}</th>
+                                            <th className="p-1.5 px-3 text-center font-bold border-b-2 border-gray-300 w-28">{t('Standard Box')}</th>
+                                            <th className="p-1.5 px-3 text-center font-bold border-b-2 border-gray-300 w-28">{t('Sandwich Only')}</th>
                                         </tr>
                                     </thead>
                                     <tbody>
                                         {aggregatedMeals.map((item, i) => (
                                             <tr key={i} className="border-b border-gray-200">
-                                                <td className="p-1.5 px-3 text-left font-semibold text-gray-800">{item.name}</td>
+                                                <td className="p-1.5 px-3 text-left font-semibold text-gray-800">{tFood(item.name, tMeal(item.name))}</td>
                                                 <td className="p-1.5 px-3 text-center font-semibold">{item.junior}</td>
                                                 <td className="p-1.5 px-3 text-center font-semibold">{item.standard}</td>
                                                 <td className="p-1.5 px-3 text-center font-semibold">{item.sandwich || 0}</td>
@@ -1294,7 +1492,7 @@ export function QuantitiesClient({ initialOrders, companies }: QuantitiesClientP
                                     </tbody>
                                     <tfoot>
                                         <tr className="bg-gray-50 border-t-2 border-gray-300 font-bold">
-                                            <td className="p-2 px-3 text-left uppercase text-xs">Total Sandwiches</td>
+                                            <td className="p-2 px-3 text-left uppercase text-xs">{t('Total Sandwiches')}</td>
                                             <td className="p-2 px-3 text-center text-sm">{mealsJuniorTotal}</td>
                                             <td className="p-2 px-3 text-center text-sm">{mealsStandardTotal}</td>
                                             <td className="p-2 px-3 text-center text-sm">{mealsSandwichTotal}</td>
@@ -1307,16 +1505,16 @@ export function QuantitiesClient({ initialOrders, companies }: QuantitiesClientP
                                 <table className="w-full border-collapse text-sm">
                                     <thead>
                                         <tr className="bg-gray-100 text-black">
-                                            <th className="p-1.5 px-3 text-left font-bold border-b-2 border-gray-300">House-made Cookie</th>
-                                            <th className="p-1.5 px-3 text-center font-bold border-b-2 border-gray-300 w-28">Junior Box</th>
-                                            <th className="p-1.5 px-3 text-center font-bold border-b-2 border-gray-300 w-28">Standard Box</th>
-                                            <th className="p-1.5 px-3 text-center font-bold border-b-2 border-gray-300 w-28">Total</th>
+                                            <th className="p-1.5 px-3 text-left font-bold border-b-2 border-gray-300">{t('House-made Cookie')}</th>
+                                            <th className="p-1.5 px-3 text-center font-bold border-b-2 border-gray-300 w-28">{t('Junior Box')}</th>
+                                            <th className="p-1.5 px-3 text-center font-bold border-b-2 border-gray-300 w-28">{t('Standard Box')}</th>
+                                            <th className="p-1.5 px-3 text-center font-bold border-b-2 border-gray-300 w-28">{t('Total')}</th>
                                         </tr>
                                     </thead>
                                     <tbody>
                                         {aggregatedCookies.map((item, i) => (
                                             <tr key={i} className="border-b border-gray-200">
-                                                <td className="p-1.5 px-3 text-left font-semibold text-amber-900">{item.name}</td>
+                                                <td className="p-1.5 px-3 text-left font-semibold text-amber-900">{tFood(item.name, tMeal(item.name))}</td>
                                                 <td className="p-1.5 px-3 text-center font-semibold">{item.junior}</td>
                                                 <td className="p-1.5 px-3 text-center font-semibold">{item.standard}</td>
                                                 <td className="p-1.5 px-3 text-center font-bold text-black w-28">{item.junior + item.standard}</td>
@@ -1325,7 +1523,7 @@ export function QuantitiesClient({ initialOrders, companies }: QuantitiesClientP
                                     </tbody>
                                     <tfoot>
                                         <tr className="bg-gray-50 border-t-2 border-gray-300 font-bold">
-                                            <td className="p-2 px-3 text-left uppercase text-xs">Total Cookies</td>
+                                            <td className="p-2 px-3 text-left uppercase text-xs">{t('Total Cookies')}</td>
                                             <td className="p-2 px-3 text-center text-sm">{cookiesJuniorTotal}</td>
                                             <td className="p-2 px-3 text-center text-sm">{cookiesStandardTotal}</td>
                                             <td className="p-2 px-3 text-center text-sm w-28">{cookiesJuniorTotal + cookiesStandardTotal}</td>
@@ -1344,7 +1542,7 @@ export function QuantitiesClient({ initialOrders, companies }: QuantitiesClientP
                     {(activePrintMode === null || activePrintMode === 'smart') && (
                         <div className="print-section">
                             <h2 className="text-md font-black uppercase tracking-wider mb-4 pb-1 border-b border-gray-200 text-gray-800">
-                                2. Smart Prep Sheet ({smartPerspective === 'sandwich' ? 'Customizations by Sandwich' : 'Customizations by Tour Company'})
+                                2. {smartPerspective === 'sandwich' ? t('Customizations by Sandwich') : t('Customizations by Tour Company')}
                             </h2>
                             
                             {smartPerspective === 'sandwich' ? (
@@ -1357,17 +1555,17 @@ export function QuantitiesClient({ initialOrders, companies }: QuantitiesClientP
                                         >
                                             <div className="flex justify-between items-start border-b border-gray-200 pb-2 mb-3">
                                                 <div>
-                                                    <h3 className="text-sm font-black text-black uppercase tracking-tight">{item.mealName}</h3>
+                                                    <h3 className="text-sm font-black text-black uppercase tracking-tight">{tFood(item.mealName, tMeal(item.mealName))}</h3>
                                                     <p className="text-[9px] font-bold text-gray-500 uppercase mt-0.5">
-                                                        {item.boxTypes.standard > 0 && `${item.boxTypes.standard} Std`}
+                                                        {item.boxTypes.standard > 0 && `${item.boxTypes.standard} ${t('Std')}`}
                                                         {item.boxTypes.standard > 0 && (item.boxTypes.junior > 0 || item.boxTypes.sandwichOnly > 0) && ' · '}
-                                                        {item.boxTypes.junior > 0 && `${item.boxTypes.junior} Jr`}
+                                                        {item.boxTypes.junior > 0 && `${item.boxTypes.junior} ${t('Jr')}`}
                                                         {(item.boxTypes.standard > 0 || item.boxTypes.junior > 0) && item.boxTypes.sandwichOnly > 0 && ' · '}
-                                                        {item.boxTypes.sandwichOnly > 0 && `${item.boxTypes.sandwichOnly} Only`}
+                                                        {item.boxTypes.sandwichOnly > 0 && `${item.boxTypes.sandwichOnly} ${t('Only')}`}
                                                     </p>
                                                 </div>
                                                 <div className="bg-black text-white px-2 py-0.5 text-xs font-black rounded">
-                                                    QTY: {item.totalQty}
+                                                    {t('QTY')}: {item.totalQty}
                                                 </div>
                                             </div>
 
@@ -1377,8 +1575,14 @@ export function QuantitiesClient({ initialOrders, companies }: QuantitiesClientP
                                                     <div key={coIdx} className="space-y-1">
                                                         <div className="flex justify-between text-xs font-black text-black bg-gray-50 px-2 py-1 border border-gray-200 rounded">
                                                             <span>{co.companyName}</span>
-                                                            <span>({co.totalQty} lunch{co.totalQty > 1 ? 'es' : ''})</span>
+                                                            <span>({co.totalQty} {co.totalQty > 1 ? t('lunches') : t('lunch')})</span>
                                                         </div>
+                                                        {co.prepInstructions && (
+                                                            <div className="my-1.5 p-1.5 rounded bg-amber-50/50 border border-amber-100/60 text-[10px] text-amber-800 flex flex-col gap-0.5 leading-normal">
+                                                                <span className="font-bold shrink-0">📌 {t('Prep Notes')}:</span>
+                                                                <span className="whitespace-pre-wrap font-medium pl-1">{tCustom(co.prepInstructions)}</span>
+                                                            </div>
+                                                        )}
                                                         <ul className="text-xs pl-2 space-y-1">
                                                             {co.lunches.map((lunch, lIdx) => {
                                                                 const hasCustomBread = lunch.breadType && !['sandwich', 'none', 'no bread', 'standard'].includes(lunch.breadType.toLowerCase());
@@ -1388,20 +1592,20 @@ export function QuantitiesClient({ initialOrders, companies }: QuantitiesClientP
                                                                     <li key={lIdx} className="border-b border-gray-100 py-1 last:border-0">
                                                                         <div className="flex items-center gap-1.5 flex-wrap">
                                                                             <span className="font-bold">{lunch.quantity}x</span>
-                                                                            <span className="text-[10px] text-gray-400">({lunch.boxType || 'No Box'})</span>
+                                                                            <span className="text-[10px] text-gray-400">({lunch.boxType ? t(lunch.boxType) : t('No Box')})</span>
                                                                             
                                                                             {hasCustomBread && (
                                                                                 <span className="text-[10px] font-bold text-amber-800 bg-amber-50 border border-amber-100 rounded px-1">
-                                                                                    🍞 {lunch.breadType === 'gluten-free' || lunch.breadType === 'gf' ? 'Gluten-Free' : lunch.breadType}
+                                                                                    🍞 {lunch.breadType === 'gluten-free' || lunch.breadType === 'gf' ? t('Gluten-Free') : tFood(lunch.breadType, t(lunch.breadType!))}
                                                                                 </span>
                                                                             )}
                                                                             {hasCustomization && (
                                                                                 <span className="text-[10px] font-bold text-rose-800 bg-rose-50 border border-rose-100 rounded px-1 italic">
-                                                                                    ⚠️ {lunch.customizations}
+                                                                                    ⚠️ {tCustom(lunch.customizations)}
                                                                                 </span>
                                                                             )}
                                                                             {!hasCustomBread && !hasCustomization && (
-                                                                                <span className="text-[10px] text-gray-400 italic">Standard</span>
+                                                                                <span className="text-[10px] text-gray-400 italic">{t('Standard')}</span>
                                                                             )}
                                                                         </div>
                                                                     </li>
@@ -1425,11 +1629,11 @@ export function QuantitiesClient({ initialOrders, companies }: QuantitiesClientP
                                                 });
                                                 return (
                                                     <div className="mt-3 pt-2 border-t border-gray-200 flex flex-col gap-1.5 text-[10px] text-gray-700 font-bold">
-                                                        <span className="uppercase tracking-wider text-gray-400 text-left">Bread Prep Totals</span>
+                                                        <span className="uppercase tracking-wider text-gray-400 text-left">{t('Bread Prep Totals')}</span>
                                                         <div className="flex flex-wrap gap-3 justify-start">
                                                             {Object.entries(breadCounts).map(([bread, count], bIdx) => (
                                                                 <span key={bIdx} className="font-black text-black">
-                                                                    {bread}: {count}
+                                                                    {tFood(bread, t(bread))}: {count}
                                                                 </span>
                                                             ))}
                                                         </div>
@@ -1452,17 +1656,24 @@ export function QuantitiesClient({ initialOrders, companies }: QuantitiesClientP
                                                     <h3 className="text-sm font-black text-black uppercase tracking-tight">{company.companyName}</h3>
                                                 </div>
                                                 <div className="bg-black text-white px-2 py-0.5 text-xs font-black rounded">
-                                                    TOTAL: {company.totalQty}
+                                                    {t('TOTAL')}: {company.totalQty}
                                                 </div>
                                             </div>
+
+                                            {company.prepInstructions && (
+                                                <div className="mb-3 p-2 rounded bg-amber-50 border border-amber-100 text-[10px] text-amber-800 flex flex-col gap-0.5 leading-normal">
+                                                    <span className="font-bold shrink-0">📌 {t('Prep Notes')}:</span>
+                                                    <span className="whitespace-pre-wrap pl-1">{tCustom(company.prepInstructions)}</span>
+                                                </div>
+                                            )}
 
                                             {/* List Meals & their Lunches (expanded completely for print) */}
                                             <div className="space-y-4">
                                                 {company.meals.map((meal, mIdx) => (
                                                     <div key={mIdx} className="space-y-1">
                                                         <div className="flex justify-between text-xs font-black text-black bg-gray-50 px-2 py-1 border border-gray-200 rounded">
-                                                            <span>{meal.mealName}</span>
-                                                            <span>({meal.totalQty} lunch{meal.totalQty > 1 ? 'es' : ''})</span>
+                                                            <span>{tMeal(meal.mealName)}</span>
+                                                            <span>({meal.totalQty} {meal.totalQty > 1 ? t('lunches') : t('lunch')})</span>
                                                         </div>
                                                         <ul className="text-xs pl-2 space-y-1">
                                                             {meal.lunches.map((lunch, lIdx) => {
@@ -1473,20 +1684,20 @@ export function QuantitiesClient({ initialOrders, companies }: QuantitiesClientP
                                                                     <li key={lIdx} className="border-b border-gray-100 py-1 last:border-0">
                                                                         <div className="flex items-center gap-1.5 flex-wrap">
                                                                             <span className="font-bold">{lunch.quantity}x</span>
-                                                                            <span className="text-[10px] text-gray-400">({lunch.boxType || 'No Box'})</span>
+                                                                            <span className="text-[10px] text-gray-400">({lunch.boxType ? t(lunch.boxType) : t('No Box')})</span>
                                                                             
                                                                             {hasCustomBread && (
                                                                                 <span className="text-[10px] font-bold text-amber-800 bg-amber-50 border border-amber-100 rounded px-1">
-                                                                                    🍞 {lunch.breadType === 'gluten-free' || lunch.breadType === 'gf' ? 'Gluten-Free' : lunch.breadType}
+                                                                                    🍞 {lunch.breadType === 'gluten-free' || lunch.breadType === 'gf' ? t('Gluten-Free') : tFood(lunch.breadType, t(lunch.breadType!))}
                                                                                 </span>
                                                                             )}
                                                                             {hasCustomization && (
                                                                                 <span className="text-[10px] font-bold text-rose-800 bg-rose-50 border border-rose-100 rounded px-1 italic">
-                                                                                    ⚠️ {lunch.customizations}
+                                                                                    ⚠️ {tCustom(lunch.customizations)}
                                                                                 </span>
                                                                             )}
                                                                             {!hasCustomBread && !hasCustomization && (
-                                                                                <span className="text-[10px] text-gray-400 italic">Standard</span>
+                                                                                <span className="text-[10px] text-gray-400 italic">{t('Standard')}</span>
                                                                             )}
                                                                         </div>
                                                                     </li>
@@ -1510,11 +1721,11 @@ export function QuantitiesClient({ initialOrders, companies }: QuantitiesClientP
                                                 });
                                                 return (
                                                     <div className="mt-3 pt-2 border-t border-gray-200 flex flex-col gap-1.5 text-[10px] text-gray-700 font-bold">
-                                                        <span className="uppercase tracking-wider text-gray-400 text-left">Bread Prep Totals</span>
+                                                        <span className="uppercase tracking-wider text-gray-400 text-left">{t('Bread Prep Totals')}</span>
                                                         <div className="flex flex-wrap gap-3 justify-start">
                                                             {Object.entries(breadCounts).map(([bread, count], bIdx) => (
                                                                 <span key={bIdx} className="font-black text-black">
-                                                                    {bread}: {count}
+                                                                    {tFood(bread, t(bread))}: {count}
                                                                 </span>
                                                             ))}
                                                         </div>
@@ -1525,25 +1736,24 @@ export function QuantitiesClient({ initialOrders, companies }: QuantitiesClientP
                                     ))}
                                 </div>
                             )}
-                            {/* print cookies table at bottom of smart prep print view */}
                             {aggregatedCookies.length > 0 && (
                                 <div className="mt-8 print-section" style={{ pageBreakInside: 'avoid', breakInside: 'avoid' }}>
                                     <h2 className="text-sm font-black uppercase tracking-wider mb-3 pb-1 border-b border-gray-200 text-gray-800">
-                                        House-made Cookies
+                                        {t('House-made Cookies')}
                                     </h2>
                                     <table className="w-full border-collapse text-sm">
                                         <thead>
                                             <tr className="bg-gray-100 text-black">
-                                                <th className="p-1.5 px-3 text-left font-bold border-b-2 border-gray-300">House-made Cookie</th>
-                                                <th className="p-1.5 px-3 text-center font-bold border-b-2 border-gray-300 w-28">Junior Box</th>
-                                                <th className="p-1.5 px-3 text-center font-bold border-b-2 border-gray-300 w-28">Standard Box</th>
-                                                <th className="p-1.5 px-3 text-center font-bold border-b-2 border-gray-300 w-28">Total</th>
+                                                <th className="p-1.5 px-3 text-left font-bold border-b-2 border-gray-300">{t('House-made Cookie')}</th>
+                                                <th className="p-1.5 px-3 text-center font-bold border-b-2 border-gray-300 w-28">{t('Junior Box')}</th>
+                                                <th className="p-1.5 px-3 text-center font-bold border-b-2 border-gray-300 w-28">{t('Standard Box')}</th>
+                                                <th className="p-1.5 px-3 text-center font-bold border-b-2 border-gray-300 w-28">{t('Total')}</th>
                                             </tr>
                                         </thead>
                                         <tbody>
                                             {aggregatedCookies.map((item, i) => (
                                                 <tr key={i} className="border-b border-gray-200">
-                                                    <td className="p-1.5 px-3 text-left font-semibold text-amber-900">{item.name}</td>
+                                                    <td className="p-1.5 px-3 text-left font-semibold text-amber-900">{tFood(item.name, tMeal(item.name))}</td>
                                                     <td className="p-1.5 px-3 text-center font-semibold">{item.junior}</td>
                                                     <td className="p-1.5 px-3 text-center font-semibold">{item.standard}</td>
                                                     <td className="p-1.5 px-3 text-center font-bold text-black w-28">{item.junior + item.standard}</td>
@@ -1552,7 +1762,7 @@ export function QuantitiesClient({ initialOrders, companies }: QuantitiesClientP
                                         </tbody>
                                         <tfoot>
                                             <tr className="bg-gray-50 border-t-2 border-gray-300 font-bold">
-                                                <td className="p-2 px-3 text-left uppercase text-xs">Total Cookies</td>
+                                                <td className="p-2 px-3 text-left uppercase text-xs">{t('Total Cookies')}</td>
                                                 <td className="p-2 px-3 text-center text-sm">{cookiesJuniorTotal}</td>
                                                 <td className="p-2 px-3 text-center text-sm">{cookiesStandardTotal}</td>
                                                 <td className="p-2 px-3 text-center text-sm w-28">{cookiesJuniorTotal + cookiesStandardTotal}</td>
@@ -1565,7 +1775,7 @@ export function QuantitiesClient({ initialOrders, companies }: QuantitiesClientP
                     )}
 
                     <div className="mt-12 pt-4 border-t border-gray-300 text-[10px] font-bold text-gray-400 uppercase tracking-widest text-center">
-                        Mountain Mama's Café Admin Dashboard · Smart Prep Sheet
+                        {t("Mountain Mama's Café Admin Dashboard · Smart Prep Sheet")}
                     </div>
                 </div>
             </div>
@@ -1597,11 +1807,6 @@ export function QuantitiesClient({ initialOrders, companies }: QuantitiesClientP
                         top: 0; left: 0; width: 100%;
                     }
 
-                    @page {
-                        margin: 1.5cm;
-                        size: portrait;
-                    }
-
                     /* Ensure background colors and borders print correctly */
                     * {
                         -webkit-print-color-adjust: exact !important;
@@ -1619,6 +1824,20 @@ export function QuantitiesClient({ initialOrders, companies }: QuantitiesClientP
                     }
                 }
             `}</style>
+
+            <style dangerouslySetInnerHTML={{ __html: `
+                @page {
+                    size: portrait;
+                    margin: 1.5cm;
+                    @bottom-right {
+                        content: counter(page) " / " counter(pages);
+                        font-size: 16pt !important;
+                        font-weight: 900 !important;
+                        color: #7C3AED !important;
+                        font-family: sans-serif !important;
+                    }
+                }
+            ` }} />
         </>
     );
 }

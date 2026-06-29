@@ -66,9 +66,10 @@ export async function createMeal(formData: FormData) {
             const ext = imageFile.name.split('.').pop() || 'webp';
             const fileName = `main-${crypto.randomUUID()}.${ext}`;
             console.log(`[createMeal] Uploading MAIN: ${fileName} (${imageFile.size} bytes)`);
+            const buffer = Buffer.from(await imageFile.arrayBuffer());
             const { data, error: uploadError } = await supabase.storage
                 .from('meal-images')
-                .upload(fileName, imageFile);
+                .upload(fileName, buffer, { contentType: imageFile.type });
             if (uploadError) throw uploadError;
             const { data: { publicUrl } } = supabase.storage.from('meal-images').getPublicUrl(data.path);
             image_url = publicUrl;
@@ -78,9 +79,10 @@ export async function createMeal(formData: FormData) {
             const ext = standardImageFile.name.split('.').pop() || 'webp';
             const fileName = `std-${crypto.randomUUID()}.${ext}`;
             console.log(`[createMeal] Uploading STANDARD: ${fileName} (${standardImageFile.size} bytes)`);
+            const buffer = Buffer.from(await standardImageFile.arrayBuffer());
             const { data, error: uploadError } = await supabase.storage
                 .from('meal-images')
-                .upload(fileName, standardImageFile);
+                .upload(fileName, buffer, { contentType: standardImageFile.type });
             if (uploadError) throw uploadError;
             const { data: { publicUrl } } = supabase.storage.from('meal-images').getPublicUrl(data.path);
             box_lunch_image_url = publicUrl;
@@ -90,9 +92,10 @@ export async function createMeal(formData: FormData) {
             const ext = juniorImageFile.name.split('.').pop() || 'webp';
             const fileName = `jr-${crypto.randomUUID()}.${ext}`;
             console.log(`[createMeal] Uploading JUNIOR: ${fileName} (${juniorImageFile.size} bytes)`);
+            const buffer = Buffer.from(await juniorImageFile.arrayBuffer());
             const { data, error: uploadError } = await supabase.storage
                 .from('meal-images')
-                .upload(fileName, juniorImageFile);
+                .upload(fileName, buffer, { contentType: juniorImageFile.type });
             if (uploadError) throw uploadError;
             const { data: { publicUrl } } = supabase.storage.from('meal-images').getPublicUrl(data.path);
             junior_box_lunch_image_url = publicUrl;
@@ -135,8 +138,9 @@ export async function createMeal(formData: FormData) {
         });
 
         return { success: true, data };
-    } catch (err) {
-        return { success: false, error: 'Failed to create meal' };
+    } catch (err: any) {
+        console.error('[createMeal] Error:', err);
+        return { success: false, error: err?.message || 'Failed to create meal' };
     }
 }
 
@@ -181,9 +185,10 @@ export async function updateMeal(id: string, formData: FormData) {
             const ext = imageFile.name.split('.').pop() || 'webp';
             const fileName = `main-${crypto.randomUUID()}.${ext}`;
             console.log(`[updateMeal] Uploading MAIN image: ${fileName} (${imageFile.size} bytes)`);
+            const buffer = Buffer.from(await imageFile.arrayBuffer());
             const { data, error: uploadError } = await supabase.storage
                 .from('meal-images')
-                .upload(fileName, imageFile);
+                .upload(fileName, buffer, { contentType: imageFile.type });
             if (uploadError) throw uploadError;
             const { data: { publicUrl } } = supabase.storage.from('meal-images').getPublicUrl(data.path);
             image_url = publicUrl;
@@ -193,9 +198,10 @@ export async function updateMeal(id: string, formData: FormData) {
             const ext = standardImageFile.name.split('.').pop() || 'webp';
             const fileName = `std-${crypto.randomUUID()}.${ext}`;
             console.log(`[updateMeal] Uploading STANDARD image: ${fileName} (${standardImageFile.size} bytes)`);
+            const buffer = Buffer.from(await standardImageFile.arrayBuffer());
             const { data, error: uploadError } = await supabase.storage
                 .from('meal-images')
-                .upload(fileName, standardImageFile);
+                .upload(fileName, buffer, { contentType: standardImageFile.type });
             if (uploadError) throw uploadError;
             const { data: { publicUrl } } = supabase.storage.from('meal-images').getPublicUrl(data.path);
             box_lunch_image_url = publicUrl;
@@ -205,9 +211,10 @@ export async function updateMeal(id: string, formData: FormData) {
             const ext = juniorImageFile.name.split('.').pop() || 'webp';
             const fileName = `jr-${crypto.randomUUID()}.${ext}`;
             console.log(`[updateMeal] Uploading JUNIOR image: ${fileName} (${juniorImageFile.size} bytes)`);
+            const buffer = Buffer.from(await juniorImageFile.arrayBuffer());
             const { data, error: uploadError } = await supabase.storage
                 .from('meal-images')
-                .upload(fileName, juniorImageFile);
+                .upload(fileName, buffer, { contentType: juniorImageFile.type });
             if (uploadError) throw uploadError;
             const { data: { publicUrl } } = supabase.storage.from('meal-images').getPublicUrl(data.path);
             junior_box_lunch_image_url = publicUrl;
@@ -255,9 +262,9 @@ export async function updateMeal(id: string, formData: FormData) {
         });
 
         return { success: true, data };
-    } catch (err) {
+    } catch (err: any) {
         console.error('[updateMeal] Error:', err);
-        return { success: false, error: 'Failed to update meal' };
+        return { success: false, error: err?.message || 'Failed to update meal' };
     }
 }
 

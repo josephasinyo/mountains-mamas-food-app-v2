@@ -10,8 +10,8 @@ import { cookies } from 'next/headers';
 import { isMoreThan24HoursAway } from './date-utils';
 
 export async function createOrderChangeRequest(
-    orderId: string, 
-    type: 'update' | 'delete' | 'cancel', 
+    orderId: string,
+    type: 'update' | 'delete' | 'cancel',
     details?: {
         customer_name: string;
         guide_name: string | null;
@@ -57,11 +57,22 @@ export async function createOrderChangeRequest(
         if (order.company_id !== companyId) return { success: false, error: 'Unauthorized.' };
         if (order.status === 'fulfilled') return { success: false, error: 'Fulfilled orders cannot be modified or deleted.' };
 
+        // Validate that the proposed tour date is not in the past (Mountain Time - America/Denver)
+        if (type === 'update' && details?.tour_date) {
+            const options = { timeZone: 'America/Denver', year: 'numeric', month: '2-digit', day: '2-digit' } as const;
+            const formatter = new Intl.DateTimeFormat('en-CA', options); // en-CA format is YYYY-MM-DD
+            const mountainTodayStr = formatter.format(new Date());
+
+            if (details.tour_date < mountainTodayStr) {
+                return { success: false, error: 'Cannot update tour date to a date in the past.' };
+            }
+        }
+
         // 3. Enforce 24-hour cutoff check
         if (!isMoreThan24HoursAway(order.tour_date, order.pickup_time)) {
-            return { 
-                success: false, 
-                error: 'Order changes or cancellations are only possible at least 24 hours prior to scheduled tour pickup.' 
+            return {
+                success: false,
+                error: 'Order changes or cancellations are only possible at least 24 hours prior to scheduled tour pickup.'
             };
         }
 
@@ -83,7 +94,7 @@ export async function createOrderChangeRequest(
         // 5. Send Notification Email to Admin
         const adminEmail = process.env.ADMIN_EMAIL || 'mountainmamascafe@gmail.com';
         const companyName = order.tour_companies?.name || 'Partner Company';
-        
+
         let detailsHtml = '';
         if (type === 'delete') {
             detailsHtml = `<p><strong>Request Type:</strong> Deletion Request</p>
@@ -131,10 +142,10 @@ export async function createOrderChangeRequest(
             htmlContent
         });
 
-        await logActivity({ 
-            userRole: 'company', 
-            action: `change_request_created`, 
-            entityType: 'order', 
+        await logActivity({
+            userRole: 'company',
+            action: `change_request_created`,
+            entityType: 'order',
             entityId: orderId,
             details: { type, request_id: request.id }
         });
@@ -151,10 +162,11 @@ export async function fetchPendingChangeRequests() {
         const supabase = createAdminClient();
         const userClient = await createClient();
 
-        // Admin verification
+        // Admin/Staff verification
         const { data: { user } } = await userClient.auth.getUser();
-        const isAdmin = user?.user_metadata?.role?.toLowerCase() === 'admin' || user?.email?.toLowerCase() === 'mountainmamascafe@gmail.com';
-        if (!isAdmin) return { success: false, error: 'Unauthorized.', requests: [] };
+        const role = user?.user_metadata?.role?.toLowerCase();
+        const isAuthorized = role === 'admin' || role === 'staff' || user?.email?.toLowerCase() === 'mountainmamascafe@gmail.com';
+        if (!isAuthorized) return { success: false, error: 'Unauthorized.', requests: [] };
 
         const { data, error } = await supabase
             .from('order_change_requests')
@@ -175,10 +187,11 @@ export async function handleOrderChangeRequest(requestId: string, action: 'appro
         const supabase = createAdminClient();
         const userClient = await createClient();
 
-        // Admin verification
+        // Admin/Staff verification
         const { data: { user } } = await userClient.auth.getUser();
-        const isAdmin = user?.user_metadata?.role?.toLowerCase() === 'admin' || user?.email?.toLowerCase() === 'mountainmamascafe@gmail.com';
-        if (!isAdmin) return { success: false, error: 'Unauthorized.' };
+        const role = user?.user_metadata?.role?.toLowerCase();
+        const isAuthorized = role === 'admin' || role === 'staff' || user?.email?.toLowerCase() === 'mountainmamascafe@gmail.com';
+        if (!isAuthorized) return { success: false, error: 'Unauthorized.' };
 
         // Fetch request details
         const { data: request, error: reqErr } = await supabase
@@ -271,10 +284,10 @@ export async function handleOrderChangeRequest(requestId: string, action: 'appro
                             // Update existing item
                             const { error: itemError } = await supabase
                                 .from('order_items')
-                                .update({ 
+                                .update({
                                     meal_id: item.meal_id || null,
                                     meal_name: item.meal_name,
-                                    quantity: item.quantity, 
+                                    quantity: item.quantity,
                                     customizations: item.customizations || null,
                                     guest_name: item.guest_name || null,
                                     box_type: item.box_type || null,
@@ -283,7 +296,7 @@ export async function handleOrderChangeRequest(requestId: string, action: 'appro
                                     unit_price: item.unit_price || 0
                                 })
                                 .eq('id', item.id);
-                            
+
                             if (itemError) throw itemError;
                         }
                     }
@@ -294,7 +307,7 @@ export async function handleOrderChangeRequest(requestId: string, action: 'appro
         // Update request status and status_notes
         const { error: updateErr } = await supabase
             .from('order_change_requests')
-            .update({ 
+            .update({
                 status: action,
                 status_notes: declineReason || null
             })
@@ -338,10 +351,10 @@ export async function handleOrderChangeRequest(requestId: string, action: 'appro
             });
         }
 
-        await logActivity({ 
-            userRole: 'admin', 
-            action: `change_request_${action}`, 
-            entityType: 'order', 
+        await logActivity({
+            userRole: role === 'staff' ? 'staff' : 'admin',
+            action: `change_request_${action}`,
+            entityType: 'order',
             entityId: orderId,
             details: { request_id: requestId }
         });

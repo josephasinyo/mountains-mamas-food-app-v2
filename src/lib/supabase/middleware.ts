@@ -39,7 +39,7 @@ export async function updateSession(request: NextRequest) {
         if (!user) {
             const url = request.nextUrl.clone();
             url.pathname = '/admin/login';
-            if (pathname !== '/admin/login') {
+            if (pathname !== '/admin/login' && pathname !== '/admin/reset-password') {
                 return NextResponse.redirect(url);
             }
         } else {

@@ -1,6 +1,7 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { toast } from 'sonner';
 import { ConfirmDialog } from '@/components/ConfirmDialog';
 import { createMeal, updateMeal, deleteMeal, toggleMealActive, updateMealSortOrder } from './actions';
@@ -29,7 +30,7 @@ import {
 import { 
     Plus, MoreHorizontal, Pencil, Trash2, Eye, EyeOff, 
     UtensilsCrossed, Upload, X, ImageIcon, LayoutGrid, List, Search,
-    ChevronLeft, ChevronRight, ArrowUp, ArrowDown
+    ChevronLeft, ChevronRight, ArrowUp, ArrowDown, Printer
 } from 'lucide-react';
 
 interface MealsClientProps {
@@ -47,6 +48,11 @@ export function MealsClient({ initialMeals }: MealsClientProps) {
     const [search, setSearch] = useState('');
     const [standardImagePreview, setStandardImagePreview] = useState<string | null>(null);
     const [juniorImagePreview, setJuniorImagePreview] = useState<string | null>(null);
+
+    const [mounted, setMounted] = useState(false);
+    useEffect(() => {
+        setMounted(true);
+    }, []);
 
     // Store actual File objects in state to avoid DOM file input issues
     const [mainImageFile, setMainImageFile] = useState<File | null>(null);
@@ -90,6 +96,22 @@ export function MealsClient({ initialMeals }: MealsClientProps) {
     function handleImageChange(e: React.ChangeEvent<HTMLInputElement>, type: 'main' | 'standard' | 'junior') {
         const file = e.target.files?.[0];
         if (file) {
+            // Check file size (10MB limit)
+            const MAX_SIZE = 10 * 1024 * 1024;
+            if (file.size > MAX_SIZE) {
+                toast.error('Image size must be less than 10MB');
+                e.target.value = ''; // Reset input field
+                return;
+            }
+
+            // Check MIME types
+            const allowedTypes = ['image/png', 'image/jpeg', 'image/jpg', 'image/webp'];
+            if (!allowedTypes.includes(file.type)) {
+                toast.error('Unsupported image format. Please upload PNG, JPEG, JPG, or WebP.');
+                e.target.value = ''; // Reset input field
+                return;
+            }
+
             // Store the actual File object in state
             if (type === 'main') setMainImageFile(file);
             else if (type === 'standard') setStandardImageFile(file);
@@ -332,7 +354,10 @@ export function MealsClient({ initialMeals }: MealsClientProps) {
                             <span className="text-xs font-bold">Cards</span>
                         </Button>
                     </div>
-                    <Button onClick={openCreate} className="gap-1.5 rounded-xl bg-violet-600 hover:bg-violet-700 shadow-lg shadow-violet-100 font-bold">
+                    <Button onClick={() => window.print()} variant="outline" className="gap-1.5 rounded-xl border-gray-200 bg-white hover:bg-gray-50 text-gray-700 font-bold h-10 px-4">
+                        <Printer className="size-4" /> Print Menu
+                    </Button>
+                    <Button onClick={openCreate} className="gap-1.5 rounded-xl bg-violet-600 hover:bg-violet-700 shadow-lg shadow-violet-100 font-bold h-10 px-4">
                         <Plus className="size-4" /> Add Meal
                     </Button>
                 </div>
@@ -852,6 +877,160 @@ export function MealsClient({ initialMeals }: MealsClientProps) {
                 cancelText="Cancel"
                 variant="danger"
             />
+            {(() => {
+                const activeMeals = meals.filter(m => m.is_active);
+                const mealChunks = [];
+                const chunkSize = 4;
+                for (let i = 0; i < activeMeals.length; i += chunkSize) {
+                    mealChunks.push(activeMeals.slice(i, i + chunkSize));
+                }
+
+                return mounted && createPortal(
+                    <div id="print-menu-section" className="hidden">
+                        {mealChunks.map((chunk, idx) => (
+                            <div 
+                                key={idx} 
+                                className="print-page flex flex-col justify-center" 
+                                style={{ 
+                                    pageBreakAfter: idx === mealChunks.length - 1 ? 'avoid' : 'always', 
+                                    breakAfter: idx === mealChunks.length - 1 ? 'avoid' : 'page' 
+                                }}
+                            >
+                                    <div className="flex flex-col items-center mb-6 shrink-0">
+                                        <svg width="340" height="65" viewBox="0 0 340 65" className="mx-auto select-none pointer-events-none">
+                                            <g transform="translate(10, 8)">
+                                                <g transform="skewX(-8)">
+                                                    <rect x="0" y="2" width="112" height="38" rx="6" fill="#1a1a1a" />
+                                                </g>
+                                                <text 
+                                                    x="56" 
+                                                    y="30" 
+                                                    fill="white" 
+                                                    textAnchor="middle"
+                                                    style={{
+                                                        fontFamily: 'var(--font-bebas), sans-serif',
+                                                        fontSize: '25px',
+                                                        fontWeight: 'bold',
+                                                        letterSpacing: '2px'
+                                                    }}
+                                                >
+                                                    MOUNTAIN
+                                                </text>
+                                                <text 
+                                                    x="122" 
+                                                    y="32" 
+                                                    fill="#7c3aed" 
+                                                    style={{
+                                                        fontFamily: 'var(--font-pacifico), cursive',
+                                                        fontSize: '34px'
+                                                    }}
+                                                >
+                                                    Mama's Café
+                                                </text>
+                                            </g>
+                                        </svg>
+                                        <p className="text-xs text-gray-400 font-bold uppercase tracking-widest mt-3">Menu</p>
+                                    </div>
+                                
+                                <div className="grid grid-cols-2 gap-6 my-auto">
+                                    {chunk.map((meal) => (
+                                        <div key={meal.id} className="print-card flex flex-col space-y-2 p-3 border border-gray-100 rounded-2xl bg-white shadow-sm">
+                                            <div className="relative h-[200px] w-full rounded-xl overflow-hidden bg-gray-50 border border-gray-100">
+                                                {meal.image_url ? (
+                                                    <img 
+                                                        src={meal.image_url} 
+                                                        alt={meal.name} 
+                                                        className="size-full object-cover" 
+                                                    />
+                                                ) : (
+                                                    <div className="size-full flex items-center justify-center text-gray-400">
+                                                        <UtensilsCrossed className="size-8" />
+                                                    </div>
+                                                )}
+                                            </div>
+                                            <div>
+                                                <div className="flex items-start justify-between gap-2">
+                                                    <h3 className="text-base font-bold text-gray-900 leading-tight">{meal.name}</h3>
+                                                </div>
+                                                <p className="text-xs text-gray-400 font-semibold uppercase tracking-wider mt-1">{meal.category}</p>
+                                                <p className="text-xs text-gray-600 mt-2 leading-relaxed whitespace-pre-wrap">{meal.description || 'No description provided.'}</p>
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+                                <div className="absolute bottom-[10px] left-1/2 -translate-x-1/2 flex justify-center shrink-0">
+                                    <svg width="40" height="40" viewBox="0 0 40 40" xmlns="http://www.w3.org/2000/svg" className="select-none pointer-events-none">
+                                        <circle cx="20" cy="20" r="18" fill="#EDE9FE" />
+                                        <text 
+                                            x="20" 
+                                            y="24.5" 
+                                            fill="#6D28D9" 
+                                            textAnchor="middle"
+                                            style={{
+                                                fontFamily: 'system-ui, -apple-system, sans-serif',
+                                                fontSize: '14px',
+                                                fontWeight: 'bold'
+                                            }}
+                                        >
+                                            {idx + 1}
+                                        </text>
+                                    </svg>
+                                </div>
+                            </div>
+                        ))}
+                    </div>,
+                    document.body
+                );
+            })()}
+
+            {/* Font preloader to ensure browser downloads fonts on page load before print is triggered */}
+            <div className="opacity-0 pointer-events-none absolute size-0 overflow-hidden" aria-hidden="true">
+                <span style={{ fontFamily: 'var(--font-bebas)' }}>MOUNTAIN</span>
+                <span style={{ fontFamily: 'var(--font-pacifico)' }}>Mama's Café</span>
+            </div>
+
+            <style dangerouslySetInnerHTML={{__html: `
+                @import url('https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Pacifico&display=swap');
+                @page {
+                    size: portrait;
+                    margin: 0.8cm 1cm 1.2cm 1cm;
+                }
+                @media print {
+                    html, body {
+                        background-color: white !important;
+                        color: black !important;
+                        height: auto !important;
+                        overflow: visible !important;
+                    }
+                    /* Completely collapse all other containers from layout */
+                    body > *:not(#print-menu-section) {
+                        display: none !important;
+                    }
+                    /* Display print container */
+                    #print-menu-section {
+                        display: block !important;
+                        position: relative;
+                        width: 100%;
+                    }
+                    .print-page {
+                        height: 100vh !important;
+                        position: relative !important;
+                        box-sizing: border-box !important;
+                        display: flex !important;
+                        flex-direction: column !important;
+                        justify-content: center !important;
+                        page-break-inside: avoid !important;
+                        break-inside: avoid !important;
+                        page-break-after: always !important;
+                        break-after: page !important;
+                    }
+                    /* Page break settings */
+                    .print-card {
+                        page-break-inside: avoid;
+                        break-inside: avoid;
+                    }
+                }
+            `}} />
         </>
     );
 }

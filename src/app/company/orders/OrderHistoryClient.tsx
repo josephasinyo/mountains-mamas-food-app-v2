@@ -526,6 +526,18 @@ export default function OrderHistoryClient({ initialData }: OrderHistoryClientPr
             toast.error('Orders must contain at least one item.');
             return;
         }
+        // Block dates in the past
+        const todayStr = (() => {
+            const d = new Date();
+            const yyyy = d.getFullYear();
+            const mm = String(d.getMonth() + 1).padStart(2, '0');
+            const dd = String(d.getDate()).padStart(2, '0');
+            return `${yyyy}-${mm}-${dd}`;
+        })();
+        if (tourDate < todayStr) {
+            toast.error('The selected tour date cannot be in the past.');
+            return;
+        }
         if (!isMoreThan24HoursAway(tourDate, pickupTime)) {
             toast.error('Order changes or deletions are only possible at least 24 hours prior to scheduled tour pickup.');
             return;
@@ -1370,7 +1382,13 @@ export default function OrderHistoryClient({ initialData }: OrderHistoryClientPr
                                 </div>
                                 <div className="space-y-2.5">
                                     <Label htmlFor="tour_date" className="text-[11px] font-bold uppercase tracking-[0.1em] text-gray-400 ml-1">Tour Date</Label>
-                                    <Input id="tour_date" name="tour_date" type="date" value={tourDate} onChange={(e) => setTourDate(e.target.value)} required className="h-11 rounded-xl border-gray-200 font-semibold focus:ring-violet-500/20" />
+                                    <Input id="tour_date" name="tour_date" type="date" value={tourDate} onChange={(e) => setTourDate(e.target.value)} required min={(() => {
+                                        const d = new Date();
+                                        const yyyy = d.getFullYear();
+                                        const mm = String(d.getMonth() + 1).padStart(2, '0');
+                                        const dd = String(d.getDate()).padStart(2, '0');
+                                        return `${yyyy}-${mm}-${dd}`;
+                                    })()} className="h-11 rounded-xl border-gray-200 font-semibold focus:ring-violet-500/20" />
                                 </div>
                                 <div className="space-y-2.5">
                                     <Label htmlFor="pickup_time" className="text-[11px] font-bold uppercase tracking-[0.1em] text-gray-400 ml-1">Pickup Time</Label>
@@ -1557,10 +1575,10 @@ export default function OrderHistoryClient({ initialData }: OrderHistoryClientPr
             <ConfirmDialog
                 isOpen={orderToDelete !== null}
                 onClose={() => setOrderToDelete(null)}
-                title="Delete Order"
-                description="Are you sure you want to delete this order? This action cannot be undone."
+                title="Request Order Deletion"
+                description="Are you sure you want to request deletion for this order? This will submit a deletion request to the café admin for approval."
                 onConfirm={executeDelete}
-                confirmText="Delete"
+                confirmText="Request Deletion"
                 variant="danger"
             />
         </div>

@@ -18,6 +18,14 @@ export default function CheckoutPage() {
   const { cart, clearCart } = useCart();
   const { company, config, formFields, isLoading: isContextLoading } = useCompany();
   
+  const todayStr = (() => {
+    const today = new Date();
+    const yyyy = today.getFullYear();
+    const mm = String(today.getMonth() + 1).padStart(2, '0');
+    const dd = String(today.getDate()).padStart(2, '0');
+    return `${yyyy}-${mm}-${dd}`;
+  })();
+
   const [formData, setFormData] = useState<Record<string, any>>({
     tourDate: '',
     pickUpTime: '',
@@ -125,6 +133,25 @@ export default function CheckoutPage() {
       const companyId = company?.id;
       if (!companyId) {
         toast.error('Company context lost. Please return to the menu and try again.');
+        setIsLoading(false);
+        return;
+      }
+
+      // Validate all dynamic date fields to ensure they are not in the past
+      const dateFields = formFields.filter(f => f.location === 'tour_details' && f.is_enabled && f.type === 'date');
+      for (const field of dateFields) {
+        const dateValue = formData[field.name];
+        if (dateValue && dateValue < todayStr) {
+          toast.error(`The date for "${field.label}" cannot be in the past.`);
+          setIsLoading(false);
+          return;
+        }
+      }
+
+      // Explicitly check the standard tour date key too
+      const tourDate = formData.tour_date || formData.tourDate;
+      if (tourDate && tourDate < todayStr) {
+        toast.error('The selected tour date cannot be in the past.');
         setIsLoading(false);
         return;
       }
@@ -267,6 +294,7 @@ export default function CheckoutPage() {
                   className={styles.input}
                   required={field.is_required}
                   autoComplete="off"
+                  min={field.type === 'date' ? todayStr : undefined}
                 />
               </div>
             );

@@ -34,12 +34,14 @@ export default function AddToCartForm({ item }: Props) {
   const isSandwichAllowed = !!config?.use_sandwich_only && item.category === 'sandwich';
   const isBoxAllowed = !!config?.show_box_lunch_category;
   const isJuniorAllowed = !!config?.show_junior_box_lunch_category && 
-    (item.allow_split_box || item.category === 'sandwich' || item.name.toLowerCase().includes('sandwich'));
+    (item.allow_split_box || item.category === 'sandwich' || item.category === 'salad' || item.name.toLowerCase().includes('sandwich'));
 
   const enabledOptionsCount = (isSandwichAllowed ? 1 : 0) + (isBoxAllowed ? 1 : 0) + (isJuniorAllowed ? 1 : 0);
 
   const defaultVariant = useMemo(() => {
-    if (isSalad) return 'standard';
+    if (isSalad) {
+      return isBoxAllowed ? 'standard' : 'junior';
+    }
     if (isBoxAllowed) return 'standard';
     if (isJuniorAllowed) return 'junior';
     if (isSandwichAllowed) return 'sandwich';
@@ -50,14 +52,14 @@ export default function AddToCartForm({ item }: Props) {
   
   // Sync selected variant when config or allowed statuses change
   useEffect(() => {
-    if (selectedVariant === 'standard' && !isBoxAllowed && !isSalad) {
+    if (selectedVariant === 'standard' && !isBoxAllowed) {
       setSelectedVariant(defaultVariant);
     } else if (selectedVariant === 'junior' && !isJuniorAllowed) {
       setSelectedVariant(defaultVariant);
     } else if (selectedVariant === 'sandwich' && !isSandwichAllowed) {
       setSelectedVariant(defaultVariant);
     }
-  }, [selectedVariant, isBoxAllowed, isJuniorAllowed, isSandwichAllowed, defaultVariant, isSalad]);
+  }, [selectedVariant, isBoxAllowed, isJuniorAllowed, isSandwichAllowed, defaultVariant]);
 
   const showSplitOptions = enabledOptionsCount >= 2 && !isSalad;
 

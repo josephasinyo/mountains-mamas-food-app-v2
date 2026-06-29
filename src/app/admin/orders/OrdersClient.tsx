@@ -1,10 +1,10 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { updateOrderStatus, bulkUpdateStatus, exportOrdersCSV, updateOrderDetails, deleteOrder, bulkDeleteOrders, getPaginatedOrders } from './actions';
 import { handleOrderChangeRequest } from '@/app/company/orders/change-actions';
 import { createClient } from '@/lib/supabase/client';
-import { getGlobalSettings } from '@/lib/supabase/public-actions';
+import { getGlobalSettings, submitSupabaseOrder } from '@/lib/supabase/public-actions';
 import { Button, buttonVariants } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
@@ -68,6 +68,14 @@ const DATE_RANGE_LABELS: Record<string, string> = {
     'last_12_months': 'Last 12 Months',
     'custom': 'Custom Range'
 };
+
+const PICKUP_TIME_OPTIONS = Array.from({ length: 33 }).map((_, i) => {
+    const hour24 = 5 + Math.floor(i / 2);
+    const min = i % 2 === 0 ? '00' : '30';
+    const ampm = hour24 >= 12 ? 'PM' : 'AM';
+    const hour12 = hour24 > 12 ? hour24 - 12 : hour24 === 0 ? 12 : hour24;
+    return `${hour12}:${min} ${ampm}`;
+});
 
 const getPresetDates = (range: string): { start: string; end: string } => {
     const now = new Date();
@@ -445,14 +453,22 @@ export function OrdersClient({
             
             setSelected(new Set([printId]));
             // Wait slightly for rendering to settle
-            setTimeout(() => {
+            setTimeout(async () => {
                 document.body.classList.add('print-tickets-mode');
                 window.print();
                 document.body.classList.remove('print-tickets-mode');
                 
                 const matchedOrder = orders.find(o => o.id === printId);
                 if (matchedOrder) {
-                    markOrdersAsPrintedAndFulfilled([matchedOrder]);
+                    const printed = await niceConfirm(
+                        'Confirm Fulfillment',
+                        'Did you successfully print the ticket? Click Confirm to mark this order as fulfilled, or Cancel to leave it as is.',
+                        'info',
+                        'Confirm'
+                    );
+                    if (printed) {
+                        markOrdersAsPrintedAndFulfilled([matchedOrder]);
+                    }
                 }
             }, 600);
         }
@@ -470,11 +486,57 @@ export function OrdersClient({
     const [selectedCompanyMeals, setSelectedCompanyMeals] = useState<any[]>([]);
     const [globalSettings, setGlobalSettings] = useState<any | null>(null);
 
+    // Add Order Form States
+    const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
+    const [addCustomerName, setAddCustomerName] = useState('');
+    const [addGuideName, setAddGuideName] = useState('');
+    const [addTourDate, setAddTourDate] = useState('');
+    const [addPickupTime, setAddPickupTime] = useState('');
+    const [addNotes, setAddNotes] = useState('');
+    const [addCompanyId, setAddCompanyId] = useState<string | null>(null);
+    const [addItems, setAddItems] = useState<OrderItem[]>([]);
+    const [addCompanyConfig, setAddCompanyConfig] = useState<any | null>(null);
+    const [addCompanyMeals, setAddCompanyMeals] = useState<any[]>([]);
+
+    // Configured optional fields states
+    const [globalFields, setGlobalFields] = useState<any[]>([]);
+    const [addCompanyFields, setAddCompanyFields] = useState<any[]>([]);
+    const [editCompanyFields, setEditCompanyFields] = useState<any[]>([]);
+    const [allMeals, setAllMeals] = useState<any[]>([]);
+
+    // Cache for company configs, active meals, and form fields to make selection instantaneous
+    const companyCacheRef = useRef<Record<string, {
+        config: any | null;
+        meals: any[];
+        fields: any[];
+    }>>({});
+
     useEffect(() => {
         const fetchGlobal = async () => {
             const res = await getGlobalSettings();
             if (res.success) {
                 setGlobalSettings(res.settings);
+            }
+            
+            const supabaseClient = createClient();
+            
+            // Fetch definitions and active meals in parallel on mount
+            const [fieldsRes, mealsRes] = await Promise.all([
+                supabaseClient
+                    .from('form_field_definitions')
+                    .select('*')
+                    .eq('is_active', true),
+                supabaseClient
+                    .from('meals')
+                    .select('*')
+                    .eq('is_active', true)
+            ]);
+            
+            if (fieldsRes.data) {
+                setGlobalFields(fieldsRes.data);
+            }
+            if (mealsRes.data) {
+                setAllMeals(mealsRes.data);
             }
         };
         fetchGlobal();
@@ -482,47 +544,376 @@ export function OrdersClient({
 
     useEffect(() => {
         const fetchCompanyDetails = async () => {
-            const supabaseClient = createClient();
-            
-            const { data: allMeals } = await supabaseClient
-                .from('meals')
-                .select('*')
-                .eq('is_active', true);
-
             if (!companyId) {
                 setSelectedCompanyConfig(null);
-                setSelectedCompanyMeals(allMeals || []);
+                setSelectedCompanyMeals(allMeals);
+                setEditCompanyFields([]);
                 return;
             }
             
-            const { data: configData } = await supabaseClient
-                .from('company_app_config')
-                .select('*')
-                .eq('company_id', companyId)
-                .single();
+            // Check cache first to avoid slow queries
+            if (companyCacheRef.current[companyId]) {
+                const cached = companyCacheRef.current[companyId];
+                setSelectedCompanyConfig(cached.config);
+                setSelectedCompanyMeals(cached.meals);
+                setEditCompanyFields(cached.fields);
+                return;
+            }
             
-            const { data: selections } = await supabaseClient
-                .from('company_menu_selections')
-                .select('meal_id')
-                .eq('company_id', companyId)
-                .eq('is_selected', true);
+            const supabaseClient = createClient();
             
-            if (configData) {
-                setSelectedCompanyConfig(configData);
-            } else {
-                setSelectedCompanyConfig(null);
+            // Query configurations in parallel
+            const [configRes, selectionsRes, fieldsRes] = await Promise.all([
+                supabaseClient
+                    .from('company_app_config')
+                    .select('*')
+                    .eq('company_id', companyId)
+                    .maybeSingle(),
+                supabaseClient
+                    .from('company_menu_selections')
+                    .select('meal_id')
+                    .eq('company_id', companyId)
+                    .eq('is_selected', true),
+                supabaseClient
+                    .from('company_form_fields')
+                    .select('*')
+                    .eq('company_id', companyId)
+            ]);
+
+            const configData = configRes.data || null;
+            const selections = selectionsRes.data || [];
+            const fieldsData = fieldsRes.data || [];
+
+            let activeMeals: any[] = [];
+            if (selections && allMeals.length > 0) {
+                const selectedIds = new Set(selections.map((s: any) => s.meal_id));
+                activeMeals = allMeals.filter((m: any) => selectedIds.has(m.id));
             }
 
-            if (selections && allMeals) {
-                const selectedIds = new Set(selections.map((s: any) => s.meal_id));
-                const activeMeals = allMeals.filter((m: any) => selectedIds.has(m.id));
-                setSelectedCompanyMeals(activeMeals);
-            } else {
-                setSelectedCompanyMeals([]);
-            }
+            setSelectedCompanyConfig(configData);
+            setSelectedCompanyMeals(activeMeals);
+            setEditCompanyFields(fieldsData);
+
+            // Populate cache
+            companyCacheRef.current[companyId] = {
+                config: configData,
+                meals: activeMeals,
+                fields: fieldsData
+            };
         };
         fetchCompanyDetails();
-    }, [companyId]);
+    }, [companyId, allMeals]);
+
+    useEffect(() => {
+        const fetchAddCompanyDetails = async () => {
+            if (!addCompanyId) {
+                setAddCompanyConfig(null);
+                setAddCompanyMeals(allMeals);
+                setAddCompanyFields([]);
+                return;
+            }
+            
+            // Check cache first to avoid slow queries
+            if (companyCacheRef.current[addCompanyId]) {
+                const cached = companyCacheRef.current[addCompanyId];
+                setAddCompanyConfig(cached.config);
+                setAddCompanyMeals(cached.meals);
+                setAddCompanyFields(cached.fields);
+                return;
+            }
+            
+            const supabaseClient = createClient();
+            
+            // Query configurations in parallel
+            const [configRes, selectionsRes, fieldsRes] = await Promise.all([
+                supabaseClient
+                    .from('company_app_config')
+                    .select('*')
+                    .eq('company_id', addCompanyId)
+                    .maybeSingle(),
+                supabaseClient
+                    .from('company_menu_selections')
+                    .select('meal_id')
+                    .eq('company_id', addCompanyId)
+                    .eq('is_selected', true),
+                supabaseClient
+                    .from('company_form_fields')
+                    .select('*')
+                    .eq('company_id', addCompanyId)
+            ]);
+
+            const configData = configRes.data || null;
+            const selections = selectionsRes.data || [];
+            const fieldsData = fieldsRes.data || [];
+
+            let activeMeals: any[] = [];
+            if (selections && allMeals.length > 0) {
+                const selectedIds = new Set(selections.map((s: any) => s.meal_id));
+                activeMeals = allMeals.filter((m: any) => selectedIds.has(m.id));
+            }
+
+            setAddCompanyConfig(configData);
+            setAddCompanyMeals(activeMeals);
+            setAddCompanyFields(fieldsData);
+
+            // Populate cache
+            companyCacheRef.current[addCompanyId] = {
+                config: configData,
+                meals: activeMeals,
+                fields: fieldsData
+            };
+        };
+        fetchAddCompanyDetails();
+    }, [addCompanyId, allMeals]);
+
+    const isFieldEnabled = (fieldName: string, companyFieldsList: any[]) => {
+        const activeCompanyId = companyFieldsList === addCompanyFields ? addCompanyId : companyId;
+        if (!activeCompanyId) return true;
+        if (fieldName === 'notes') return true;
+        
+        const gf = globalFields.find(f => f.name === fieldName);
+        if (!gf) return true;
+        
+        const override = companyFieldsList.find(cf => cf.field_id === gf.id);
+        return override ? override.is_enabled : !!gf.is_system_core;
+    };
+
+    const getAddBreadOptions = (currentItemValue?: string) => {
+        const mealOpts = addCompanyConfig?.meal_page_options;
+        const parsed = typeof mealOpts === 'string' ? JSON.parse(mealOpts) : mealOpts;
+        const globalBreads = (globalSettings?.bread_options && Array.isArray(globalSettings.bread_options)) 
+            ? globalSettings.bread_options 
+            : [];
+        let options: string[] = [];
+        if (parsed?.breads && Array.isArray(parsed.breads) && parsed.breads.length > 0) {
+            const activeBreads = parsed.breads
+                .map((b: string) => globalBreads.find((gb: string) => gb.toLowerCase() === b.toLowerCase()))
+                .filter(Boolean) as string[];
+            if (activeBreads.length > 0) {
+                options = activeBreads;
+            }
+        }
+        if (options.length === 0) {
+            options = globalBreads.length > 0 ? globalBreads : ['White Bread'];
+        }
+        if (currentItemValue && !options.includes(currentItemValue)) {
+            return [...options, currentItemValue];
+        }
+        return options;
+    };
+
+    const getAddCookieOptions = (currentItemValue?: string) => {
+        const mealOpts = addCompanyConfig?.meal_page_options;
+        const parsed = typeof mealOpts === 'string' ? JSON.parse(mealOpts) : mealOpts;
+        const globalCookies = (globalSettings?.cookie_options && Array.isArray(globalSettings.cookie_options)) 
+            ? globalSettings.cookie_options 
+            : [];
+        let options: string[] = [];
+        if (parsed?.cookies && Array.isArray(parsed.cookies) && parsed.cookies.length > 0) {
+            const activeCookies = parsed.cookies
+                .map((c: string) => globalCookies.find((gc: string) => gc.toLowerCase() === c.toLowerCase()))
+                .filter(Boolean) as string[];
+            if (activeCookies.length > 0) {
+                options = activeCookies;
+            }
+        }
+        if (options.length === 0) {
+            options = globalCookies.length > 0 ? globalCookies : ['Chocolate Chip'];
+        }
+        if (currentItemValue && !options.includes(currentItemValue)) {
+            return [...options, currentItemValue];
+        }
+        return options;
+    };
+
+    const getAddBoxTypeOptions = (item: any) => {
+        const meal = addCompanyMeals.find((m) => m.id === item.meal_id || m.name === item.meal_name);
+        const pkgLabel = meal ? (meal.lunch_package === 'bag' ? 'Bag' : 'Box') : 'Box';
+        
+        const isSandwichAllowed = addCompanyConfig ? (addCompanyConfig.use_sandwich_only !== false && (meal ? meal.category === 'sandwich' : true)) : true;
+        const isBoxAllowed = addCompanyConfig ? (addCompanyConfig.show_box_lunch_category !== false) : true;
+        const isJuniorAllowed = addCompanyConfig ? (addCompanyConfig.show_junior_box_lunch_category !== false && (meal ? (meal.allow_split_box || meal.category === 'sandwich' || meal.category === 'salad' || meal.name.toLowerCase().includes('sandwich')) : true)) : true;
+        
+        const enabledOptionsCount = (isSandwichAllowed ? 1 : 0) + (isBoxAllowed ? 1 : 0) + (isJuniorAllowed ? 1 : 0);
+        
+        const options: string[] = [];
+        
+        if (enabledOptionsCount === 1) {
+            if (isBoxAllowed) {
+                options.push(`This is a ${pkgLabel.toLowerCase()} lunch`);
+            }
+            if (isJuniorAllowed) {
+                options.push(`This is a junior ${pkgLabel.toLowerCase()} lunch`);
+            }
+            if (isSandwichAllowed) {
+                options.push(`This is a standalone sandwich`);
+            }
+        } else {
+            if (isBoxAllowed) {
+                options.push(`${pkgLabel} Lunch`);
+            }
+            if (isJuniorAllowed) {
+                options.push(`Junior ${pkgLabel} Lunch`);
+            }
+            if (isSandwichAllowed) {
+                options.push(`Sandwich only`);
+            }
+        }
+        
+        const currentVal = item.box_type;
+        if (currentVal && !options.includes(currentVal)) {
+            options.push(currentVal);
+        }
+        
+        return options;
+    };
+
+    const handleAddRemoveItem = (itemId: string) => {
+        setAddItems(prev => prev.filter(item => item.id !== itemId));
+    };
+
+    const handleAddAddItem = () => {
+        const defaultMeal = addCompanyMeals[0] || { id: null, name: 'Custom Selection', price: 0 };
+        // Temporarily bind config values
+        const mealOpts = addCompanyConfig?.meal_page_options;
+        const parsed = typeof mealOpts === 'string' ? JSON.parse(mealOpts) : mealOpts;
+        const globalBreads = (globalSettings?.bread_options && Array.isArray(globalSettings.bread_options)) 
+            ? globalSettings.bread_options 
+            : [];
+        let breadOpts: string[] = [];
+        if (parsed?.breads && Array.isArray(parsed.breads) && parsed.breads.length > 0) {
+            const activeBreads = parsed.breads
+                .map((b: string) => globalBreads.find((gb: string) => gb.toLowerCase() === b.toLowerCase()))
+                .filter(Boolean) as string[];
+            if (activeBreads.length > 0) {
+                breadOpts = activeBreads;
+            }
+        }
+        if (breadOpts.length === 0) {
+            breadOpts = globalBreads.length > 0 ? globalBreads : ['White Bread'];
+        }
+
+        const globalCookies = (globalSettings?.cookie_options && Array.isArray(globalSettings.cookie_options)) 
+            ? globalSettings.cookie_options 
+            : [];
+        let cookieOpts: string[] = [];
+        if (parsed?.cookies && Array.isArray(parsed.cookies) && parsed.cookies.length > 0) {
+            const activeCookies = parsed.cookies
+                .map((c: string) => globalCookies.find((gc: string) => gc.toLowerCase() === c.toLowerCase()))
+                .filter(Boolean) as string[];
+            if (activeCookies.length > 0) {
+                cookieOpts = activeCookies;
+            }
+        }
+        if (cookieOpts.length === 0) {
+            cookieOpts = globalCookies.length > 0 ? globalCookies : ['Chocolate Chip'];
+        }
+
+        const itemOptions = getAddBoxTypeOptions({ meal_id: defaultMeal.id, meal_name: defaultMeal.name });
+        const defaultBoxType = itemOptions[0] || 'Box Lunch';
+
+        const newItem = {
+            id: `temp-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+            meal_id: defaultMeal.id,
+            meal_name: defaultMeal.name,
+            quantity: 1,
+            box_type: defaultBoxType,
+            bread_type: breadOpts[0] || '',
+            cookie_choice: cookieOpts[0] || '',
+            guest_name: '',
+            customizations: '',
+            unit_price: defaultMeal.price || 0,
+            custom_fields: null
+        };
+        setAddItems(prev => [...prev, newItem]);
+    };
+
+    const updateAddItem = (itemId: string, updates: Partial<OrderItem>) => {
+        setAddItems(prev => prev.map(item => item.id === itemId ? { ...item, ...updates } : item));
+    };
+
+    async function handleAddSubmit(e: React.FormEvent<HTMLFormElement>) {
+        e.preventDefault();
+        if (!addCompanyId) {
+            toast.error('Please select a tour company.');
+            return;
+        }
+        if (!addCustomerName.trim()) {
+            toast.error('Customer Name is required.');
+            return;
+        }
+        if (!addTourDate) {
+            toast.error('Tour Date is required.');
+            return;
+        }
+        if (isFieldEnabled('pickup_time', addCompanyFields) && (!addPickupTime || addPickupTime === 'none')) {
+            toast.error('Pickup Time is required.');
+            return;
+        }
+        
+        const options = { timeZone: 'America/Denver', year: 'numeric', month: '2-digit', day: '2-digit' } as const;
+        const formatter = new Intl.DateTimeFormat('en-CA', options);
+        const mountainTodayStr = formatter.format(new Date());
+
+        if (addTourDate < mountainTodayStr) {
+            toast.error('Cannot place orders for past dates.');
+            return;
+        }
+
+        if (addItems.length === 0) {
+            toast.error('Orders must contain at least one item.');
+            return;
+        }
+
+        setLoading(true);
+
+        const company = companies.find(c => c.id === addCompanyId);
+        const paymentMethod = (company as any)?.payment_method || 'monthly_invoice';
+
+        const orderData = {
+            companyId: addCompanyId,
+            fullName: addCustomerName,
+            guideName: isFieldEnabled('guide_name', addCompanyFields) ? (addGuideName || null) : null,
+            tourDate: addTourDate,
+            pickUpTime: isFieldEnabled('pickup_time', addCompanyFields) ? (addPickupTime || null) : null,
+            notes: addNotes || null,
+            paymentMethod: paymentMethod,
+            dynamic_fields: {}
+        };
+
+        const itemsToSubmit = addItems.map(item => ({
+            id: item.meal_id,
+            name: item.meal_name,
+            quantity: item.quantity,
+            selectedOption: item.box_type || 'Box Lunch',
+            bread_type: item.bread_type || null,
+            cookie_choice: item.cookie_choice || null,
+            guest_name: item.guest_name || null,
+            customizations: item.customizations || null,
+            unitPrice: item.unit_price,
+            dynamic_fields: {}
+        }));
+
+        const result = await submitSupabaseOrder(orderData, itemsToSubmit);
+
+        if (result.success) {
+            toast.success('Order created successfully!');
+            setIsAddDialogOpen(false);
+            
+            setAddCustomerName('');
+            setAddGuideName('');
+            setAddTourDate('');
+            setAddPickupTime('');
+            setAddNotes('');
+            setAddCompanyId(null);
+            setAddItems([]);
+            
+            handleQueryDatabase(page);
+        } else {
+            toast.error(result.error || 'Failed to create order.');
+        }
+        setLoading(false);
+    }
 
     const getBreadOptions = (currentItemValue?: string) => {
         const mealOpts = selectedCompanyConfig?.meal_page_options;
@@ -532,7 +923,9 @@ export function OrdersClient({
             : [];
         let options: string[] = [];
         if (parsed?.breads && Array.isArray(parsed.breads) && parsed.breads.length > 0) {
-            const activeBreads = parsed.breads.filter((b: string) => globalBreads.includes(b));
+            const activeBreads = parsed.breads
+                .map((b: string) => globalBreads.find((gb: string) => gb.toLowerCase() === b.toLowerCase()))
+                .filter(Boolean) as string[];
             if (activeBreads.length > 0) {
                 options = activeBreads;
             }
@@ -554,7 +947,9 @@ export function OrdersClient({
             : [];
         let options: string[] = [];
         if (parsed?.cookies && Array.isArray(parsed.cookies) && parsed.cookies.length > 0) {
-            const activeCookies = parsed.cookies.filter((c: string) => globalCookies.includes(c));
+            const activeCookies = parsed.cookies
+                .map((c: string) => globalCookies.find((gc: string) => gc.toLowerCase() === c.toLowerCase()))
+                .filter(Boolean) as string[];
             if (activeCookies.length > 0) {
                 options = activeCookies;
             }
@@ -571,40 +966,35 @@ export function OrdersClient({
     const getBoxTypeOptions = (item: any) => {
         const meal = selectedCompanyMeals.find((m) => m.id === item.meal_id || m.name === item.meal_name);
         const pkgLabel = meal ? (meal.lunch_package === 'bag' ? 'Bag' : 'Box') : 'Box';
-        const isSalad = meal ? (meal.category === 'salad' && !meal.name.toLowerCase().includes('sandwich')) : false;
         
         // Settings from selectedCompanyConfig (default to true if config not loaded yet)
         const isSandwichAllowed = selectedCompanyConfig ? (selectedCompanyConfig.use_sandwich_only !== false && (meal ? meal.category === 'sandwich' : true)) : true;
         const isBoxAllowed = selectedCompanyConfig ? (selectedCompanyConfig.show_box_lunch_category !== false) : true;
-        const isJuniorAllowed = selectedCompanyConfig ? (selectedCompanyConfig.show_junior_box_lunch_category !== false && (meal ? (meal.allow_split_box || meal.category === 'sandwich' || meal.name.toLowerCase().includes('sandwich')) : true)) : true;
+        const isJuniorAllowed = selectedCompanyConfig ? (selectedCompanyConfig.show_junior_box_lunch_category !== false && (meal ? (meal.allow_split_box || meal.category === 'sandwich' || meal.category === 'salad' || meal.name.toLowerCase().includes('sandwich')) : true)) : true;
         
         const enabledOptionsCount = (isSandwichAllowed ? 1 : 0) + (isBoxAllowed ? 1 : 0) + (isJuniorAllowed ? 1 : 0);
         
         const options: string[] = [];
         
-        if (isSalad) {
-            options.push(`${pkgLabel} Lunch`);
+        if (enabledOptionsCount === 1) {
+            if (isBoxAllowed) {
+                options.push(`This is a ${pkgLabel.toLowerCase()} lunch`);
+            }
+            if (isJuniorAllowed) {
+                options.push(`This is a junior ${pkgLabel.toLowerCase()} lunch`);
+            }
+            if (isSandwichAllowed) {
+                options.push(`This is a standalone sandwich`);
+            }
         } else {
-            if (enabledOptionsCount === 1) {
-                if (isBoxAllowed) {
-                    options.push(`This is a ${pkgLabel.toLowerCase()} lunch`);
-                }
-                if (isJuniorAllowed) {
-                    options.push(`This is a junior ${pkgLabel.toLowerCase()} lunch`);
-                }
-                if (isSandwichAllowed) {
-                    options.push(`This is a standalone sandwich`);
-                }
-            } else {
-                if (isBoxAllowed) {
-                    options.push(`${pkgLabel} Lunch`);
-                }
-                if (isJuniorAllowed) {
-                    options.push(`Junior ${pkgLabel} Lunch`);
-                }
-                if (isSandwichAllowed) {
-                    options.push(`Sandwich only`);
-                }
+            if (isBoxAllowed) {
+                options.push(`${pkgLabel} Lunch`);
+            }
+            if (isJuniorAllowed) {
+                options.push(`Junior ${pkgLabel} Lunch`);
+            }
+            if (isSandwichAllowed) {
+                options.push(`Sandwich only`);
             }
         }
         
@@ -625,13 +1015,15 @@ export function OrdersClient({
         const defaultMeal = selectedCompanyMeals[0] || { id: null, name: 'Custom Selection', price: 0 };
         const defaultBreadOptions = getBreadOptions();
         const defaultCookieOptions = getCookieOptions();
+        const itemOptions = getBoxTypeOptions({ meal_id: defaultMeal.id, meal_name: defaultMeal.name });
+        const defaultBoxType = itemOptions[0] || 'Box Lunch';
 
         const newItem = {
             id: `temp-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
             meal_id: defaultMeal.id,
             meal_name: defaultMeal.name,
             quantity: 1,
-            box_type: 'Box Lunch',
+            box_type: defaultBoxType,
             bread_type: defaultBreadOptions[0] || '',
             cookie_choice: defaultCookieOptions[0] || '',
             guest_name: '',
@@ -691,11 +1083,6 @@ export function OrdersClient({
     }
 
     async function markOrdersAsPrintedAndFulfilled(ordersList: Order[]) {
-        if (typeof window !== 'undefined' && (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')) {
-            console.log('Skipping fulfillment marking on localhost');
-            return;
-        }
-
         const orderIds = ordersList.map(o => o.id);
         if (orderIds.length === 0) return;
         
@@ -740,13 +1127,17 @@ export function OrdersClient({
             toast.error('Orders must contain at least one item.');
             return;
         }
+        if (isFieldEnabled('pickup_time', editCompanyFields) && (!pickupTime || pickupTime === 'none')) {
+            toast.error('Pickup Time is required.');
+            return;
+        }
         setLoading(true);
 
         const details = {
             customer_name: customerName,
-            guide_name: guideName || null,
+            guide_name: isFieldEnabled('guide_name', editCompanyFields) ? (guideName || null) : null,
             tour_date: tourDate,
-            pickup_time: pickupTime || null,
+            pickup_time: isFieldEnabled('pickup_time', editCompanyFields) ? (pickupTime || null) : null,
             notes: notes || null,
             company_id: companyId || null,
         };
@@ -1299,6 +1690,24 @@ export function OrdersClient({
                     {/* Print & Export buttons row */}
                     <div className="grid grid-cols-2 sm:grid-cols-5 md:flex items-center gap-2 w-full md:w-auto">
                         <Button 
+                            onClick={() => {
+                                setAddCustomerName('');
+                                setAddGuideName('');
+                                const options = { timeZone: 'America/Denver', year: 'numeric', month: '2-digit', day: '2-digit' } as const;
+                                const formatter = new Intl.DateTimeFormat('en-CA', options);
+                                setAddTourDate(formatter.format(new Date()));
+                                setAddPickupTime('');
+                                setAddNotes('');
+                                setAddCompanyId(null);
+                                setAddItems([]);
+                                setIsAddDialogOpen(true);
+                            }}
+                            className="gap-1.5 h-11 px-2 md:px-4 rounded-xl bg-violet-600 hover:bg-violet-700 text-white font-bold no-print text-[11px] md:text-sm shadow-md shadow-violet-100 flex items-center justify-center"
+                        >
+                            <Plus className="size-4 shrink-0" />
+                            <span className="truncate">Add Order</span>
+                        </Button>
+                        <Button 
                             variant="outline" 
                             className="gap-2 h-11 px-2 md:px-4 rounded-xl border-gray-200 hover:border-violet-200 hover:bg-violet-50 transition-all font-bold no-print text-[11px] md:text-sm" 
                             onClick={toggleAll}
@@ -1316,7 +1725,6 @@ export function OrdersClient({
                                 document.body.classList.add('print-table-mode');
                                 window.print();
                                 document.body.classList.remove('print-table-mode');
-                                await markOrdersAsPrintedAndFulfilled(ordersToPrint);
                             }}
                         >
                             <Printer className="size-4 shrink-0" />
@@ -1335,7 +1743,16 @@ export function OrdersClient({
                                 document.body.classList.add('print-tickets-mode');
                                 window.print();
                                 document.body.classList.remove('print-tickets-mode');
-                                await markOrdersAsPrintedAndFulfilled(ordersToPrint);
+                                
+                                const printed = await niceConfirm(
+                                    'Confirm Fulfillment',
+                                    `Did you successfully print the tickets? Click Confirm to mark the ${selected.size} selected order(s) as fulfilled, or Cancel to leave them as they are.`,
+                                    'info',
+                                    'Confirm'
+                                );
+                                if (printed) {
+                                    await markOrdersAsPrintedAndFulfilled(ordersToPrint);
+                                }
                             }}
                         >
                             <Ticket className="size-4 text-violet-600 shrink-0" />
@@ -2169,22 +2586,38 @@ export function OrdersClient({
                                     <Label htmlFor="customer_name" className="text-[11px] font-bold uppercase tracking-[0.1em] text-gray-400 ml-1">Customer Name</Label>
                                     <Input id="customer_name" name="customer_name" value={customerName} onChange={(e) => setCustomerName(e.target.value)} required className="h-11 rounded-xl border-gray-200 font-semibold focus:ring-violet-500/20" />
                                 </div>
-                                <div className="space-y-2.5">
-                                    <Label htmlFor="guide_name" className="text-[11px] font-bold uppercase tracking-[0.1em] text-gray-400 ml-1">Guide Name</Label>
-                                    <Input id="guide_name" name="guide_name" value={guideName} onChange={(e) => setGuideName(e.target.value)} className="h-11 rounded-xl border-gray-200 font-semibold focus:ring-violet-500/20" />
-                                </div>
+                                {isFieldEnabled('guide_name', editCompanyFields) && (
+                                    <div className="space-y-2.5">
+                                        <Label htmlFor="guide_name" className="text-[11px] font-bold uppercase tracking-[0.1em] text-gray-400 ml-1">Guide Name</Label>
+                                        <Input id="guide_name" name="guide_name" value={guideName} onChange={(e) => setGuideName(e.target.value)} className="h-11 rounded-xl border-gray-200 font-semibold focus:ring-violet-500/20" />
+                                    </div>
+                                )}
                                 <div className="space-y-2.5">
                                     <Label htmlFor="tour_date" className="text-[11px] font-bold uppercase tracking-[0.1em] text-gray-400 ml-1">Tour Date</Label>
                                     <Input id="tour_date" name="tour_date" type="date" value={tourDate} onChange={(e) => setTourDate(e.target.value)} required className="h-11 rounded-xl border-gray-200 font-semibold focus:ring-violet-500/20" />
                                 </div>
-                                <div className="space-y-2.5">
-                                    <Label htmlFor="pickup_time" className="text-[11px] font-bold uppercase tracking-[0.1em] text-gray-400 ml-1">Pickup Time</Label>
-                                    <Input id="pickup_time" name="pickup_time" placeholder="e.g. 07:30 AM" value={pickupTime} onChange={(e) => setPickupTime(e.target.value)} className="h-11 rounded-xl border-gray-200 font-semibold focus:ring-violet-500/20" />
-                                </div>
+                                {isFieldEnabled('pickup_time', editCompanyFields) && (
+                                    <div className="space-y-2.5">
+                                        <Label className="text-[11px] font-bold uppercase tracking-[0.1em] text-gray-400 ml-1">Pickup Time <span className="text-red-500">*</span></Label>
+                                        <Select value={pickupTime || 'none'} onValueChange={(v) => setPickupTime(v === 'none' || !v ? '' : v)}>
+                                            <SelectTrigger className="!h-11 w-full rounded-xl border-gray-200 font-semibold focus:ring-violet-500/20 bg-white">
+                                                <SelectValue placeholder="Select pickup time..." />
+                                            </SelectTrigger>
+                                            <SelectContent className="bg-white border-gray-200 max-h-[200px] overflow-y-auto">
+                                                <SelectItem value="none" className="text-gray-400 font-medium">Select pickup time...</SelectItem>
+                                                {PICKUP_TIME_OPTIONS.map((opt) => (
+                                                    <SelectItem key={opt} value={opt} className="font-semibold text-gray-800">
+                                                        {opt}
+                                                    </SelectItem>
+                                                ))}
+                                            </SelectContent>
+                                        </Select>
+                                    </div>
+                                )}
                                 <div className="col-span-2 space-y-2.5">
                                     <Label className="text-[11px] font-bold uppercase tracking-[0.1em] text-gray-400 ml-1">Tour Company</Label>
                                     <Select value={companyId || 'none'} onValueChange={(v) => setCompanyId(v === 'none' ? null : v)}>
-                                        <SelectTrigger className="h-11 rounded-xl border-gray-200 font-semibold focus:ring-violet-500/20">
+                                        <SelectTrigger className="!h-11 w-full rounded-xl border-gray-200 font-semibold focus:ring-violet-500/20">
                                             <SelectValue>
                                                 {companyId 
                                                     ? (companies.find(c => c.id === companyId)?.name || 'Unknown Company') 
@@ -2228,10 +2661,13 @@ export function OrdersClient({
                                                         onValueChange={(val) => {
                                                             const selectedMeal = selectedCompanyMeals.find((m) => m.name === val);
                                                             if (selectedMeal) {
+                                                                const itemOptions = getBoxTypeOptions({ meal_id: selectedMeal.id, meal_name: selectedMeal.name });
+                                                                const defaultBoxType = itemOptions[0] || 'Box Lunch';
                                                                 updateEditItem(item.id, {
                                                                     meal_id: selectedMeal.id,
                                                                     meal_name: selectedMeal.name,
-                                                                    unit_price: selectedMeal.price || 0
+                                                                    unit_price: selectedMeal.price || 0,
+                                                                    box_type: defaultBoxType
                                                                 });
                                                             }
                                                         }}
@@ -2277,7 +2713,7 @@ export function OrdersClient({
                                             </div>
 
                                             {/* Item Components Grid */}
-                                            <div className="grid grid-cols-3 gap-4">
+                                            <div className="grid grid-cols-2 gap-4">
                                                 <div className="space-y-1.5">
                                                     <Label className="text-[10px] font-bold text-gray-400 uppercase tracking-wide">Type</Label>
                                                     <Select
@@ -2332,9 +2768,6 @@ export function OrdersClient({
                                                         </SelectContent>
                                                     </Select>
                                                 </div>
-                                            </div>
-
-                                            <div className="grid grid-cols-2 gap-4">
                                                 <div className="space-y-1.5">
                                                     <Label className="text-[10px] font-bold text-gray-400 uppercase tracking-wide">Guest Name</Label>
                                                     <Input 
@@ -2344,7 +2777,7 @@ export function OrdersClient({
                                                         className="h-9 rounded-lg border-gray-200 text-[12px] font-medium"
                                                     />
                                                 </div>
-                                                <div className="space-y-1.5">
+                                                <div className="col-span-2 space-y-1.5">
                                                     <Label className="text-[10px] font-bold text-gray-400 uppercase tracking-wide">Item Notes / Customizations</Label>
                                                     <Input 
                                                         value={item.customizations || ''} 
@@ -2375,6 +2808,286 @@ export function OrdersClient({
                             <Button type="button" variant="ghost" className="rounded-xl font-bold text-gray-500" onClick={() => setIsEditDialogOpen(false)}>Cancel</Button>
                             <Button type="submit" disabled={loading || !hasChanges || editItems.length === 0} className="rounded-xl bg-violet-600 hover:bg-violet-700 font-bold px-10 shadow-lg shadow-violet-100">
                                 {loading ? 'Saving...' : 'Update Order'}
+                            </Button>
+                        </DialogFooter>
+                    </form>
+                </DialogContent>
+            </Dialog>
+
+            {/* Add Order Dialog */}
+            <Dialog open={isAddDialogOpen} onOpenChange={setIsAddDialogOpen}>
+                <DialogContent className="sm:max-w-[600px] rounded-3xl border-none shadow-2xl p-0 overflow-hidden bg-white">
+                    <DialogHeader className="bg-gray-50/50 px-8 py-6 border-b border-gray-100">
+                        <DialogTitle className="text-xl font-bold text-gray-900 tracking-tight">Add Tour Company Order</DialogTitle>
+                        <DialogDescription className="text-gray-500 font-medium">
+                            Create a new order manually on behalf of a tour company.
+                        </DialogDescription>
+                    </DialogHeader>
+                    <form onSubmit={handleAddSubmit}>
+                        <div className="px-8 py-8 space-y-6 max-h-[70vh] overflow-y-auto">
+                            {/* Metadata Section */}
+                            <div className="grid grid-cols-2 gap-6">
+                                <div className="col-span-2 space-y-2.5">
+                                    <Label className="text-[11px] font-bold uppercase tracking-[0.1em] text-gray-400 ml-1">Tour Company</Label>
+                                    <Select value={addCompanyId || 'none'} onValueChange={(v) => {
+                                        setAddCompanyId(v === 'none' ? null : v);
+                                        setAddItems([]);
+                                    }}>
+                                        <SelectTrigger className="!h-11 w-full rounded-xl border-gray-200 font-semibold focus:ring-violet-500/20 bg-white">
+                                            <SelectValue>
+                                                {addCompanyId 
+                                                    ? (companies.find(c => c.id === addCompanyId)?.name || 'Unknown Company') 
+                                                    : 'Select a tour company...'}
+                                            </SelectValue>
+                                        </SelectTrigger>
+                                        <SelectContent className="bg-white border-gray-200">
+                                            <SelectItem value="none" className="text-gray-400 font-medium">Select a tour company...</SelectItem>
+                                            {companies
+                                                .filter(c => c.status === 'active')
+                                                .map(c => (
+                                                    <SelectItem key={c.id} value={c.id}>
+                                                        {c.name}
+                                                    </SelectItem>
+                                                ))
+                                            }
+                                        </SelectContent>
+                                    </Select>
+                                </div>
+                                <div className="space-y-2.5">
+                                    <Label htmlFor="add_customer_name" className="text-[11px] font-bold uppercase tracking-[0.1em] text-gray-400 ml-1">Customer Name</Label>
+                                    <Input 
+                                        id="add_customer_name" 
+                                        name="add_customer_name" 
+                                        value={addCustomerName} 
+                                        onChange={(e) => setAddCustomerName(e.target.value)} 
+                                        required 
+                                        placeholder="e.g. John Doe"
+                                        className="h-11 rounded-xl border-gray-200 font-semibold focus:ring-violet-500/20" 
+                                    />
+                                </div>
+                                {isFieldEnabled('guide_name', addCompanyFields) && (
+                                    <div className="space-y-2.5">
+                                        <Label htmlFor="add_guide_name" className="text-[11px] font-bold uppercase tracking-[0.1em] text-gray-400 ml-1">Guide Name</Label>
+                                        <Input 
+                                            id="add_guide_name" 
+                                            name="add_guide_name" 
+                                            value={addGuideName} 
+                                            onChange={(e) => setAddGuideName(e.target.value)} 
+                                            placeholder="Optional guide name"
+                                            className="h-11 rounded-xl border-gray-200 font-semibold focus:ring-violet-500/20" 
+                                        />
+                                    </div>
+                                )}
+                                <div className="space-y-2.5">
+                                    <Label htmlFor="add_tour_date" className="text-[11px] font-bold uppercase tracking-[0.1em] text-gray-400 ml-1">Tour Date</Label>
+                                    <Input 
+                                        id="add_tour_date" 
+                                        name="add_tour_date" 
+                                        type="date" 
+                                        value={addTourDate} 
+                                        onChange={(e) => setAddTourDate(e.target.value)} 
+                                        required 
+                                        className="h-11 rounded-xl border-gray-200 font-semibold focus:ring-violet-500/20" 
+                                    />
+                                </div>
+                                {isFieldEnabled('pickup_time', addCompanyFields) && (
+                                    <div className="space-y-2.5">
+                                        <Label className="text-[11px] font-bold uppercase tracking-[0.1em] text-gray-400 ml-1">Pickup Time <span className="text-red-500">*</span></Label>
+                                        <Select value={addPickupTime || 'none'} onValueChange={(v) => setAddPickupTime(v === 'none' || !v ? '' : v)}>
+                                            <SelectTrigger className="!h-11 w-full rounded-xl border-gray-200 font-semibold focus:ring-violet-500/20 bg-white">
+                                                <SelectValue placeholder="Select pickup time..." />
+                                            </SelectTrigger>
+                                            <SelectContent className="bg-white border-gray-200 max-h-[200px] overflow-y-auto">
+                                                <SelectItem value="none" className="text-gray-400 font-medium">Select pickup time...</SelectItem>
+                                                {PICKUP_TIME_OPTIONS.map((opt) => (
+                                                    <SelectItem key={opt} value={opt} className="font-semibold text-gray-800">
+                                                        {opt}
+                                                    </SelectItem>
+                                                ))}
+                                            </SelectContent>
+                                        </Select>
+                                    </div>
+                                )}
+                                <div className="col-span-2 space-y-2.5">
+                                    <Label htmlFor="add_notes" className="text-[11px] font-bold uppercase tracking-[0.1em] text-gray-400 ml-1">General Notes</Label>
+                                    <Input 
+                                        id="add_notes" 
+                                        name="add_notes" 
+                                        placeholder="General instructions for the whole order..." 
+                                        value={addNotes} 
+                                        onChange={(e) => setAddNotes(e.target.value)} 
+                                        className="h-11 rounded-xl border-gray-200 font-medium" 
+                                    />
+                                </div>
+                            </div>
+
+                            {/* Items Section */}
+                            <div className="pt-6 border-t border-gray-100">
+                                <div className="flex items-center justify-between mb-5">
+                                    <Label className="text-xs font-bold uppercase tracking-widest text-violet-600">Order Items</Label>
+                                    <Badge variant="outline" className="bg-violet-50 text-violet-600 border-violet-100 font-bold text-[10px] px-2.5 py-0.5">
+                                        {addItems.length} {addItems.length === 1 ? 'Item' : 'Items'}
+                                    </Badge>
+                                </div>
+                                {addCompanyId ? (
+                                    <div className="space-y-6">
+                                        {addItems.map((item) => (
+                                            <div key={item.id} className="p-5 rounded-2xl border border-gray-100 bg-gray-50/20 space-y-5 transition-all hover:border-violet-100/50 hover:bg-violet-50/5">
+                                                <div className="flex items-start justify-between border-b border-gray-100/50 pb-4 gap-4">
+                                                    <div className="flex-grow min-w-0 space-y-1">
+                                                        <Label className="text-[10px] font-bold text-gray-400 uppercase tracking-wide">Meal Selection</Label>
+                                                        <Select
+                                                            value={item.meal_name || ''}
+                                                            onValueChange={(val) => {
+                                                                const selectedMeal = addCompanyMeals.find((m) => m.name === val);
+                                                                if (selectedMeal) {
+                                                                    const itemOptions = getAddBoxTypeOptions({ meal_id: selectedMeal.id, meal_name: selectedMeal.name });
+                                                                    const defaultBoxType = itemOptions[0] || 'Box Lunch';
+                                                                    updateAddItem(item.id, {
+                                                                        meal_id: selectedMeal.id,
+                                                                        meal_name: selectedMeal.name,
+                                                                        unit_price: selectedMeal.price || 0,
+                                                                        box_type: defaultBoxType
+                                                                    });
+                                                                }
+                                                            }}
+                                                        >
+                                                            <SelectTrigger className="!h-9 !w-full rounded-lg border-gray-200 text-[12px] font-bold bg-white">
+                                                                <SelectValue placeholder="Select a meal..." />
+                                                            </SelectTrigger>
+                                                            <SelectContent className="bg-white border-gray-200 max-h-[200px] overflow-y-auto">
+                                                                {addCompanyMeals.map((m: any) => (
+                                                                    <SelectItem key={m.id} value={m.name} className="text-[12px] font-bold">
+                                                                        {m.name} (${Number(m.price || 0).toFixed(2)})
+                                                                    </SelectItem>
+                                                                ))}
+                                                            </SelectContent>
+                                                        </Select>
+                                                    </div>
+                                                    <div className="flex items-center gap-3 shrink-0 pt-5">
+                                                        <div className="flex items-center gap-1.5">
+                                                            <Label className="text-[10px] font-bold text-gray-400 uppercase">Qty</Label>
+                                                            <Input 
+                                                                type="number" 
+                                                                min="1"
+                                                                value={item.quantity} 
+                                                                onChange={(e) => updateAddItem(item.id, { quantity: parseInt(e.target.value) || 1 })}
+                                                                className="w-14 h-8 rounded-lg border-gray-200 font-bold text-center focus:ring-violet-500/20"
+                                                            />
+                                                        </div>
+                                                        <Button
+                                                            type="button"
+                                                            variant="ghost"
+                                                            size="icon"
+                                                            onClick={() => handleAddRemoveItem(item.id)}
+                                                            className="h-8 w-8 text-rose-500 hover:text-rose-700 hover:bg-rose-50 rounded-lg"
+                                                        >
+                                                            <Trash2 className="size-4" />
+                                                        </Button>
+                                                    </div>
+                                                </div>
+
+                                                {/* Item Components Grid */}
+                                                <div className="grid grid-cols-2 gap-4">
+                                                    <div className="space-y-1.5">
+                                                        <Label className="text-[10px] font-bold text-gray-400 uppercase tracking-wide">Type</Label>
+                                                        <Select
+                                                            value={item.box_type || ''}
+                                                            onValueChange={(val) => updateAddItem(item.id, { box_type: val })}
+                                                        >
+                                                            <SelectTrigger className="!h-9 !w-full rounded-lg border-gray-200 text-[12px] font-medium bg-white">
+                                                                <SelectValue placeholder="Select type..." />
+                                                            </SelectTrigger>
+                                                            <SelectContent className="bg-white border-gray-200">
+                                                                {getAddBoxTypeOptions(item).map((opt: string) => (
+                                                                    <SelectItem key={opt} value={opt} className="text-[12px] font-medium">
+                                                                        {opt}
+                                                                    </SelectItem>
+                                                                ))}
+                                                            </SelectContent>
+                                                        </Select>
+                                                    </div>
+                                                    <div className="space-y-1.5">
+                                                        <Label className="text-[10px] font-bold text-gray-400 uppercase tracking-wide">Bread / Style</Label>
+                                                        <Select
+                                                            value={item.bread_type || ''}
+                                                            onValueChange={(val) => updateAddItem(item.id, { bread_type: val })}
+                                                        >
+                                                            <SelectTrigger className="!h-9 !w-full rounded-lg border-gray-200 text-[12px] font-medium bg-white">
+                                                                <SelectValue placeholder="Select bread..." />
+                                                            </SelectTrigger>
+                                                            <SelectContent className="bg-white border-gray-200">
+                                                                {getAddBreadOptions(item.bread_type || '').map((opt: string) => (
+                                                                    <SelectItem key={opt} value={opt} className="text-[12px] font-medium">
+                                                                        {opt}
+                                                                    </SelectItem>
+                                                                ))}
+                                                            </SelectContent>
+                                                        </Select>
+                                                    </div>
+                                                    <div className="space-y-1.5">
+                                                        <Label className="text-[10px] font-bold text-gray-400 uppercase tracking-wide">Cookie Choice</Label>
+                                                        <Select
+                                                            value={item.cookie_choice || ''}
+                                                            onValueChange={(val) => updateAddItem(item.id, { cookie_choice: val })}
+                                                        >
+                                                            <SelectTrigger className="!h-9 !w-full rounded-lg border-gray-200 text-[12px] font-medium bg-white">
+                                                                <SelectValue placeholder="Select cookie..." />
+                                                            </SelectTrigger>
+                                                            <SelectContent className="bg-white border-gray-200">
+                                                                {getAddCookieOptions(item.cookie_choice || '').map((opt: string) => (
+                                                                    <SelectItem key={opt} value={opt} className="text-[12px] font-medium">
+                                                                        {opt}
+                                                                    </SelectItem>
+                                                                ))}
+                                                            </SelectContent>
+                                                        </Select>
+                                                    </div>
+                                                    <div className="space-y-1.5">
+                                                        <Label className="text-[10px] font-bold text-gray-400 uppercase tracking-wide">Guest Name</Label>
+                                                        <Input 
+                                                            value={item.guest_name || ''} 
+                                                            onChange={(e) => updateAddItem(item.id, { guest_name: e.target.value })}
+                                                            placeholder="Guest Name"
+                                                            className="h-9 rounded-lg border-gray-200 text-[12px] font-medium"
+                                                        />
+                                                    </div>
+                                                    <div className="col-span-2 space-y-1.5">
+                                                        <Label className="text-[10px] font-bold text-gray-400 uppercase tracking-wide">Item Notes / Customizations</Label>
+                                                        <Input 
+                                                            value={item.customizations || ''} 
+                                                            onChange={(e) => updateAddItem(item.id, { customizations: e.target.value })}
+                                                            placeholder="No onions, extra sauce..."
+                                                            className="h-9 rounded-lg border-gray-200 text-[12px] font-medium"
+                                                        />
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        ))}
+
+                                        {/* Add Selection Button */}
+                                        <Button
+                                            type="button"
+                                            variant="outline"
+                                            onClick={handleAddAddItem}
+                                            className="w-full py-4 border-dashed border-2 border-violet-200 hover:border-violet-400 hover:bg-violet-50 text-violet-600 font-bold rounded-2xl flex items-center justify-center gap-2 transition-all mt-4"
+                                        >
+                                            <Plus className="size-4" />
+                                            Add Selection
+                                        </Button>
+                                    </div>
+                                ) : (
+                                    <div className="text-center py-6 text-gray-400 font-medium text-sm">
+                                        Please select a Tour Company first to configure order item selections.
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+
+                        <DialogFooter className="bg-gray-50/50 px-8 py-6 border-t border-gray-100">
+                            <Button type="button" variant="ghost" className="rounded-xl font-bold text-gray-500" onClick={() => setIsAddDialogOpen(false)}>Cancel</Button>
+                            <Button type="submit" disabled={loading || !addCompanyId || addItems.length === 0} className="rounded-xl bg-violet-600 hover:bg-violet-700 font-bold px-10 shadow-lg shadow-violet-100">
+                                {loading ? 'Creating...' : 'Create Order'}
                             </Button>
                         </DialogFooter>
                     </form>
@@ -2604,9 +3317,12 @@ export function OrdersClient({
                 return (
                     <div className="print-only-section print-tickets-container">
                         {ticketPages.map((pageGroup, pageIdx) => (
-                            <div key={`page-${pageIdx}`} className="print-ticket-page">
+                            <div key={`page-${pageIdx}`} className="print-ticket-page relative">
                                 <div className="print-tickets-grid">
                                     {pageGroup}
+                                </div>
+                                <div className="absolute bottom-4 left-0 right-0 text-center text-2xl font-black text-gray-500 uppercase tracking-widest">
+                                    Page {pageIdx + 1} of {ticketPages.length}
                                 </div>
                             </div>
                         ))}
@@ -2793,8 +3509,9 @@ export function OrdersClient({
                                 <div className="text-gray-400 italic font-medium">All Orders (No Filter)</div>
                             )}
                         </div>
-                        <div className="text-[11px] font-black text-gray-900">
-                            Total Orders: {ordersToPrint.length}
+                        <div className="text-[11px] font-black text-gray-900 flex items-center gap-4">
+                            <span>Total Orders: {ordersToPrint.length}</span>
+                            <span>Total Lunches: {ordersToPrint.reduce((acc, order) => acc + (order.order_items?.reduce((sum, item) => sum + item.quantity, 0) || 0), 0)}</span>
                         </div>
                     </div>
 
@@ -2803,7 +3520,7 @@ export function OrdersClient({
                         <thead>
                             <tr className="bg-[#7C3AED] text-white font-bold text-[10.5px] tracking-wider border-none">
                                 <th className="p-3 w-[15%] rounded-l-md">Name</th>
-                                <th className="p-3 w-[10%]">Date</th>
+                                <th className="p-3 w-[10%]">Tour Date</th>
                                 <th className="p-3 w-[15%]">Placed At</th>
                                 <th className="p-3 w-[18%]">Company / Guide</th>
                                 <th className="p-3 w-[27%]">Order Details</th>
@@ -2817,9 +3534,16 @@ export function OrdersClient({
                                     <td className="p-3 align-top font-bold text-gray-900">
                                         {order.guide_name || order.customer_name}
                                     </td>
-                                    {/* DATE */}
-                                    <td className="p-3 align-top font-bold text-gray-800">
-                                        {formatDateUS(order.tour_date)}
+                                    {/* TOUR DATE */}
+                                    <td className="p-3 align-top">
+                                        <p className="font-bold text-gray-800">
+                                            {formatDateUS(order.tour_date)}
+                                        </p>
+                                        {order.pickup_time && (
+                                            <p className="text-[10px] text-[#7C3AED] font-bold mt-1 whitespace-nowrap">
+                                                ⏰ {order.pickup_time}
+                                            </p>
+                                        )}
                                     </td>
                                     {/* PLACED AT */}
                                     <td className="p-3 align-top text-gray-700 font-medium">
@@ -2839,6 +3563,12 @@ export function OrdersClient({
                                     {/* ORDER DETAILS */}
                                     <td className="p-3 align-top">
                                         <div className="space-y-2">
+                                            <div className="flex items-center gap-1.5 mb-2">
+                                                <div className="size-5 rounded bg-violet-50 flex items-center justify-center text-[9.5px] font-black text-violet-600 border border-violet-100">
+                                                    {order.order_items?.reduce((acc: number, item: any) => acc + item.quantity, 0) || 0}
+                                                </div>
+                                                <span className="text-[9.5px] font-bold text-gray-900">Total Items</span>
+                                            </div>
                                             {order.order_items?.map((item, idx) => (
                                                 <div key={idx}>
                                                     {idx > 0 && <div className="border-t border-dashed border-gray-200 my-2 w-16" />}
@@ -2866,11 +3596,6 @@ export function OrdersClient({
                                                     </div>
                                                 </div>
                                             ))}
-                                            {order.pickup_time && (
-                                                <p className="text-[9.5px] text-[#7C3AED] font-bold mt-2 pt-2 border-t border-dotted border-gray-200">
-                                                    ⏰ Time of pick-up: {order.pickup_time}
-                                                </p>
-                                            )}
                                         </div>
                                     </td>
                                     {/* NOTES */}
@@ -2883,22 +3608,38 @@ export function OrdersClient({
                     </table>
 
                     <div className="mt-8 pt-4 border-t border-purple-200 flex justify-between text-[10px] font-black text-purple-400 uppercase tracking-widest">
-                        <span>Total Orders in Report: {filtered.length}</span>
+                        <span>Total Orders in Report: {ordersToPrint.length} | Total Lunches: {ordersToPrint.reduce((acc, order) => acc + (order.order_items?.reduce((sum, item) => sum + item.quantity, 0) || 0), 0)}</span>
                         <span>Mountain Mama's Café Admin System</span>
                     </div>
                 </div>
             </div>
 
-            <style jsx global>{`
+            <style dangerouslySetInnerHTML={{ __html: `
+                @page {
+                    @bottom-right {
+                        content: counter(page) " / " counter(pages);
+                        font-size: 16pt !important;
+                        font-weight: 900 !important;
+                        color: #7C3AED !important;
+                        font-family: sans-serif !important;
+                    }
+                }
+
                 @page ticket-page {
                     size: letter;
                     margin: 0 !important;
+                    @bottom-right {
+                        content: none !important;
+                    }
                 }
 
                 @page table-page {
                     size: portrait;
                     margin: 1.5cm;
                 }
+            ` }} />
+
+            <style jsx global>{`
 
                 /* Hide print containers by default in screen view */
                 .print-only-section {

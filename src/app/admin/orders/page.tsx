@@ -24,7 +24,7 @@ export default async function OrdersPage() {
 
     const { data: companies } = await supabase
         .from('tour_companies')
-        .select('id, name, status, prep_instructions')
+        .select('id, name, status, prep_instructions, slug, payment_method')
         .order('name');
 
     const { data: changeRequests } = await supabase
