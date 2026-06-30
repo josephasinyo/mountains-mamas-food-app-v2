@@ -54,6 +54,7 @@ export default function InvoicePayPage() {
     const [tipInput, setTipInput] = useState('');
     const [processing, setProcessing] = useState(false);
     const [isExpanded, setIsExpanded] = useState(false);
+    const [paymentMethod, setPaymentMethod] = useState<'card' | 'ach'>('card');
 
     useEffect(() => {
         async function load() {
@@ -70,7 +71,13 @@ export default function InvoicePayPage() {
     }, [invoiceId]);
 
     const tipValue = parseFloat(tipInput) || 0;
-    const grandTotal = (invoice?.total_amount || 0) + tipValue;
+    const hasBakedInFee = invoice?.line_items.some(
+        (item) => item.metadata?.type === 'fee' || item.description.toLowerCase().includes('processing fee')
+    ) || false;
+    const cardFee = !hasBakedInFee && paymentMethod === 'card'
+        ? (invoice?.total_amount || 0) * 0.029 + 0.30
+        : 0;
+    const grandTotal = (invoice?.total_amount || 0) + cardFee + tipValue;
 
     const handlePay = async () => {
         if (!invoice) return;
@@ -79,7 +86,7 @@ export default function InvoicePayPage() {
         const toastId = toast.loading('Preparing secure checkout...');
 
         try {
-            const res = await createInvoicePaymentSession(invoice.id, tipValue);
+            const res = await createInvoicePaymentSession(invoice.id, tipValue, paymentMethod);
             if (res.success && res.checkoutUrl) {
                 toast.success('Redirecting to payment...', { id: toastId });
                 window.location.href = res.checkoutUrl;
@@ -308,13 +315,32 @@ export default function InvoicePayPage() {
                                 ))}
                             </>
                         )}
+
+                        {(!hasBakedInFee && paymentMethod === 'card') && (
+                            <div style={{
+                                ...styles.lineItemRow,
+                                backgroundColor: '#f9fafb',
+                                marginTop: '4px',
+                            }}>
+                                <span style={{ ...styles.lineItemDesc, fontSize: '12px', color: '#6b7280' }}>
+                                    Credit Card Processing Fee
+                                </span>
+                                <span style={{
+                                    ...styles.lineItemAmount,
+                                    fontSize: '12px',
+                                    color: '#6b7280',
+                                }}>
+                                    {formatCurrency(cardFee)}
+                                </span>
+                            </div>
+                        )}
                     </div>
                 )}
 
                 {/* Invoice Total */}
                 <div style={styles.totalSection}>
                     <div style={styles.totalRow}>
-                        <span style={styles.totalLabel}>Invoice Total</span>
+                        <span style={styles.totalLabel}>Invoice Total {hasBakedInFee ? '' : '(Base)'}</span>
                         <span style={styles.totalAmount}>{formatCurrency(invoice.total_amount)}</span>
                     </div>
                 </div>
@@ -368,6 +394,50 @@ export default function InvoicePayPage() {
                         </p>
                     )}
                 </div>
+
+                {/* Payment Method Selection */}
+                {!hasBakedInFee && (
+                    <div style={styles.paymentMethodSection}>
+                        <h3 style={styles.sectionTitle}>Select Payment Method</h3>
+                        <div style={styles.paymentMethodGrid}>
+                            <div 
+                                onClick={() => setPaymentMethod('card')}
+                                style={{
+                                    ...styles.paymentOptionCard,
+                                    ...(paymentMethod === 'card' ? styles.paymentOptionCardActive : {})
+                                }}
+                            >
+                                <div style={styles.paymentOptionHeader}>
+                                    <span style={styles.paymentOptionRadio}>
+                                        {paymentMethod === 'card' ? '●' : '○'}
+                                    </span>
+                                    <span style={styles.paymentOptionTitle}>Credit / Debit Card</span>
+                                </div>
+                                <span style={styles.paymentOptionSubtitle}>
+                                    Standard 2.9% + $0.30 processing fee
+                                </span>
+                            </div>
+
+                            <div 
+                                onClick={() => setPaymentMethod('ach')}
+                                style={{
+                                    ...styles.paymentOptionCard,
+                                    ...(paymentMethod === 'ach' ? styles.paymentOptionCardActive : {})
+                                }}
+                            >
+                                <div style={styles.paymentOptionHeader}>
+                                    <span style={styles.paymentOptionRadio}>
+                                        {paymentMethod === 'ach' ? '●' : '○'}
+                                    </span>
+                                    <span style={styles.paymentOptionTitle}>Bank Account (ACH)</span>
+                                </div>
+                                <span style={styles.paymentOptionSubtitle}>
+                                    No processing fee
+                                </span>
+                            </div>
+                        </div>
+                    </div>
+                )}
 
                 {/* Grand Total & Pay Button */}
                 <div style={styles.paySection}>
@@ -821,5 +891,53 @@ const styles: Record<string, React.CSSProperties> = {
         fontSize: '13px',
         fontWeight: 700,
         textDecoration: 'none',
+    },
+    paymentMethodSection: {
+        padding: '24px 32px',
+        borderBottom: '1px solid #f3f4f6',
+        background: '#fcfbfe',
+    },
+    paymentMethodGrid: {
+        display: 'grid',
+        gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
+        gap: '12px',
+        marginTop: '8px',
+    },
+    paymentOptionCard: {
+        borderWidth: '2px',
+        borderStyle: 'solid',
+        borderColor: '#e5e7eb',
+        borderRadius: '16px',
+        padding: '16px',
+        cursor: 'pointer',
+        background: '#ffffff',
+        transition: 'all 0.15s ease',
+        display: 'flex',
+        flexDirection: 'column',
+        gap: '6px',
+    },
+    paymentOptionCardActive: {
+        borderColor: '#7c3aed',
+        background: '#faf5ff',
+    },
+    paymentOptionHeader: {
+        display: 'flex',
+        alignItems: 'center',
+        gap: '8px',
+    },
+    paymentOptionRadio: {
+        fontSize: '14px',
+        color: '#7c3aed',
+        fontWeight: 900,
+    },
+    paymentOptionTitle: {
+        fontSize: '14px',
+        fontWeight: 800,
+        color: '#111827',
+    },
+    paymentOptionSubtitle: {
+        fontSize: '11px',
+        color: '#6b7280',
+        fontWeight: 500,
     },
 };

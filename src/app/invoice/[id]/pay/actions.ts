@@ -69,7 +69,11 @@ export async function fetchInvoiceForPayment(invoiceId: string) {
  * Create a Stripe Checkout Session for paying an invoice, optionally with a tip.
  * This redirects the company to Stripe's hosted checkout with the invoice amount + tip.
  */
-export async function createInvoicePaymentSession(invoiceId: string, tipAmount: number = 0) {
+export async function createInvoicePaymentSession(
+    invoiceId: string,
+    tipAmount: number = 0,
+    paymentMethod: 'card' | 'ach' = 'card'
+) {
     try {
         const supabase = createAdminClient();
         const { stripe, getOrCreateStripeCustomer } = await import('@/lib/stripe');
@@ -100,7 +104,7 @@ export async function createInvoicePaymentSession(invoiceId: string, tipAmount: 
         // 3. Build line items for the Checkout Session
         const lineItems: any[] = [];
 
-        // Main invoice amount line item
+        // Main invoice amount line item (base amount without card fee)
         lineItems.push({
             price_data: {
                 currency: 'usd',
@@ -112,6 +116,22 @@ export async function createInvoicePaymentSession(invoiceId: string, tipAmount: 
             },
             quantity: 1,
         });
+
+        // Add Card Processing Fee (2.9% + $0.30) if paying by Card
+        if (paymentMethod === 'card') {
+            const cardFee = (invoice.total_amount * 0.029) + 0.30;
+            lineItems.push({
+                price_data: {
+                    currency: 'usd',
+                    product_data: {
+                        name: 'Credit Card Processing Fee',
+                        description: 'Standard 2.9% + $0.30 card transaction fee.',
+                    },
+                    unit_amount: Math.round(cardFee * 100), // Convert to cents
+                },
+                quantity: 1,
+            });
+        }
 
         // Tip line item (if provided)
         const sanitizedTip = Math.max(0, Math.round(tipAmount * 100)); // ensure non-negative cents
@@ -132,9 +152,9 @@ export async function createInvoicePaymentSession(invoiceId: string, tipAmount: 
         // 4. Create Stripe Checkout Session
         const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
 
-        const session = await stripe.checkout.sessions.create({
+        const sessionParams: any = {
             customer: stripeCustomerId,
-            payment_method_types: ['card'],
+            payment_method_types: paymentMethod === 'card' ? ['card'] : ['us_bank_account'],
             line_items: lineItems,
             mode: 'payment',
             success_url: `${appUrl}/invoice/${invoiceId}/success`,
@@ -144,8 +164,16 @@ export async function createInvoicePaymentSession(invoiceId: string, tipAmount: 
                 company_id: company.id,
                 tip_amount: (sanitizedTip / 100).toFixed(2),
                 payment_type: 'invoice_payment',
+                payment_method: paymentMethod,
             },
-        });
+        };
+
+        // Stripe requires billing address collection for ACH direct debit payments
+        if (paymentMethod === 'ach') {
+            sessionParams.billing_address_collection = 'required';
+        }
+
+        const session = await stripe.checkout.sessions.create(sessionParams);
 
         return { success: true, checkoutUrl: session.url };
     } catch (e: any) {

@@ -304,17 +304,9 @@ export async function generateCompanyInvoice(orderIds: string[], perLunchDiscoun
             metadata: { type: 'tax' }
         });
 
-        // Add 2.9% + $0.30 Credit Card Processing Fee
+        // Do not add static Credit Card Processing Fee to the invoice itself
+        // It will be calculated and added dynamically at checkout if paid by card
         const subtotalWithTax = discountedSubtotal + resortTax;
-        const processingFee = (subtotalWithTax * 0.029) + 0.30;
-        await stripe.invoiceItems.create({
-            customer: stripeCustomerId,
-            invoice: stripeInvoice.id,
-            amount: Math.round(processingFee * 100),
-            currency: 'usd',
-            description: 'Credit Card Processing Fee - Standard 2.9% + $0.30 transaction fee.',
-            metadata: { type: 'fee' }
-        });
 
         // 6. Delete finalizedInvoice step (keep as draft)
         // 7. Create record in Supabase invoices table as 'draft'
@@ -322,7 +314,7 @@ export async function generateCompanyInvoice(orderIds: string[], perLunchDiscoun
             .from('invoices')
             .insert({
                 company_id: companyId,
-                total_amount: subtotalWithTax + processingFee, // Pre-calculation of total for draft display
+                total_amount: subtotalWithTax, // Base invoice total (without credit card fee)
                 discount_percentage: discountPercentage,
                 discount_amount: totalDiscountAmount,
                 per_lunch_discount_rate: perLunchDiscountRate,

@@ -266,7 +266,7 @@ export function InvoicesClient({ companies, initialInvoices }: InvoicesClientPro
         const discountedSubtotal = discountedSubtotalPercentage - perLunchDiscount;
         const resortTax = discountedSubtotal * 0.04;
         const processingFee = (discountedSubtotal + resortTax) * 0.029 + 0.30;
-        const total = discountedSubtotal + resortTax + processingFee;
+        const total = discountedSubtotal + resortTax;
         
         return { subtotal, discountPct, discountAmount, perLunchDiscount, discountedSubtotal, resortTax, processingFee, total };
     };
@@ -836,13 +836,13 @@ export function InvoicesClient({ companies, initialInvoices }: InvoicesClientPro
                                             <span>Resort Tax (4%)</span>
                                             <span className="font-bold text-gray-700">${pricing.resortTax.toFixed(2)}</span>
                                         </div>
-                                        <div className="flex justify-between text-xs text-gray-500 font-medium">
-                                            <span>Processing Fee</span>
-                                            <span className="font-bold text-gray-700">${pricing.processingFee.toFixed(2)}</span>
+                                        <div className="flex justify-between text-xs text-gray-400 font-medium italic">
+                                            <span>Credit Card Fee (est. if paid by card)</span>
+                                            <span className="font-semibold">${pricing.processingFee.toFixed(2)}</span>
                                         </div>
 
                                         <div className="flex justify-between items-baseline pt-3 border-t border-dashed border-violet-200">
-                                            <span className="text-sm font-black text-gray-900">Invoice Total</span>
+                                            <span className="text-sm font-black text-gray-900">Invoice Total (Base)</span>
                                             <span className="text-2xl font-black text-violet-700">
                                                 ${pricing.total.toFixed(2)}
                                             </span>
@@ -1160,13 +1160,15 @@ export function InvoicesClient({ companies, initialInvoices }: InvoicesClientPro
                                                         )}
                                                     </button>
                                                 )}
-                                                <button 
-                                                    onClick={() => setInvoiceToDelete({ id: invoice.id, amount: invoice.total_amount, companyId: invoice.company_id })}
-                                                    className="size-8 rounded-lg bg-white border border-gray-100 flex items-center justify-center text-gray-400 hover:text-rose-600 hover:border-rose-200 transition-all cursor-pointer"
-                                                    title="Delete Invoice & Reset Orders"
-                                                >
-                                                    <Trash2 className="size-3.5" />
-                                                </button>
+                                                {invoice.status !== 'paid' && (
+                                                    <button 
+                                                        onClick={() => setInvoiceToDelete({ id: invoice.id, amount: invoice.total_amount, companyId: invoice.company_id })}
+                                                        className="size-8 rounded-lg bg-white border border-gray-100 flex items-center justify-center text-gray-400 hover:text-rose-600 hover:border-rose-200 transition-all cursor-pointer"
+                                                        title="Delete Invoice & Reset Orders"
+                                                    >
+                                                        <Trash2 className="size-3.5" />
+                                                    </button>
+                                                )}
                                             </div>
                                         </TableCell>
                                     </TableRow>

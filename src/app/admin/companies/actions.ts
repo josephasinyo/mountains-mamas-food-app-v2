@@ -460,6 +460,10 @@ export async function deleteInvoice(invoiceId: string) {
             return { success: false, error: 'Invoice not found' };
         }
 
+        if (invoice.status === 'paid') {
+            return { success: false, error: 'Paid invoices cannot be deleted.' };
+        }
+
         // 2. Revert payment status of all orders linked to this invoice
         const { error: updateError } = await supabase
             .from('orders')
