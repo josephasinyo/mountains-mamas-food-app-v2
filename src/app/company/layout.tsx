@@ -186,7 +186,7 @@ export default function CompanyLayout({ children }: { children: React.ReactNode 
         <div className="flex flex-col min-h-screen bg-[#fafafa] overflow-x-hidden">
             {/* Impersonation Banner */}
             {impersonation.isImpersonating && (
-                <div className="w-full h-10 bg-violet-600 text-white px-8 flex items-center justify-between text-[11px] font-black uppercase tracking-wider shadow-md z-50 sticky top-0 border-b border-violet-700">
+                <div className="no-print w-full h-10 bg-violet-600 text-white px-8 flex items-center justify-between text-[11px] font-black uppercase tracking-wider shadow-md z-50 sticky top-0 border-b border-violet-700">
                     <div className="flex items-center gap-2">
                         <Eye className="size-4 animate-pulse text-violet-200" />
                         <span>Viewing Portal as <span className="underline decoration-violet-300 decoration-2 underline-offset-2">{impersonation.companyName}</span></span>

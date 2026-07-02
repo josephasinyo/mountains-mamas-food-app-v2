@@ -23,7 +23,7 @@ import {
     Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from '@/components/ui/select';
 import {
-    Download, CheckCircle, Ticket, ShoppingCart, Lock,
+    Download, CheckCircle, Ticket, ShoppingCart, Lock, ChevronDown,
     ChevronRight, X, Building2, Pencil, Printer,
     MoreHorizontal, Trash2, Check, ListFilter,
     ArrowUpDown, ArrowUp, ArrowDown, LayoutGrid, List,
@@ -251,6 +251,9 @@ export function OrdersClient({
     initialChangeRequests = []
 }: OrdersClientProps) {
     const [orders, setOrders] = useState<Order[]>(initialOrders);
+    const [showGuideBreakdown, setShowGuideBreakdown] = useState(false);
+    const [expandedGuide, setExpandedGuide] = useState<string | null>(null);
+    const [userRole, setUserRole] = useState<string | null>(null);
     const [totalCount, setTotalCount] = useState(initialTotalCount);
     const [totalLunches, setTotalLunches] = useState(initialTotalLunches);
     const [pendingCount, setPendingCount] = useState(initialPendingCount);
@@ -441,6 +444,17 @@ export function OrdersClient({
 
     useEffect(() => {
         setIsMounted(true);
+        const fetchUserRole = async () => {
+            try {
+                const supabase = createClient();
+                const { data: { user } } = await supabase.auth.getUser();
+                setUserRole(user?.user_metadata?.role?.toLowerCase() || 'admin');
+            } catch (e) {
+                console.error('Error fetching user role:', e);
+                setUserRole('admin');
+            }
+        };
+        fetchUserRole();
     }, []);
 
     useEffect(() => {
@@ -1199,6 +1213,314 @@ export function OrdersClient({
 
     const updateEditItem = (itemId: string, updates: Partial<OrderItem>) => {
         setEditItems(prev => prev.map(item => item.id === itemId ? { ...item, ...updates } : item));
+    };
+
+    const searchStats = React.useMemo(() => {
+        let totalPrice = 0;
+        let totalLunchesCount = 0;
+        let ordersCount = 0;
+        const lunchTypesMap: Record<string, { count: number; cost: number }> = {};
+        const guidesMap: Record<string, { orders: any[]; lunches: number }> = {};
+
+        const classifyLunchType = (box: string | null): string => {
+            if (!box) return 'Box Lunch';
+            const lower = box.toLowerCase().trim();
+            if (lower.includes('junior') || lower.includes('jr')) {
+                return 'Junior Box';
+            }
+            if (
+                lower.includes('sandwich only') || 
+                lower.includes('standalone sandwich') || 
+                (lower.includes('sandwich') && !lower.includes('lunch') && !lower.includes('box') && !lower.includes('bag'))
+            ) {
+                return 'Sandwich only';
+            }
+            return 'Box Lunch';
+        };
+
+        sorted.forEach((order: any) => {
+            if (order.status === 'cancelled') return;
+            ordersCount++;
+
+            let orderLunches = 0;
+            order.order_items?.forEach((item: any) => {
+                const itemCost = (item.unit_price || 0) * item.quantity;
+                totalPrice += itemCost;
+                totalLunchesCount += item.quantity;
+                orderLunches += item.quantity;
+
+                const boxType = classifyLunchType(item.box_type);
+                
+                if (!lunchTypesMap[boxType]) {
+                    lunchTypesMap[boxType] = { count: 0, cost: 0 };
+                }
+                lunchTypesMap[boxType].count += item.quantity;
+                lunchTypesMap[boxType].cost += itemCost;
+            });
+
+            const rawGuide = order.guide_name || 'No Guide Set';
+            const guide = rawGuide.trim();
+            if (!guidesMap[guide]) {
+                guidesMap[guide] = { orders: [], lunches: 0 };
+            }
+            guidesMap[guide].orders.push(order);
+            guidesMap[guide].lunches += orderLunches;
+        });
+
+        return {
+            totalPrice,
+            totalLunchesCount,
+            ordersCount,
+            lunchTypes: Object.entries(lunchTypesMap).map(([name, stats]) => ({
+                name,
+                count: stats.count,
+                cost: stats.cost
+            })).sort((a, b) => b.count - a.count),
+            guides: Object.entries(guidesMap).map(([name, stats]) => ({
+                name,
+                orders: stats.orders,
+                lunches: stats.lunches
+            })).sort((a, b) => a.name.localeCompare(b.name))
+        };
+    }, [sorted]);
+
+    const renderOrderRow = (order: any, isExpanded: boolean, onToggleExpand: () => void) => {
+        const rows = [
+            <TableRow
+                key={order.id}
+                className={`cursor-pointer transition-all duration-200 border-b border-gray-100 group relative ${
+                    isExpanded 
+                        ? 'bg-violet-50/50' 
+                        : 'hover:bg-gray-50/80'
+                }`}
+                onClick={onToggleExpand}
+            >
+                <TableCell className={`pl-6 py-4 relative ${isExpanded ? 'after:absolute after:left-0 after:top-0 after:bottom-0 after:w-1 after:bg-violet-600' : ''}`} onClick={e => e.stopPropagation()}>
+                    <Checkbox
+                        checked={selected.has(order.id)}
+                        onCheckedChange={() => toggleSelect(order.id)}
+                        className="rounded-md border-gray-300 data-[state=checked]:bg-violet-600 data-[state=checked]:border-violet-600"
+                    />
+                </TableCell>
+                <TableCell className="py-4">
+                    <ChevronRight className={`size-4 text-gray-300 group-hover:text-gray-500 transition-transform duration-300 ${isExpanded ? 'rotate-90 text-violet-600' : ''}`} />
+                </TableCell>
+                <TableCell className="py-4">
+                    <div className="flex items-center gap-3">
+                        <div className={`size-9 rounded-xl flex items-center justify-center text-[13px] font-black transition-all ${
+                            isExpanded 
+                                ? 'bg-violet-600 text-white shadow-sm' 
+                                : 'bg-gray-100 text-gray-600 group-hover:bg-violet-100 group-hover:text-violet-700'
+                        }`}>
+                            {(order.guide_name || order.customer_name)?.charAt(0).toUpperCase() || '?'}
+                        </div>
+                        <div>
+                            <div className="flex items-center gap-1.5">
+                                <p className="font-bold text-[13.5px] text-gray-900">{order.guide_name || order.customer_name}</p>
+                                {order.is_locked && <Lock className="size-3 text-amber-500" />}
+                            </div>
+                        </div>
+                    </div>
+                </TableCell>
+                <TableCell className="py-3">
+                    <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-gray-100/50 border border-gray-200/50 text-[11px] font-bold text-gray-600">
+                        <Building2 className="size-3 text-gray-400" />
+                        {order.tour_companies?.name || 'Individual'}
+                    </div>
+                </TableCell>
+                <TableCell className="py-3">
+                    <div className="flex flex-col">
+                        <span className="text-[13px] font-bold text-gray-900">{formatDateUS(order.tour_date)}</span>
+                        <span className="text-[10px] font-semibold text-gray-400 uppercase tracking-tight">{order.pickup_time || 'No time set'}</span>
+                    </div>
+                </TableCell>
+                <TableCell className="py-3">
+                    <div className="flex flex-col">
+                        <span className="text-[13px] font-semibold text-gray-400">
+                            {isMounted ? formatDateUS(order.created_at) : ''}
+                        </span>
+                        <span className="text-[10px] font-semibold text-gray-400 uppercase tracking-tight">
+                            {isMounted ? new Date(order.created_at).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }) : ''}
+                        </span>
+                    </div>
+                </TableCell>
+                <TableCell className="py-3 text-left">
+                    <div className="flex flex-col items-start gap-1">
+                        <div className="flex items-center gap-2">
+                            <div className="size-7 rounded-lg bg-violet-50 flex items-center justify-center text-[11px] font-extrabold text-violet-600 border border-violet-100">
+                                {order.order_items?.reduce((acc: number, item: any) => acc + item.quantity, 0) || 0}
+                            </div>
+                            <span className="text-[12px] font-bold text-gray-900">Total Items</span>
+                        </div>
+                        <div className="flex flex-col items-start gap-0.5 ml-1">
+                            {order.order_items?.slice(0, 5).map((item: any, i: number) => (
+                                <p key={i} className="text-[10px] font-medium text-gray-500 leading-tight">
+                                    <span className="font-bold text-violet-600/80">{item.quantity}x</span> {item.meal_name}
+                                </p>
+                            ))}
+                            {order.order_items && order.order_items.length > 5 && (
+                                <p className="text-[9px] font-bold text-violet-500 italic mt-0.5">
+                                    {order.order_items.length - 5} more items
+                                </p>
+                            )}
+                        </div>
+                    </div>
+                </TableCell>
+                <TableCell className="py-3">
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                        <Badge variant="outline" className={`
+                            ${order.status === 'pending' ? 'bg-amber-50 text-amber-700 border-amber-200' : ''}
+                            ${order.status === 'ticket_created' ? 'bg-blue-50 text-blue-700 border-blue-200' : ''}
+                            ${order.status === 'fulfilled' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : ''}
+                            ${order.status === 'cancelled' ? 'bg-rose-50 text-rose-700 border-rose-200' : ''}
+                        `}>
+                            {STATUS_LABELS[order.status] || order.status}
+                        </Badge>
+                        {(() => {
+                            const pendingReq = (order as any).order_change_requests?.find((r: any) => r.status === 'pending');
+                            if (pendingReq) {
+                                return (
+                                    <Badge 
+                                        variant="outline" 
+                                        onClick={(e) => handleBadgeClick(e, order.id)}
+                                        className="rounded-lg px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wider bg-blue-50 text-blue-700 border-blue-200 animate-pulse cursor-pointer hover:bg-blue-100 transition-colors"
+                                    >
+                                        Pending {pendingReq.type === 'delete' ? 'Deletion' : pendingReq.type === 'cancel' ? 'Cancellation' : 'Edit'}
+                                    </Badge>
+                                );
+                            }
+                            return null;
+                        })()}
+                    </div>
+                </TableCell>
+                <TableCell className="py-4 text-center pr-6" onClick={e => e.stopPropagation()}>
+                    <DropdownMenu>
+                        <DropdownMenuTrigger className={cn(
+                            buttonVariants({ variant: 'ghost', size: 'icon' }),
+                            "h-9 w-9 p-0 rounded-xl hover:bg-violet-50 hover:text-violet-600 transition-all"
+                        )}>
+                            <MoreHorizontal className="size-4" />
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end" className="w-[180px] rounded-xl border-gray-100 shadow-xl p-1 bg-white">
+                            <DropdownMenuGroup>
+                                <DropdownMenuLabel className="text-[10px] font-bold text-gray-400 uppercase tracking-widest px-3 py-2">Actions</DropdownMenuLabel>
+                            </DropdownMenuGroup>
+                            <DropdownMenuItem 
+                                className="rounded-lg gap-2 font-bold text-gray-700 focus:bg-violet-50 focus:text-violet-700 cursor-pointer"
+                                onClick={() => {
+                                    setEditingOrder(order);
+                                    setCustomerName(order.customer_name || '');
+                                    setGuideName(order.guide_name || '');
+                                    setTourDate(order.tour_date || '');
+                                    setPickupTime(order.pickup_time || '');
+                                    setNotes(order.notes || '');
+                                    setCompanyId(order.company_id || null);
+                                    setEditItems(JSON.parse(JSON.stringify(order.order_items || [])));
+                                    setIsEditDialogOpen(true);
+                                }}
+                            >
+                                <Pencil className="size-3.5" /> Edit Order
+                            </DropdownMenuItem>
+
+                            <DropdownMenuSub>
+                                <DropdownMenuSubTrigger className="rounded-lg gap-2 font-bold text-gray-700 focus:bg-violet-50 focus:text-violet-700 cursor-pointer">
+                                    <ListFilter className="size-3.5" /> Change Status
+                                </DropdownMenuSubTrigger>
+                                <DropdownMenuSubContent className="rounded-xl border-gray-100 shadow-xl p-1 ml-1 bg-white">
+                                    {Object.entries(STATUS_LABELS).map(([value, label]) => (
+                                        <DropdownMenuItem
+                                            key={value}
+                                            className="rounded-lg gap-2 font-bold text-gray-700 focus:bg-violet-50 focus:text-violet-700 cursor-pointer"
+                                            onClick={() => handleStatus(order.id, value)}
+                                        >
+                                            {order.status === value && <Check className="size-3 text-violet-600" />}
+                                            <span className={order.status === value ? 'text-violet-600 pl-0' : 'pl-5'}>{label}</span>
+                                        </DropdownMenuItem>
+                                    ))}
+                                </DropdownMenuSubContent>
+                            </DropdownMenuSub>
+
+                            <DropdownMenuSeparator className="bg-gray-100 my-1" />
+                            
+                            <DropdownMenuItem 
+                                className="rounded-lg gap-2 font-bold text-rose-600 focus:bg-rose-50 focus:text-rose-700 cursor-pointer"
+                                onClick={() => handleDelete(order.id)}
+                            >
+                                <Trash2 className="size-3.5" /> Delete Order
+                            </DropdownMenuItem>
+                        </DropdownMenuContent>
+                    </DropdownMenu>
+                </TableCell>
+            </TableRow>
+        ];
+
+        if (isExpanded) {
+            rows.push(
+                <TableRow key={`${order.id}-detail`} className="border-none hover:bg-transparent">
+                    <TableCell colSpan={9} className="p-0 border-b border-gray-100">
+                        <div className="bg-gray-50/50 px-6 py-8 border-t border-gray-100">
+                            <div className="max-w-3xl mx-auto">
+                                <div className="bg-white rounded-[24px] border border-gray-200 shadow-sm overflow-hidden divide-y divide-gray-100">
+                                    <div className="divide-y divide-gray-100/70">
+                                        {order.order_items?.map((item: any, i: number) => (
+                                            <div key={i} className="flex items-center justify-between p-4 hover:bg-gray-50/50 transition-colors">
+                                                <div className="flex items-center gap-4">
+                                                    <div className="font-black text-violet-600 text-base w-8">
+                                                        {item.quantity}x
+                                                    </div>
+                                                    <div className="space-y-0.5">
+                                                        <p className="font-extrabold text-base text-gray-900 leading-tight">{item.meal_name}</p>
+                                                        <OrderItemDetails item={item} />
+                                                    </div>
+                                                </div>
+                                                <div className="text-right ml-8">
+                                                    <p className="font-bold text-base text-gray-900 tracking-tight">${(item.unit_price * item.quantity).toFixed(2)}</p>
+                                                    <p className="text-xs text-gray-400 font-semibold uppercase tracking-wider">${item.unit_price.toFixed(2)} ea</p>
+                                                </div>
+                                            </div>
+                                        ))}
+                                    </div>
+
+                                    {order.notes && (
+                                        <div className="bg-amber-50/30 p-6">
+                                            <span className="text-[11px] font-black text-amber-700 uppercase tracking-[0.2em] block mb-2">KITCHEN NOTES</span>
+                                            <p className="text-[15px] text-amber-900 font-black italic leading-relaxed">&ldquo;{order.notes}&rdquo;</p>
+                                        </div>
+                                    )}
+
+                                    <div className="flex items-center justify-between p-6 bg-gray-50/30">
+                                        <div className="flex items-center gap-10">
+                                            <div className="flex flex-col">
+                                                <span className="text-[11px] font-bold text-gray-400 uppercase tracking-wider">Pickup</span>
+                                                <span className="text-[14px] font-black text-gray-900">{order.pickup_time || 'N/A'}</span>
+                                            </div>
+                                            <div className="flex flex-col">
+                                                <span className="text-[11px] font-bold text-gray-400 uppercase tracking-wider">Payment</span>
+                                                <span className="text-[14px] font-black text-gray-900 capitalize">{order.payment_status?.replace('_', ' ')}</span>
+                                            </div>
+                                            <div className="flex flex-col">
+                                                <span className="text-[11px] font-bold text-gray-400 uppercase tracking-wider">Placed At</span>
+                                                <span className="text-[14px] font-black text-gray-900">
+                                                    {isMounted ? new Date(order.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : ''}
+                                                </span>
+                                            </div>
+                                        </div>
+                                        
+                                        <div className="text-right flex items-center gap-4">
+                                            <span className="text-[12px] font-bold text-gray-400 uppercase tracking-widest">TOTAL AMOUNT</span>
+                                            <span className="text-[20px] font-black text-violet-600 tracking-tighter">
+                                                ${order.order_items?.reduce((acc: number, item: any) => acc + (Number(item.unit_price) * item.quantity), 0).toFixed(2)}
+                                            </span>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </TableCell>
+                </TableRow>
+            );
+        }
+        return rows;
     };
 
     async function handleExport() {
@@ -2042,6 +2364,153 @@ export function OrdersClient({
                 </div>
             )}
 
+            {/* Search Results Stats Summary Card (Admin Only) */}
+            {userRole === 'admin' && sorted.length > 0 && (
+                <Card className="rounded-2xl border-gray-150 shadow-sm mb-6 bg-white overflow-hidden no-print">
+                    <CardContent className="p-6 space-y-6">
+                        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-6">
+                            {/* Summary Totals */}
+                            <div className="flex items-center gap-6 sm:gap-10">
+                                <div>
+                                    <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1.5">Search Results Value</p>
+                                    <p className="text-3xl font-black text-violet-600 tracking-tight">
+                                        ${searchStats.totalPrice.toFixed(2)}
+                                    </p>
+                                </div>
+                                <div className="h-10 w-px bg-gray-200" />
+                                <div>
+                                    <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1.5">Lunches Count</p>
+                                    <p className="text-3xl font-black text-gray-900 tracking-tight">
+                                        {searchStats.totalLunchesCount}
+                                    </p>
+                                </div>
+                                <div className="h-10 w-px bg-gray-200" />
+                                <div>
+                                    <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1.5">Orders Found</p>
+                                    <p className="text-3xl font-black text-gray-900 tracking-tight">
+                                        {searchStats.ordersCount}
+                                    </p>
+                                </div>
+                            </div>
+
+                            {/* Lunch Type Cost Breakdown */}
+                            <div className="flex-1 min-w-0">
+                                <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-3">Breakdown by Lunch Type</p>
+                                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
+                                    {searchStats.lunchTypes.map((type, idx) => (
+                                        <div 
+                                            key={idx} 
+                                            className="bg-gray-50/50 rounded-xl p-3 border border-gray-100/80 flex items-center justify-between gap-4 transition-all hover:bg-gray-50 hover:border-gray-200"
+                                        >
+                                            <div className="min-w-0">
+                                                <p className="text-[11px] font-bold text-gray-800 truncate">{type.name}</p>
+                                                <p className="text-[10px] font-semibold text-gray-400 mt-0.5">
+                                                    {type.count} lunch{type.count !== 1 ? 'es' : ''}
+                                                </p>
+                                            </div>
+                                            <div className="text-right shrink-0">
+                                                <p className="text-xs font-black text-violet-600">${type.cost.toFixed(2)}</p>
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* Expand Toggle */}
+                        <div className="flex justify-end pt-4 border-t border-gray-100">
+                            <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => setShowGuideBreakdown(!showGuideBreakdown)}
+                                className="text-xs font-bold text-violet-600 hover:text-violet-700 hover:bg-violet-50 gap-1.5 rounded-lg h-9 px-3.5 transition-all"
+                            >
+                                {showGuideBreakdown ? 'Hide Guide Breakdown' : 'Show Guide Breakdown'}
+                                <ChevronDown className={`size-4 transition-transform duration-200 ${showGuideBreakdown ? 'rotate-180' : ''}`} />
+                            </Button>
+                        </div>
+
+                        {/* Guide Breakdown Table (Expandable) */}
+                        {showGuideBreakdown && (
+                            <div className="pt-2 border-t border-gray-100 animate-in fade-in duration-200">
+                                <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-3">Breakdown by Guide Name</p>
+                                <div className="overflow-hidden border border-gray-100 rounded-xl bg-gray-50/10">
+                                    <table className="w-full text-left text-xs border-collapse">
+                                        <thead>
+                                            <tr className="bg-gray-100/40 border-b border-gray-100 text-gray-400 font-bold uppercase tracking-wider text-[9px]">
+                                                <th className="px-4 py-2.5">Guide Name</th>
+                                                <th className="px-4 py-2.5 text-center">Orders Count</th>
+                                                <th className="px-4 py-2.5 text-right pr-6">Lunches Count</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody className="divide-y divide-gray-100">
+                                            {searchStats.guides.map((g, idx) => {
+                                                const isGuideExpanded = expandedGuide === g.name;
+                                                return [
+                                                    <tr 
+                                                        key={`guide-${idx}`} 
+                                                        onClick={() => setExpandedGuide(isGuideExpanded ? null : g.name)}
+                                                        className="hover:bg-gray-50/40 transition-colors font-medium text-gray-600 cursor-pointer"
+                                                    >
+                                                        <td className="px-4 py-3 flex items-center gap-2">
+                                                            <ChevronRight className={`size-3.5 transition-transform duration-200 ${isGuideExpanded ? 'rotate-90 text-violet-600' : 'text-gray-300'}`} />
+                                                            <span className="font-bold text-gray-900">{g.name}</span>
+                                                        </td>
+                                                        <td className="px-4 py-3 text-center">{g.orders.length} order{g.orders.length !== 1 ? 's' : ''}</td>
+                                                        <td className="px-4 py-3 text-right pr-6 font-extrabold text-violet-600">{g.lunches} lunch{g.lunches !== 1 ? 'es' : ''}</td>
+                                                    </tr>,
+                                                    isGuideExpanded && (
+                                                        <tr key={`guide-detail-${idx}`} className="bg-white">
+                                                            <td colSpan={3} className="p-0 border-b border-gray-100">
+                                                                <div className="p-4 bg-gray-50/30 overflow-x-auto border-t border-gray-100">
+                                                                    <div className="max-w-7xl mx-auto border border-gray-150 rounded-2xl overflow-hidden shadow-sm bg-white">
+                                                                        <Table>
+                                                                            <TableHeader className="bg-gray-50/50">
+                                                                                <TableRow className="hover:bg-transparent border-gray-100">
+                                                                                    <TableHead className="w-[50px] pl-6 py-3">
+                                                                                        <Checkbox
+                                                                                            checked={allSelected}
+                                                                                            onCheckedChange={toggleAll}
+                                                                                            className="rounded-md border-gray-300 data-[state=checked]:bg-violet-600 data-[state=checked]:border-violet-600"
+                                                                                        />
+                                                                                    </TableHead>
+                                                                                    <TableHead className="w-[32px] py-3" />
+                                                                                    <TableHead className="font-bold text-gray-900 py-3 text-xs">Customer</TableHead>
+                                                                                    <TableHead className="font-bold text-gray-900 py-3 text-xs">Company</TableHead>
+                                                                                    <TableHead className="font-bold text-gray-900 py-3 text-xs">Tour Date</TableHead>
+                                                                                    <TableHead className="font-bold text-gray-900 py-3 text-xs">Placed At</TableHead>
+                                                                                    <TableHead className="font-bold text-gray-900 py-3 text-xs">Items</TableHead>
+                                                                                    <TableHead className="font-bold text-gray-900 py-3 text-xs">Status</TableHead>
+                                                                                    <TableHead className="font-bold text-gray-900 py-3 text-center text-xs pr-6">Actions</TableHead>
+                                                                                </TableRow>
+                                                                            </TableHeader>
+                                                                            <TableBody>
+                                                                                {g.orders.flatMap((order: any) => 
+                                                                                    renderOrderRow(order, expanded === order.id, () => setExpanded(expanded === order.id ? null : order.id))
+                                                                                )}
+                                                                            </TableBody>
+                                                                        </Table>
+                                                                    </div>
+                                                                </div>
+                                                            </td>
+                                                        </tr>
+                                                    )
+                                                ];
+                                            })}
+                                            {searchStats.guides.length === 0 && (
+                                                <tr>
+                                                    <td colSpan={3} className="px-4 py-6 text-center text-gray-400 italic">No guides found in this search result</td>
+                                                </tr>
+                                            )}
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        )}
+                    </CardContent>
+                </Card>
+            )}
+
             {/* Table */}
             {filtered.length === 0 ? (
                 <Card className="rounded-3xl border-gray-100 shadow-sm overflow-hidden">
@@ -2102,246 +2571,9 @@ export function OrdersClient({
                             </TableRow>
                         </TableHeader>
                         <TableBody>
-                            {sorted.flatMap((order) => {
-                                const rows = [
-                                    <TableRow
-                                        key={order.id}
-                                        className={`cursor-pointer transition-all duration-200 border-b border-gray-100 group relative ${
-                                            expanded === order.id 
-                                                ? 'bg-violet-50/50' 
-                                                : 'hover:bg-gray-50/80'
-                                        }`}
-                                        onClick={() => setExpanded(expanded === order.id ? null : order.id)}
-                                    >
-                                        <TableCell className={`pl-6 py-4 relative ${expanded === order.id ? 'after:absolute after:left-0 after:top-0 after:bottom-0 after:w-1 after:bg-violet-600' : ''}`} onClick={e => e.stopPropagation()}>
-                                            <Checkbox
-                                                checked={selected.has(order.id)}
-                                                onCheckedChange={() => toggleSelect(order.id)}
-                                                className="rounded-md border-gray-300 data-[state=checked]:bg-violet-600 data-[state=checked]:border-violet-600"
-                                            />
-                                        </TableCell>
-                                        <TableCell className="py-4">
-                                            <ChevronRight className={`size-4 text-gray-300 group-hover:text-gray-500 transition-transform duration-300 ${expanded === order.id ? 'rotate-90 text-violet-600' : ''}`} />
-                                        </TableCell>
-                                        <TableCell className="py-4">
-                                            <div className="flex items-center gap-3">
-                                                <div className={`size-9 rounded-xl flex items-center justify-center text-[13px] font-black transition-all ${
-                                                    expanded === order.id 
-                                                        ? 'bg-violet-600 text-white shadow-sm' 
-                                                        : 'bg-gray-100 text-gray-600 group-hover:bg-violet-100 group-hover:text-violet-700'
-                                                }`}>
-                                                    {(order.guide_name || order.customer_name)?.charAt(0).toUpperCase() || '?'}
-                                                </div>
-                                                <div>
-                                                    <div className="flex items-center gap-1.5">
-                                                        <p className="font-bold text-[13.5px] text-gray-900">{order.guide_name || order.customer_name}</p>
-                                                        {order.is_locked && <Lock className="size-3 text-amber-500" />}
-                                                    </div>
-                                                </div>
-                                            </div>
-                                        </TableCell>
-                                        <TableCell className="py-3">
-                                            <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-gray-100/50 border border-gray-200/50 text-[11px] font-bold text-gray-600">
-                                                <Building2 className="size-3 text-gray-400" />
-                                                {order.tour_companies?.name || 'Individual'}
-                                            </div>
-                                        </TableCell>
-                                        <TableCell className="py-3">
-                                            <div className="flex flex-col">
-                                                <span className="text-[13px] font-bold text-gray-900">{formatDateUS(order.tour_date)}</span>
-                                                <span className="text-[10px] font-semibold text-gray-400 uppercase tracking-tight">{order.pickup_time || 'No time set'}</span>
-                                            </div>
-                                        </TableCell>
-                                        <TableCell className="py-3">
-                                            <div className="flex flex-col">
-                                                <span className="text-[13px] font-semibold text-gray-400">
-                                                    {isMounted ? formatDateUS(order.created_at) : ''}
-                                                </span>
-                                                <span className="text-[10px] font-semibold text-gray-400 uppercase tracking-tight">
-                                                    {isMounted ? new Date(order.created_at).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }) : ''}
-                                                </span>
-                                            </div>
-                                        </TableCell>
-                                        <TableCell className="py-3 text-left">
-                                            <div className="flex flex-col items-start gap-1">
-                                                <div className="flex items-center gap-2">
-                                                    <div className="size-7 rounded-lg bg-violet-50 flex items-center justify-center text-[11px] font-extrabold text-violet-600 border border-violet-100">
-                                                        {order.order_items?.reduce((acc: number, item: any) => acc + item.quantity, 0) || 0}
-                                                    </div>
-                                                    <span className="text-[12px] font-bold text-gray-900">Total Items</span>
-                                                </div>
-                                                <div className="flex flex-col items-start gap-0.5 ml-1">
-                                                    {order.order_items?.slice(0, 5).map((item: any, i: number) => (
-                                                        <p key={i} className="text-[10px] font-medium text-gray-500 leading-tight">
-                                                            <span className="font-bold text-violet-600/80">{item.quantity}x</span> {item.meal_name}
-                                                        </p>
-                                                    ))}
-                                                    {order.order_items && order.order_items.length > 5 && (
-                                                        <p className="text-[9px] font-bold text-violet-500 italic mt-0.5">
-                                                            {order.order_items.length - 5} more items
-                                                        </p>
-                                                    )}
-                                                </div>
-                                            </div>
-                                        </TableCell>
-                                        <TableCell className="py-3">
-                                            <div className="flex items-center gap-1.5 flex-wrap">
-                                                <Badge variant="outline" className={`
-                                                    ${order.status === 'pending' ? 'bg-amber-50 text-amber-700 border-amber-200' : ''}
-                                                    ${order.status === 'ticket_created' ? 'bg-blue-50 text-blue-700 border-blue-200' : ''}
-                                                    ${order.status === 'fulfilled' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : ''}
-                                                    ${order.status === 'cancelled' ? 'bg-rose-50 text-rose-700 border-rose-200' : ''}
-                                                `}>
-                                                    {STATUS_LABELS[order.status] || order.status}
-                                                </Badge>
-                                                {(() => {
-                                                    const pendingReq = (order as any).order_change_requests?.find((r: any) => r.status === 'pending');
-                                                    if (pendingReq) {
-                                                        return (
-                                                            <Badge 
-                                                                variant="outline" 
-                                                                onClick={(e) => handleBadgeClick(e, order.id)}
-                                                                className="rounded-lg px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wider bg-blue-50 text-blue-700 border-blue-200 animate-pulse cursor-pointer hover:bg-blue-100 transition-colors"
-                                                            >
-                                                                Pending {pendingReq.type === 'delete' ? 'Deletion' : pendingReq.type === 'cancel' ? 'Cancellation' : 'Edit'}
-                                                            </Badge>
-                                                        );
-                                                    }
-                                                    return null;
-                                                })()}
-                                            </div>
-                                        </TableCell>
-                                        <TableCell className="py-4 text-center pr-6" onClick={e => e.stopPropagation()}>
-                                            <DropdownMenu>
-                                                <DropdownMenuTrigger className={cn(
-                                                    buttonVariants({ variant: 'ghost', size: 'icon' }),
-                                                    "h-9 w-9 p-0 rounded-xl hover:bg-violet-50 hover:text-violet-600 transition-all"
-                                                )}>
-                                                    <MoreHorizontal className="size-4" />
-                                                </DropdownMenuTrigger>
-                                                <DropdownMenuContent align="end" className="w-[180px] rounded-xl border-gray-100 shadow-xl p-1 bg-white">
-                                                    <DropdownMenuGroup>
-                                                        <DropdownMenuLabel className="text-[10px] font-bold text-gray-400 uppercase tracking-widest px-3 py-2">Actions</DropdownMenuLabel>
-                                                    </DropdownMenuGroup>
-                                                    <DropdownMenuItem 
-                                                        className="rounded-lg gap-2 font-bold text-gray-700 focus:bg-violet-50 focus:text-violet-700 cursor-pointer"
-                                                        onClick={() => {
-                                                            setEditingOrder(order);
-                                                            setCustomerName(order.customer_name || '');
-                                                            setGuideName(order.guide_name || '');
-                                                            setTourDate(order.tour_date || '');
-                                                            setPickupTime(order.pickup_time || '');
-                                                            setNotes(order.notes || '');
-                                                            setCompanyId(order.company_id || null);
-                                                            setEditItems(JSON.parse(JSON.stringify(order.order_items || [])));
-                                                            setIsEditDialogOpen(true);
-                                                        }}
-                                                    >
-                                                        <Pencil className="size-3.5" /> Edit Order
-                                                    </DropdownMenuItem>
- 
-                                                    <DropdownMenuSub>
-                                                        <DropdownMenuSubTrigger className="rounded-lg gap-2 font-bold text-gray-700 focus:bg-violet-50 focus:text-violet-700 cursor-pointer">
-                                                            <ListFilter className="size-3.5" /> Change Status
-                                                        </DropdownMenuSubTrigger>
-                                                        <DropdownMenuSubContent className="rounded-xl border-gray-100 shadow-xl p-1 ml-1 bg-white">
-                                                            {Object.entries(STATUS_LABELS).map(([value, label]) => (
-                                                                <DropdownMenuItem
-                                                                    key={value}
-                                                                    className="rounded-lg gap-2 font-bold text-gray-700 focus:bg-violet-50 focus:text-violet-700 cursor-pointer"
-                                                                    onClick={() => handleStatus(order.id, value)}
-                                                                >
-                                                                    {order.status === value && <Check className="size-3 text-violet-600" />}
-                                                                    <span className={order.status === value ? 'text-violet-600 pl-0' : 'pl-5'}>{label}</span>
-                                                                </DropdownMenuItem>
-                                                            ))}
-                                                        </DropdownMenuSubContent>
-                                                    </DropdownMenuSub>
- 
-                                                    <DropdownMenuSeparator className="bg-gray-100 my-1" />
-                                                    
-                                                    <DropdownMenuItem 
-                                                        className="rounded-lg gap-2 font-bold text-rose-600 focus:bg-rose-50 focus:text-rose-700 cursor-pointer"
-                                                        onClick={() => handleDelete(order.id)}
-                                                    >
-                                                        <Trash2 className="size-3.5" /> Delete Order
-                                                    </DropdownMenuItem>
-                                                </DropdownMenuContent>
-                                            </DropdownMenu>
-                                        </TableCell>
-                                    </TableRow>
-                                ];
- 
-                                if (expanded === order.id) {
-                                    rows.push(
-                                        <TableRow key={`${order.id}-detail`} className="border-none hover:bg-transparent">
-                                            <TableCell colSpan={9} className="p-0 border-b border-gray-100">
-                                                <div className="bg-gray-50/50 px-6 py-8 border-t border-gray-100">
-                                                    <div className="max-w-3xl mx-auto">
-                                                        {/* Single Unified Card */}
-                                                        <div className="bg-white rounded-[24px] border border-gray-200 shadow-sm overflow-hidden divide-y divide-gray-100">
-                                                            {/* Section 1: Items List */}
-                                                            <div className="divide-y divide-gray-100/70">
-                                                                {order.order_items?.map((item: any, i: number) => (
-                                                                    <div key={i} className="flex items-center justify-between p-4 hover:bg-gray-50/50 transition-colors">
-                                                                        <div className="flex items-center gap-4">
-                                                                            <div className="font-black text-violet-600 text-base w-8">
-                                                                                {item.quantity}x
-                                                                            </div>
-                                                                            <div className="space-y-0.5">
-                                                                                <p className="font-extrabold text-base text-gray-900 leading-tight">{item.meal_name}</p>
-                                                                                <OrderItemDetails item={item} />
-                                                                            </div>
-                                                                        </div>
-                                                                        <div className="text-right ml-8">
-                                                                            <p className="font-bold text-base text-gray-900 tracking-tight">${(item.unit_price * item.quantity).toFixed(2)}</p>
-                                                                            <p className="text-xs text-gray-400 font-semibold uppercase tracking-wider">${item.unit_price.toFixed(2)} ea</p>
-                                                                        </div>
-                                                                    </div>
-                                                                ))}
-                                                            </div>
- 
-                                                            {order.notes && (
-                                                                <div className="bg-amber-50/30 p-6">
-                                                                    <span className="text-[11px] font-black text-amber-700 uppercase tracking-[0.2em] block mb-2">KITCHEN NOTES</span>
-                                                                    <p className="text-[15px] text-amber-900 font-black italic leading-relaxed">&ldquo;{order.notes}&rdquo;</p>
-                                                                </div>
-                                                            )}
- 
-                                                            <div className="flex items-center justify-between p-6 bg-gray-50/30">
-                                                                <div className="flex items-center gap-10">
-                                                                    <div className="flex flex-col">
-                                                                        <span className="text-[11px] font-bold text-gray-400 uppercase tracking-wider">Pickup</span>
-                                                                        <span className="text-[14px] font-black text-gray-900">{order.pickup_time || 'N/A'}</span>
-                                                                    </div>
-                                                                    <div className="flex flex-col">
-                                                                        <span className="text-[11px] font-bold text-gray-400 uppercase tracking-wider">Payment</span>
-                                                                        <span className="text-[14px] font-black text-gray-900 capitalize">{order.payment_status?.replace('_', ' ')}</span>
-                                                                    </div>
-                                                                    <div className="flex flex-col">
-                                                                        <span className="text-[11px] font-bold text-gray-400 uppercase tracking-wider">Placed At</span>
-                                                                        <span className="text-[14px] font-black text-gray-900">
-                                                                            {isMounted ? new Date(order.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : ''}
-                                                                        </span>
-                                                                    </div>
-                                                                </div>
-                                                                
-                                                                <div className="text-right flex items-center gap-4">
-                                                                    <span className="text-[12px] font-bold text-gray-400 uppercase tracking-widest">TOTAL AMOUNT</span>
-                                                                    <span className="text-[20px] font-black text-violet-600 tracking-tighter">
-                                                                        ${order.order_items?.reduce((acc: number, item: any) => acc + (Number(item.unit_price) * item.quantity), 0).toFixed(2)}
-                                                                    </span>
-                                                                </div>
-                                                            </div>
-                                                        </div>
-                                                    </div>
-                                                </div>
-                                            </TableCell>
-                                        </TableRow>
-                                    );
-                                }
-                                return rows;
-                            })}
+                            {sorted.flatMap((order) => 
+                                renderOrderRow(order, expanded === order.id, () => setExpanded(expanded === order.id ? null : order.id))
+                            )}
                         </TableBody>
                     </Table>
                 </Card>
