@@ -156,6 +156,7 @@ export async function submitSupabaseOrder(orderData: any, items: any[]) {
             guest_name: item.guest_name || null,
             customizations: item.customizations || null,
             unit_price: item.unitPrice,
+            is_comped: item.is_comped || false,
             custom_fields: item.dynamic_fields || {}
         }));
 

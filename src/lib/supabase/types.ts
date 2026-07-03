@@ -109,6 +109,7 @@ export interface OrderItem {
     cookie_choice: string | null;
     customizations: string | null;
     unit_price: number;
+    is_comped?: boolean;
     created_at: string;
 }
 

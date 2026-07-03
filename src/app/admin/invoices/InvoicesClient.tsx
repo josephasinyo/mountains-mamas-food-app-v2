@@ -135,11 +135,17 @@ export function InvoicesClient({ companies, initialInvoices }: InvoicesClientPro
     const [perLunchDiscountRate, setPerLunchDiscountRate] = useState<string>('0');
     const [perLunchDiscountCount, setPerLunchDiscountCount] = useState<string>('0');
 
-    // Calculate total lunches from selected orders
+    // Consolidated Invoicing State
+    const [invoiceStyle, setInvoiceStyle] = useState<'detailed' | 'consolidated'>('detailed');
+    const [customDescription, setCustomDescription] = useState<string>('');
+    const [customLunchCount, setCustomLunchCount] = useState<string>('');
+    const [customLunchPrice, setCustomLunchPrice] = useState<string>('');
+
+    // Calculate total non-comped lunches from selected orders
     const totalLunches = orders
         .filter(order => selectedOrderIds.has(order.id))
         .reduce((sum, order) => {
-            return sum + order.order_items.reduce((itemSum: number, item: any) => itemSum + item.quantity, 0);
+            return sum + order.order_items.reduce((itemSum: number, item: any) => itemSum + (item.is_comped ? 0 : item.quantity), 0);
         }, 0);
 
     // Auto-clamp discount count when totalLunches changes and exceeds the limit
@@ -169,6 +175,13 @@ export function InvoicesClient({ companies, initialInvoices }: InvoicesClientPro
             setSelectedOrderIds(new Set());
         }
     }, [activeCompanyId, activeStartDate, activeEndDate]);
+
+    // Sync default consolidated description with selected period
+    useEffect(() => {
+        if (activeStartDate && activeEndDate) {
+            setCustomDescription(`Consolidated Lunch Catering for ${formatDateUS(activeStartDate)} — ${formatDateUS(activeEndDate)}`);
+        }
+    }, [activeStartDate, activeEndDate]);
 
     const handleSearch = () => {
         setActiveCompanyId(selectedCompanyId);
@@ -220,23 +233,25 @@ export function InvoicesClient({ companies, initialInvoices }: InvoicesClientPro
 
     // Calculate aggregated meals for review
     const getAggregatedMeals = () => {
-        const aggregations: Record<string, { meal_name: string; box_type: string; quantity: number; total_price: number }> = {};
+        const aggregations: Record<string, { meal_name: string; box_type: string; quantity: number; total_price: number; is_comped: boolean }> = {};
         
         orders.forEach(order => {
             if (!selectedOrderIds.has(order.id)) return;
             
             order.order_items.forEach((item: any) => {
-                const key = `${item.meal_name}-${item.box_type || 'Box Lunch'}`;
+                const isComped = item.is_comped === true;
+                const key = `${item.meal_name}-${item.box_type || 'Box Lunch'}-${isComped ? 'comp' : 'regular'}`;
                 if (!aggregations[key]) {
                     aggregations[key] = {
-                        meal_name: item.meal_name,
+                        meal_name: isComped ? `${item.meal_name} (Comped)` : item.meal_name,
                         box_type: item.box_type || 'Box Lunch',
                         quantity: 0,
-                        total_price: 0
+                        total_price: 0,
+                        is_comped: isComped
                     };
                 }
                 aggregations[key].quantity += item.quantity;
-                aggregations[key].total_price += item.quantity * item.unit_price;
+                aggregations[key].total_price += item.quantity * (isComped ? 0 : item.unit_price);
             });
         });
 
@@ -245,19 +260,26 @@ export function InvoicesClient({ companies, initialInvoices }: InvoicesClientPro
 
     const getEstimatedTotal = () => {
         let subtotal = 0;
-        orders.forEach(order => {
-            if (!selectedOrderIds.has(order.id)) return;
-            order.order_items.forEach((item: any) => {
-                subtotal += item.quantity * item.unit_price;
+        if (invoiceStyle === 'detailed') {
+            orders.forEach(order => {
+                if (!selectedOrderIds.has(order.id)) return;
+                order.order_items.forEach((item: any) => {
+                    const price = item.is_comped ? 0 : item.unit_price;
+                    subtotal += item.quantity * price;
+                });
             });
-        });
+        } else {
+            const count = parseInt(customLunchCount) || 0;
+            const price = parseFloat(customLunchPrice) || 0;
+            subtotal = count * price;
+        }
         
         const discountPct = selectedCompany?.discount_percentage ?? 0;
         const discountAmount = subtotal * (discountPct / 100);
         const discountedSubtotalPercentage = subtotal - discountAmount;
 
         let perLunchDiscount = 0;
-        if (applyPerLunchDiscount) {
+        if (invoiceStyle === 'detailed' && applyPerLunchDiscount) {
             const rate = parseFloat(perLunchDiscountRate) || 0;
             const count = parseInt(perLunchDiscountCount) || 0;
             perLunchDiscount = rate * count;
@@ -272,22 +294,52 @@ export function InvoicesClient({ companies, initialInvoices }: InvoicesClientPro
     };
 
     const handleCreateInvoice = async () => {
-        if (!activeCompanyId || activeCompanyId === 'all' || selectedOrderIds.size === 0) {
-            toast.error('Please select at least one order to invoice.');
-            return;
+        if (invoiceStyle === 'detailed') {
+            if (!activeCompanyId || activeCompanyId === 'all' || selectedOrderIds.size === 0) {
+                toast.error('Please select at least one order to invoice.');
+                return;
+            }
+        } else {
+            const count = parseInt(customLunchCount) || 0;
+            const price = parseFloat(customLunchPrice) || 0;
+            if (!activeCompanyId || activeCompanyId === 'all') {
+                toast.error('Please select a tour company.');
+                return;
+            }
+            if (!customDescription.trim()) {
+                toast.error('Please enter a line item description.');
+                return;
+            }
+            if (count <= 0) {
+                toast.error('Please enter a valid number of lunches.');
+                return;
+            }
+            if (price <= 0) {
+                toast.error('Please enter a valid price per lunch.');
+                return;
+            }
         }
 
         setGenerating(true);
         const toastId = toast.loading('Generating invoice draft on Stripe...');
 
         try {
-            const discountRateNum = applyPerLunchDiscount ? (parseFloat(perLunchDiscountRate) || 0) : 0;
-            const discountCountNum = applyPerLunchDiscount ? (parseInt(perLunchDiscountCount) || 0) : 0;
+            const discountRateNum = invoiceStyle === 'detailed' && applyPerLunchDiscount ? (parseFloat(perLunchDiscountRate) || 0) : 0;
+            const discountCountNum = invoiceStyle === 'detailed' && applyPerLunchDiscount ? (parseInt(perLunchDiscountCount) || 0) : 0;
 
             const res = await generateCompanyInvoice(
-                Array.from(selectedOrderIds),
+                selectedOrderIds.size > 0 ? Array.from(selectedOrderIds) : [],
                 discountRateNum,
-                discountCountNum
+                discountCountNum,
+                {
+                    hideDetails: invoiceStyle === 'consolidated',
+                    customDescription: customDescription.trim(),
+                    customLunchCount: parseInt(customLunchCount) || 0,
+                    customLunchPrice: parseFloat(customLunchPrice) || 0,
+                    companyId: activeCompanyId,
+                    startDate: activeStartDate,
+                    endDate: activeEndDate
+                }
             );
             if (res.success) {
                 toast.success('Invoice draft created! Send it to the company using the Send button in the ledger.', { id: toastId });
@@ -303,6 +355,9 @@ export function InvoicesClient({ companies, initialInvoices }: InvoicesClientPro
                 setApplyPerLunchDiscount(false);
                 setPerLunchDiscountRate('0');
                 setPerLunchDiscountCount('0');
+                setCustomLunchCount('');
+                setCustomLunchPrice('');
+                setCustomDescription(`Consolidated Lunch Catering for ${formatDateUS(activeStartDate)} — ${formatDateUS(activeEndDate)}`);
                 loadEligibleOrders(activeCompanyId, activeStartDate, activeEndDate);
             } else {
                 toast.error(res.error || 'Failed to generate invoice', { id: toastId });
@@ -593,6 +648,51 @@ export function InvoicesClient({ companies, initialInvoices }: InvoicesClientPro
                         </div>
                     </div>
 
+                    {/* Invoice Style Selector */}
+                    <div className="mt-5 pt-5 border-t border-gray-100 space-y-2">
+                        <Label className="text-xs font-bold text-gray-500 uppercase tracking-wider flex items-center gap-1.5">
+                            <FileText className="size-3.5 text-violet-500" /> Invoice Line Items Style
+                        </Label>
+                        <div className="flex flex-col sm:flex-row gap-4 bg-gray-50/50 p-2 rounded-2xl border border-gray-150">
+                            <label className={cn(
+                                "flex-1 flex items-center gap-3 p-3.5 rounded-xl border-2 cursor-pointer transition-all bg-white",
+                                invoiceStyle === 'detailed' 
+                                    ? "border-violet-600 bg-violet-50/10 shadow-sm" 
+                                    : "border-transparent hover:border-gray-200"
+                            )}>
+                                <input
+                                    type="radio"
+                                    name="invoice-style"
+                                    checked={invoiceStyle === 'detailed'}
+                                    onChange={() => setInvoiceStyle('detailed')}
+                                    className="text-violet-600 focus:ring-violet-500 size-4 cursor-pointer"
+                                />
+                                <div className="text-left">
+                                    <p className="text-xs font-black text-gray-900">Detailed Invoice</p>
+                                    <p className="text-[10px] text-gray-500 font-bold uppercase mt-0.5 tracking-wider">Itemize every selected lunch separately on the invoice</p>
+                                </div>
+                            </label>
+                            <label className={cn(
+                                "flex-1 flex items-center gap-3 p-3.5 rounded-xl border-2 cursor-pointer transition-all bg-white",
+                                invoiceStyle === 'consolidated' 
+                                    ? "border-violet-600 bg-violet-50/10 shadow-sm" 
+                                    : "border-transparent hover:border-gray-200"
+                            )}>
+                                <input
+                                    type="radio"
+                                    name="invoice-style"
+                                    checked={invoiceStyle === 'consolidated'}
+                                    onChange={() => setInvoiceStyle('consolidated')}
+                                    className="text-violet-600 focus:ring-violet-500 size-4 cursor-pointer"
+                                />
+                                <div className="text-left">
+                                    <p className="text-xs font-black text-gray-900">Consolidated Invoice</p>
+                                    <p className="text-[10px] text-gray-500 font-bold uppercase mt-0.5 tracking-wider">Hide lunch details and specify a custom lunch quantity and price</p>
+                                </div>
+                            </label>
+                        </div>
+                    </div>
+
                     <div className="flex justify-end pt-5 border-t border-gray-100 mt-5">
                         <Button
                             onClick={handleSearch}
@@ -612,266 +712,368 @@ export function InvoicesClient({ companies, initialInvoices }: InvoicesClientPro
                         <Loader2 className="size-8 animate-spin text-violet-600 mb-4" />
                         <p className="text-sm font-bold text-gray-600">Retrieving eligible unpaid orders...</p>
                     </div>
-                ) : orders.length > 0 ? (
+                ) : (orders.length > 0 || invoiceStyle === 'consolidated') ? (
                     <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 items-start">
                         {/* List & Selection */}
                         <div className="lg:col-span-2 space-y-6">
-                            {/* Checklist Table */}
-                            <Card className="shadow-sm border-gray-100 bg-white overflow-hidden">
-                                <div className="p-5 border-b border-gray-100 flex items-center justify-between">
-                                    <div>
-                                        <h3 className="font-black text-gray-900 text-base">Select Orders to Invoice</h3>
-                                        <p className="text-[11px] text-gray-400 font-bold uppercase mt-0.5 tracking-wider">
-                                            {selectedOrderIds.size} of {orders.length} tours selected for billing
-                                        </p>
+                            {orders.length > 0 ? (
+                                <Card className="shadow-sm border-gray-100 bg-white overflow-hidden">
+                                    <div className="p-5 border-b border-gray-100 flex items-center justify-between">
+                                        <div>
+                                            <h3 className="font-black text-gray-900 text-base">Select Orders to Invoice</h3>
+                                            <p className="text-[11px] text-gray-400 font-bold uppercase mt-0.5 tracking-wider">
+                                                {selectedOrderIds.size} of {orders.length} tours selected for billing
+                                            </p>
+                                        </div>
+                                        <div className="flex items-center gap-2">
+                                            {invoiceStyle === 'consolidated' && (
+                                                <Badge className="bg-violet-50 text-violet-700 hover:bg-violet-50 border border-violet-100/50 text-[10px] font-bold px-2 py-1 rounded-lg">
+                                                    Consolidated Mode
+                                                </Badge>
+                                            )}
+                                            <Button
+                                                variant="outline"
+                                                size="sm"
+                                                onClick={toggleAllOrders}
+                                                className="h-8 text-xs font-bold border-gray-200 rounded-lg hover:bg-gray-50 text-gray-700 cursor-pointer"
+                                            >
+                                                {selectedOrderIds.size === orders.length ? 'Deselect All' : 'Select All'}
+                                            </Button>
+                                        </div>
                                     </div>
-                                    <Button
-                                        variant="outline"
-                                        size="sm"
-                                        onClick={toggleAllOrders}
-                                        className="h-8 text-xs font-bold border-gray-200 rounded-lg hover:bg-gray-50 text-gray-700 cursor-pointer"
-                                    >
-                                        {selectedOrderIds.size === orders.length ? 'Deselect All' : 'Select All'}
-                                    </Button>
-                                </div>
-                                <div className="overflow-x-auto">
-                                    <Table>
-                                        <TableHeader className="bg-gray-50/50">
-                                            <TableRow>
-                                                <TableHead className="w-12 text-center"></TableHead>
-                                                <TableHead className="font-bold text-xs uppercase tracking-wider text-gray-500">Tour Date</TableHead>
-                                                <TableHead className="font-bold text-xs uppercase tracking-wider text-gray-500">Lead Name / Guide</TableHead>
-                                                <TableHead className="font-bold text-xs uppercase tracking-wider text-gray-500">Box Summary</TableHead>
-                                                <TableHead className="font-bold text-xs uppercase tracking-wider text-gray-500 text-right">Price</TableHead>
-                                            </TableRow>
-                                        </TableHeader>
-                                        <TableBody>
-                                            {orders.map((order) => {
-                                                const orderTotal = order.order_items.reduce((sum: number, i: any) => sum + (i.quantity * i.unit_price), 0);
-                                                const itemsSummary = order.order_items.map((i: any) => `${i.quantity}x ${i.meal_name}`).join(', ');
+                                    <div className="overflow-x-auto">
+                                        <Table>
+                                            <TableHeader className="bg-gray-50/50">
+                                                <TableRow>
+                                                    <TableHead className="w-12 text-center"></TableHead>
+                                                    <TableHead className="font-bold text-xs uppercase tracking-wider text-gray-500">Tour Date</TableHead>
+                                                    <TableHead className="font-bold text-xs uppercase tracking-wider text-gray-500">Lead Name / Guide</TableHead>
+                                                    <TableHead className="font-bold text-xs uppercase tracking-wider text-gray-500">Box Summary</TableHead>
+                                                    <TableHead className="font-bold text-xs uppercase tracking-wider text-gray-500 text-right">Price</TableHead>
+                                                </TableRow>
+                                            </TableHeader>
+                                            <TableBody>
+                                                {orders.map((order) => {
+                                                    const orderTotal = order.order_items.reduce((sum: number, i: any) => sum + (i.quantity * i.unit_price), 0);
+                                                    const itemsSummary = order.order_items.map((i: any) => `${i.quantity}x ${i.meal_name}`).join(', ');
 
-                                                return (
-                                                    <TableRow 
-                                                        key={order.id}
-                                                        className={cn(
-                                                            "hover:bg-gray-50/50 cursor-pointer transition-colors",
-                                                            selectedOrderIds.has(order.id) && "bg-violet-50/20"
-                                                        )}
-                                                        onClick={() => toggleOrder(order.id)}
-                                                    >
-                                                        <TableCell className="text-center" onClick={(e) => e.stopPropagation()}>
-                                                            <input
-                                                                type="checkbox"
-                                                                checked={selectedOrderIds.has(order.id)}
-                                                                onChange={() => toggleOrder(order.id)}
-                                                                className="rounded border-gray-300 text-violet-600 focus:ring-violet-500 size-4 cursor-pointer"
-                                                            />
-                                                        </TableCell>
-                                                        <TableCell className="font-bold text-gray-800 text-xs whitespace-nowrap">
-                                                            {formatDateUS(order.tour_date)}
-                                                        </TableCell>
-                                                        <TableCell className="font-black text-gray-900 text-xs">
-                                                            {order.customer_name}
-                                                        </TableCell>
-                                                        <TableCell className="text-xs text-gray-500 max-w-[200px] truncate font-medium">
-                                                            {itemsSummary}
-                                                        </TableCell>
-                                                        <TableCell className="font-black text-gray-900 text-xs text-right">
-                                                            ${orderTotal.toFixed(2)}
-                                                        </TableCell>
-                                                    </TableRow>
-                                                );
-                                            })}
-                                        </TableBody>
-                                    </Table>
-                                </div>
-                            </Card>
+                                                    return (
+                                                        <TableRow 
+                                                            key={order.id}
+                                                            className={cn(
+                                                                "hover:bg-gray-50/50 cursor-pointer transition-colors",
+                                                                selectedOrderIds.has(order.id) && "bg-violet-50/20"
+                                                            )}
+                                                            onClick={() => toggleOrder(order.id)}
+                                                        >
+                                                            <TableCell className="text-center" onClick={(e) => e.stopPropagation()}>
+                                                                <input
+                                                                    type="checkbox"
+                                                                    checked={selectedOrderIds.has(order.id)}
+                                                                    onChange={() => toggleOrder(order.id)}
+                                                                    className="rounded border-gray-300 text-violet-600 focus:ring-violet-500 size-4 cursor-pointer"
+                                                                />
+                                                            </TableCell>
+                                                            <TableCell className="font-bold text-gray-800 text-xs whitespace-nowrap">
+                                                                {formatDateUS(order.tour_date)}
+                                                            </TableCell>
+                                                            <TableCell className="font-black text-gray-900 text-xs">
+                                                                {order.customer_name}
+                                                            </TableCell>
+                                                            <TableCell className="text-xs text-gray-500 max-w-[200px] truncate font-medium">
+                                                                {itemsSummary}
+                                                            </TableCell>
+                                                            <TableCell className="font-black text-gray-900 text-xs text-right">
+                                                                ${orderTotal.toFixed(2)}
+                                                            </TableCell>
+                                                        </TableRow>
+                                                    );
+                                                })}
+                                            </TableBody>
+                                        </Table>
+                                    </div>
+                                </Card>
+                            ) : (
+                                <Card className="shadow-sm border-gray-100 bg-white/50 border-dashed py-16 flex flex-col items-center justify-center text-center p-6">
+                                    <div className="size-16 rounded-full bg-violet-50 text-violet-600 flex items-center justify-center mb-4">
+                                        <ClipboardList className="size-8 animate-pulse" />
+                                    </div>
+                                    <h3 className="text-lg font-black text-gray-900">No Unpaid Orders Found</h3>
+                                    <p className="text-xs text-gray-400 font-bold uppercase mt-1 tracking-wider">Standalone Billing Mode</p>
+                                    <p className="text-xs text-gray-500 font-medium max-w-sm mt-2 px-6">
+                                        Since there are no unpaid fulfilled orders in this period, you can create a custom standalone invoice. Fill out the lunch count and unit price in the sidebar.
+                                    </p>
+                                </Card>
+                            )}
                         </div>
-
+ 
                         {/* Invoice Builder / Aggregations Sidebar */}
                         <div className="space-y-6">
-                            {/* Aggregated Preview Card */}
-                            <Card className="shadow-sm border-gray-100 bg-white">
-                                <div className="p-5 border-b border-gray-100">
-                                    <h3 className="font-black text-gray-900 text-base flex items-center gap-2">
-                                        <ClipboardList className="size-4.5 text-violet-500" /> Meal Box Aggregations
-                                    </h3>
-                                    <p className="text-[11px] text-gray-400 font-bold uppercase mt-0.5 tracking-wider">
-                                        Aggregated quantity for Stripe invoice lines
-                                    </p>
-                                </div>
-                                <CardContent className="p-5 space-y-4">
-                                    {aggregatedMeals.length > 0 ? (
-                                        <div className="divide-y divide-gray-100">
-                                            {aggregatedMeals.map((agg, idx) => (
-                                                <div key={idx} className="py-3 flex items-center justify-between first:pt-0 last:pb-0">
-                                                    <div>
-                                                        <p className="text-xs font-black text-gray-900">{agg.meal_name}</p>
-                                                        <p className="text-[10px] text-gray-400 font-bold uppercase tracking-wider">{agg.box_type}</p>
-                                                    </div>
-                                                    <div className="text-right">
-                                                        <p className="text-xs font-bold text-gray-900">{agg.quantity} lunches</p>
-                                                        <p className="text-[10px] text-violet-600 font-black">${agg.total_price.toFixed(2)}</p>
-                                                    </div>
-                                                </div>
-                                            ))}
-                                        </div>
-                                    ) : (
-                                        <div className="py-6 text-center text-xs text-gray-400 font-medium">
-                                            No lunches to aggregate. Select orders to see counts.
-                                        </div>
-                                    )}
-                                </CardContent>
-                            </Card>
-
-                            {/* Summary Card and Generate Action */}
-                            <Card className="shadow-lg border border-violet-100 bg-violet-50/30 overflow-hidden relative">
-                                <div className="absolute top-0 right-0 p-6 opacity-5">
-                                    <ScrollText className="size-36 text-violet-900" />
-                                </div>
-                                <CardContent className="p-6 space-y-6 relative z-10">
-                                    <div>
-                                        <Badge className="bg-violet-600 hover:bg-violet-600 text-white rounded-full font-bold uppercase tracking-widest text-[9px] px-2.5 py-0.5 shadow-sm">
-                                            Billing Summary
-                                        </Badge>
-                                        <h4 className="text-lg font-black text-gray-900 mt-2.5">{selectedCompany?.name}</h4>
+                            {/* Aggregated Preview Card or Consolidated Inputs */}
+                            {invoiceStyle === 'detailed' ? (
+                                <Card className="shadow-sm border-gray-100 bg-white">
+                                    <div className="p-5 border-b border-gray-100">
+                                        <h3 className="font-black text-gray-900 text-base flex items-center gap-2">
+                                            <ClipboardList className="size-4.5 text-violet-500" /> Meal Box Aggregations
+                                        </h3>
                                         <p className="text-[11px] text-gray-400 font-bold uppercase mt-0.5 tracking-wider">
-                                            Period: {formatDateUS(activeStartDate)} — {formatDateUS(activeEndDate)}
+                                            Aggregated quantity for Stripe invoice lines
                                         </p>
                                     </div>
-
-                                    <div className="space-y-3 pt-3 border-t border-violet-100">
-                                        <div className="flex justify-between text-xs text-gray-600 font-medium">
-                                            <span>Consolidated Tours</span>
-                                            <span className="font-bold text-gray-900">{selectedOrderIds.size} tours</span>
-                                        </div>
-                                        <div className="flex justify-between text-xs text-gray-600 font-medium">
-                                            <span>Total Lunches</span>
-                                            <span className="font-bold text-gray-900">
-                                                {aggregatedMeals.reduce((sum, m) => sum + m.quantity, 0)} meals
-                                            </span>
-                                        </div>
-                                        
-                                        <div className="flex justify-between text-xs text-gray-500 font-medium pt-2 mt-2 border-t border-violet-50/50">
-                                            <span>Subtotal</span>
-                                            <span className="font-bold text-gray-700">${pricing.subtotal.toFixed(2)}</span>
-                                        </div>
-
-                                        {/* Per-lunch discount selector */}
-                                        <div className="flex items-center gap-2 pt-2 border-t border-violet-50/50">
-                                            <input
-                                                type="checkbox"
-                                                id="apply-per-lunch-discount"
-                                                checked={applyPerLunchDiscount}
-                                                onChange={(e) => {
-                                                    setApplyPerLunchDiscount(e.target.checked);
-                                                    if (e.target.checked && (parseInt(perLunchDiscountCount) || 0) === 0) {
-                                                        setPerLunchDiscountCount(totalLunches.toString());
-                                                    }
-                                                }}
-                                                className="rounded border-gray-300 text-violet-600 focus:ring-violet-500 size-4 cursor-pointer"
-                                            />
-                                            <label htmlFor="apply-per-lunch-discount" className="text-xs font-bold text-gray-700 cursor-pointer">
-                                                Apply discount on some lunches
-                                            </label>
-                                        </div>
-
-                                        {applyPerLunchDiscount && (
-                                            <div className="grid grid-cols-2 gap-2 bg-violet-50/50 p-2.5 rounded-xl border border-violet-100 transition-all">
-                                                <div className="space-y-1">
-                                                    <Label htmlFor="discount-rate" className="text-[10px] font-bold text-gray-500 uppercase">
-                                                        Rate ($ off / lunch)
-                                                    </Label>
-                                                    <Input
-                                                        id="discount-rate"
-                                                        type="number"
-                                                        step="0.01"
-                                                        min="0"
-                                                        value={perLunchDiscountRate}
-                                                        onChange={(e) => setPerLunchDiscountRate(e.target.value)}
-                                                        className="h-8 text-xs font-bold bg-white border-gray-200 focus:ring-violet-500 focus:border-violet-500 rounded-lg w-full"
-                                                        placeholder="e.g. 0.50"
-                                                    />
-                                                </div>
-                                                <div className="space-y-1">
-                                                    <Label htmlFor="discount-count" className="text-[10px] font-bold text-gray-500 uppercase">
-                                                        No. of lunches (max {totalLunches})
-                                                    </Label>
-                                                    <Input
-                                                        id="discount-count"
-                                                        type="number"
-                                                        step="1"
-                                                        min="0"
-                                                        max={totalLunches}
-                                                        value={perLunchDiscountCount}
-                                                        onChange={(e) => {
-                                                            const val = parseInt(e.target.value) || 0;
-                                                            if (val > totalLunches) {
-                                                                setPerLunchDiscountCount(totalLunches.toString());
-                                                            } else {
-                                                                setPerLunchDiscountCount(e.target.value);
-                                                            }
-                                                        }}
-                                                        className="h-8 text-xs font-bold bg-white border-gray-200 focus:ring-violet-500 focus:border-violet-500 rounded-lg w-full"
-                                                        placeholder={`max ${totalLunches}`}
-                                                    />
-                                                </div>
+                                    <CardContent className="p-5 space-y-4">
+                                        {aggregatedMeals.length > 0 ? (
+                                            <div className="divide-y divide-gray-100">
+                                                {aggregatedMeals.map((agg, idx) => (
+                                                    <div key={idx} className="py-3 flex items-center justify-between first:pt-0 last:pb-0">
+                                                        <div>
+                                                            <p className="text-xs font-black text-gray-900">{agg.meal_name}</p>
+                                                            <p className="text-[10px] text-gray-400 font-bold uppercase tracking-wider">{agg.box_type}</p>
+                                                        </div>
+                                                        <div className="text-right">
+                                                            <p className="text-xs font-bold text-gray-900">{agg.quantity} lunches</p>
+                                                            <p className="text-[10px] text-violet-600 font-black">${agg.total_price.toFixed(2)}</p>
+                                                        </div>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        ) : (
+                                            <div className="py-6 text-center text-xs text-gray-400 font-medium">
+                                                No lunches to aggregate. Select orders to see counts.
                                             </div>
                                         )}
-
-                                        {applyPerLunchDiscount && pricing.perLunchDiscount > 0 && (
-                                            <div className="flex justify-between text-xs text-emerald-600 font-bold bg-emerald-50/50 -mx-2 px-2 py-1.5 rounded-lg">
-                                                <span>Per-Lunch Discount</span>
-                                                <span>-${pricing.perLunchDiscount.toFixed(2)}</span>
-                                            </div>
-                                        )}
-
-                                        {pricing.discountPct > 0 && (
-                                            <div className="flex justify-between text-xs text-emerald-600 font-bold bg-emerald-50/50 -mx-2 px-2 py-1.5 rounded-lg">
-                                                <span className="flex items-center gap-1">Company Discount ({pricing.discountPct}%)</span>
-                                                <span>-${pricing.discountAmount.toFixed(2)}</span>
-                                            </div>
-                                        )}
-                                        <div className="flex justify-between text-xs text-gray-500 font-medium">
-                                            <span>Resort Tax (4%)</span>
-                                            <span className="font-bold text-gray-700">${pricing.resortTax.toFixed(2)}</span>
-                                        </div>
-                                        <div className="flex justify-between text-xs text-gray-400 font-medium italic">
-                                            <span>Credit Card Fee (est. if paid by card)</span>
-                                            <span className="font-semibold">${pricing.processingFee.toFixed(2)}</span>
-                                        </div>
-
-                                        <div className="flex justify-between items-baseline pt-3 border-t border-dashed border-violet-200">
-                                            <span className="text-sm font-black text-gray-900">Invoice Total (Base)</span>
-                                            <span className="text-2xl font-black text-violet-700">
-                                                ${pricing.total.toFixed(2)}
-                                            </span>
-                                        </div>
+                                    </CardContent>
+                                </Card>
+                            ) : (
+                                <Card className="shadow-sm border-gray-100 bg-white">
+                                    <div className="p-5 border-b border-gray-100">
+                                        <h3 className="font-black text-gray-900 text-base flex items-center gap-2">
+                                            <FileText className="size-4.5 text-violet-500" /> Consolidated Billing Line
+                                        </h3>
+                                        <p className="text-[11px] text-gray-400 font-bold uppercase mt-0.5 tracking-wider">
+                                            Define the single billing line item details
+                                        </p>
                                     </div>
-
-                                    <Button
-                                        onClick={handleCreateInvoice}
-                                        disabled={generating || selectedOrderIds.size === 0}
-                                        className="w-full bg-violet-600 hover:bg-violet-700 text-white font-bold h-12 rounded-xl transition-all shadow-md flex items-center justify-center gap-2 group cursor-pointer disabled:opacity-50"
-                                    >
-                                        {generating ? (
+                                    <CardContent className="p-5 space-y-4">
+                                        <div className="space-y-1.5">
+                                            <Label htmlFor="custom-description" className="text-xs font-bold text-gray-700">
+                                                Line Item Description
+                                            </Label>
+                                            <Input
+                                                id="custom-description"
+                                                type="text"
+                                                value={customDescription}
+                                                onChange={(e) => setCustomDescription(e.target.value)}
+                                                className="bg-white border-gray-200 focus:ring-violet-500 focus:border-violet-500 rounded-xl h-10 font-medium text-gray-950 shadow-sm w-full"
+                                                placeholder="e.g. Box Lunches"
+                                            />
+                                        </div>
+                                        <div className="grid grid-cols-2 gap-3">
+                                            <div className="space-y-1.5">
+                                                <Label htmlFor="custom-lunch-count" className="text-xs font-bold text-gray-700">
+                                                    Lunches Count
+                                                </Label>
+                                                <Input
+                                                    id="custom-lunch-count"
+                                                    type="number"
+                                                    min="1"
+                                                    step="1"
+                                                    value={customLunchCount}
+                                                    onChange={(e) => setCustomLunchCount(e.target.value)}
+                                                    className="bg-white border-gray-200 focus:ring-violet-500 focus:border-violet-500 rounded-xl h-10 font-black text-gray-950 shadow-sm w-full"
+                                                    placeholder="e.g. 50"
+                                                />
+                                            </div>
+                                            <div className="space-y-1.5">
+                                                <Label htmlFor="custom-lunch-price" className="text-xs font-bold text-gray-700">
+                                                    Price per Lunch ($)
+                                                </Label>
+                                                <Input
+                                                    id="custom-lunch-price"
+                                                    type="number"
+                                                    min="0.01"
+                                                    step="0.01"
+                                                    value={customLunchPrice}
+                                                    onChange={(e) => setCustomLunchPrice(e.target.value)}
+                                                    className="bg-white border-gray-200 focus:ring-violet-500 focus:border-violet-500 rounded-xl h-10 font-black text-gray-950 shadow-sm w-full"
+                                                    placeholder="e.g. 12.50"
+                                                />
+                                            </div>
+                                        </div>
+                                    </CardContent>
+                                </Card>
+                            )}
+ 
+                             {/* Summary Card and Generate Action */}
+                             <Card className="shadow-lg border border-violet-100 bg-violet-50/30 overflow-hidden relative">
+                                 <div className="absolute top-0 right-0 p-6 opacity-5">
+                                     <ScrollText className="size-36 text-violet-900" />
+                                 </div>
+                                 <CardContent className="p-6 space-y-6 relative z-10">
+                                     <div>
+                                         <Badge className="bg-violet-600 hover:bg-violet-600 text-white rounded-full font-bold uppercase tracking-widest text-[9px] px-2.5 py-0.5 shadow-sm">
+                                             Billing Summary
+                                         </Badge>
+                                         <h4 className="text-lg font-black text-gray-900 mt-2.5">{selectedCompany?.name}</h4>
+                                         <p className="text-[11px] text-gray-400 font-bold uppercase mt-0.5 tracking-wider">
+                                             Period: {formatDateUS(activeStartDate)} — {formatDateUS(activeEndDate)}
+                                         </p>
+                                     </div>
+ 
+                                     <div className="space-y-3 pt-3 border-t border-violet-100">
+                                        {invoiceStyle === 'detailed' ? (
                                             <>
-                                                <Loader2 className="size-4 animate-spin" />
-                                                Creating Stripe Invoice...
+                                                <div className="flex justify-between text-xs text-gray-600 font-medium">
+                                                    <span>Consolidated Tours</span>
+                                                    <span className="font-bold text-gray-900">{selectedOrderIds.size} tours</span>
+                                                </div>
+                                                <div className="flex justify-between text-xs text-gray-600 font-medium">
+                                                    <span>Total Lunches</span>
+                                                    <span className="font-bold text-gray-900">
+                                                        {aggregatedMeals.reduce((sum, m) => sum + m.quantity, 0)} meals
+                                                    </span>
+                                                </div>
                                             </>
                                         ) : (
                                             <>
-                                                <CreditCard className="size-4 group-hover:scale-105 transition-transform" />
-                                                Generate Stripe Invoice
-                                                <ChevronRight className="size-4 ml-auto opacity-60 group-hover:translate-x-0.5 transition-transform" />
+                                                <div className="flex justify-between text-xs text-gray-600 font-medium">
+                                                    <span>Consolidated Tours</span>
+                                                    <span className="font-bold text-gray-900">
+                                                        {selectedOrderIds.size > 0 ? `${selectedOrderIds.size} tours` : 'None (Standalone)'}
+                                                    </span>
+                                                </div>
+                                                <div className="flex justify-between text-xs text-gray-600 font-medium">
+                                                    <span>Total Lunches</span>
+                                                    <span className="font-bold text-gray-900">
+                                                        {parseInt(customLunchCount) || 0} meals
+                                                    </span>
+                                                </div>
                                             </>
                                         )}
-                                    </Button>
-                                </CardContent>
-                            </Card>
-                        </div>
-                    </div>
-                ) : unpaidInvoicesInRange.length > 0 ? (
+                                         
+                                         <div className="flex justify-between text-xs text-gray-500 font-medium pt-2 mt-2 border-t border-violet-50/50">
+                                             <span>Subtotal</span>
+                                             <span className="font-bold text-gray-700">${pricing.subtotal.toFixed(2)}</span>
+                                         </div>
+ 
+                                         {/* Per-lunch discount selector */}
+                                         {invoiceStyle === 'detailed' && (
+                                             <>
+                                                 <div className="flex items-center gap-2 pt-2 border-t border-violet-50/50">
+                                                     <input
+                                                         type="checkbox"
+                                                         id="apply-per-lunch-discount"
+                                                         checked={applyPerLunchDiscount}
+                                                         onChange={(e) => {
+                                                             setApplyPerLunchDiscount(e.target.checked);
+                                                             if (e.target.checked && (parseInt(perLunchDiscountCount) || 0) === 0) {
+                                                                 setPerLunchDiscountCount(totalLunches.toString());
+                                                             }
+                                                         }}
+                                                         className="rounded border-gray-300 text-violet-600 focus:ring-violet-500 size-4 cursor-pointer"
+                                                     />
+                                                     <label htmlFor="apply-per-lunch-discount" className="text-xs font-bold text-gray-700 cursor-pointer">
+                                                         Apply discount on some lunches
+                                                     </label>
+                                                 </div>
+ 
+                                                 {applyPerLunchDiscount && (
+                                                     <div className="grid grid-cols-2 gap-2 bg-violet-50/50 p-2.5 rounded-xl border border-violet-100 transition-all">
+                                                         <div className="space-y-1">
+                                                             <Label htmlFor="discount-rate" className="text-[10px] font-bold text-gray-500 uppercase">
+                                                                 Rate ($ off / lunch)
+                                                             </Label>
+                                                             <Input
+                                                                 id="discount-rate"
+                                                                 type="number"
+                                                                 step="0.01"
+                                                                 min="0"
+                                                                 value={perLunchDiscountRate}
+                                                                 onChange={(e) => setPerLunchDiscountRate(e.target.value)}
+                                                                 className="h-8 text-xs font-bold bg-white border-gray-200 focus:ring-violet-500 focus:border-violet-500 rounded-lg w-full"
+                                                                 placeholder="e.g. 0.50"
+                                                             />
+                                                         </div>
+                                                         <div className="space-y-1">
+                                                             <Label htmlFor="discount-count" className="text-[10px] font-bold text-gray-500 uppercase">
+                                                                 No. of lunches (max {totalLunches})
+                                                             </Label>
+                                                             <Input
+                                                                 id="discount-count"
+                                                                 type="number"
+                                                                 step="1"
+                                                                 min="0"
+                                                                 max={totalLunches}
+                                                                 value={perLunchDiscountCount}
+                                                                 onChange={(e) => {
+                                                                     const val = parseInt(e.target.value) || 0;
+                                                                     if (val > totalLunches) {
+                                                                         setPerLunchDiscountCount(totalLunches.toString());
+                                                                     } else {
+                                                                         setPerLunchDiscountCount(e.target.value);
+                                                                     }
+                                                                 }}
+                                                                 className="h-8 text-xs font-bold bg-white border-gray-200 focus:ring-violet-500 focus:border-violet-500 rounded-lg w-full"
+                                                                 placeholder={`max ${totalLunches}`}
+                                                             />
+                                                         </div>
+                                                     </div>
+                                                 )}
+ 
+                                                 {applyPerLunchDiscount && pricing.perLunchDiscount > 0 && (
+                                                     <div className="flex justify-between text-xs text-emerald-600 font-bold bg-emerald-50/50 -mx-2 px-2 py-1.5 rounded-lg">
+                                                         <span>Per-Lunch Discount</span>
+                                                         <span>-${pricing.perLunchDiscount.toFixed(2)}</span>
+                                                     </div>
+                                                 )}
+                                             </>
+                                         )}
+ 
+                                         {pricing.discountPct > 0 && (
+                                             <div className="flex justify-between text-xs text-emerald-600 font-bold bg-emerald-50/50 -mx-2 px-2 py-1.5 rounded-lg">
+                                                 <span className="flex items-center gap-1">Company Discount ({pricing.discountPct}%)</span>
+                                                 <span>-${pricing.discountAmount.toFixed(2)}</span>
+                                             </div>
+                                         )}
+                                         <div className="flex justify-between text-xs text-gray-500 font-medium">
+                                             <span>Resort Tax (4%)</span>
+                                             <span className="font-bold text-gray-700">${pricing.resortTax.toFixed(2)}</span>
+                                         </div>
+                                         <div className="flex justify-between text-xs text-gray-400 font-medium italic">
+                                             <span>Credit Card Fee (est. if paid by card)</span>
+                                             <span className="font-semibold">${pricing.processingFee.toFixed(2)}</span>
+                                         </div>
+ 
+                                         <div className="flex justify-between items-baseline pt-3 border-t border-dashed border-violet-200">
+                                             <span className="text-sm font-black text-gray-900">Invoice Total (Base)</span>
+                                             <span className="text-2xl font-black text-violet-700">
+                                                 ${pricing.total.toFixed(2)}
+                                             </span>
+                                         </div>
+                                     </div>
+ 
+                                     <Button
+                                         onClick={handleCreateInvoice}
+                                         disabled={generating || (invoiceStyle === 'detailed' && selectedOrderIds.size === 0)}
+                                         className="w-full bg-violet-600 hover:bg-violet-700 text-white font-bold h-12 rounded-xl transition-all shadow-md flex items-center justify-center gap-2 group cursor-pointer disabled:opacity-50"
+                                     >
+                                         {generating ? (
+                                             <>
+                                                 <Loader2 className="size-4 animate-spin" />
+                                                 Creating Stripe Invoice...
+                                             </>
+                                         ) : (
+                                             <>
+                                                 <CreditCard className="size-4 group-hover:scale-105 transition-transform" />
+                                                 Generate Stripe Invoice
+                                                 <ChevronRight className="size-4 ml-auto opacity-60 group-hover:translate-x-0.5 transition-transform" />
+                                             </>
+                                         )}
+                                     </Button>
+                                 </CardContent>
+                             </Card>
+                         </div>
+                     </div>
+                 ) : unpaidInvoicesInRange.length > 0 ? (
                     <Card className="shadow-sm border-amber-100 bg-amber-50/20 py-16 flex flex-col items-center justify-center text-center">
                         <div className="size-16 rounded-full bg-amber-50 text-amber-600 flex items-center justify-center mb-4 border border-amber-100/50">
                             <CreditCard className="size-8 animate-pulse" />

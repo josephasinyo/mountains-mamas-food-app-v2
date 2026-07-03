@@ -37,6 +37,7 @@ export async function updateOrderDetails(orderId: string, details: {
     meal_id?: string | null;
     meal_name?: string;
     unit_price?: number;
+    is_comped?: boolean;
 }[]) {
     try {
         const supabase = createAdminClient();
@@ -99,7 +100,8 @@ export async function updateOrderDetails(orderId: string, details: {
                             cookie_choice: item.cookie_choice || null,
                             guest_name: item.guest_name || null,
                             customizations: item.customizations || null,
-                            unit_price: item.unit_price || 0
+                            unit_price: item.unit_price || 0,
+                            is_comped: item.is_comped || false
                         });
                     if (insertErr) return { success: false, error: insertErr.message };
                 } else {
@@ -115,7 +117,8 @@ export async function updateOrderDetails(orderId: string, details: {
                             box_type: item.box_type,
                             bread_type: item.bread_type,
                             cookie_choice: item.cookie_choice,
-                            unit_price: item.unit_price !== undefined ? item.unit_price : undefined
+                            unit_price: item.unit_price !== undefined ? item.unit_price : undefined,
+                            is_comped: item.is_comped !== undefined ? item.is_comped : undefined
                         })
                         .eq('id', item.id);
                     
@@ -198,30 +201,73 @@ export async function deleteOrder(orderId: string) {
     }
 }
 
-export async function generateCompanyInvoice(orderIds: string[], perLunchDiscountRate: number = 0, perLunchDiscountCount: number = 0) {
+export async function generateCompanyInvoice(
+    orderIds: string[], 
+    perLunchDiscountRate: number = 0, 
+    perLunchDiscountCount: number = 0,
+    options?: {
+        hideDetails?: boolean;
+        customDescription?: string;
+        customLunchCount?: number;
+        customLunchPrice?: number;
+        companyId?: string;
+        startDate?: string;
+        endDate?: string;
+    }
+) {
     try {
         const supabase = createAdminClient();
         const { stripe, getOrCreateStripeCustomer } = await import('@/lib/stripe');
 
-        // 1. Fetch orders with their items and company info
-        const { data: orders, error: ordersError } = await supabase
-            .from('orders')
-            .select('*, tour_companies(*), order_items(*)')
-            .in('id', orderIds);
+        const hideDetails = options?.hideDetails ?? false;
+        const customDescription = options?.customDescription || 'Box Lunches';
+        const customLunchCount = options?.customLunchCount || 0;
+        const customLunchPrice = options?.customLunchPrice || 0;
 
-        if (ordersError || !orders || orders.length === 0) {
-            return { success: false, error: ordersError?.message || 'No orders found' };
+        // 1. Fetch orders or parameters
+        let companyId = options?.companyId;
+        let orders: any[] = [];
+        let periodStart = options?.startDate;
+        let periodEnd = options?.endDate;
+
+        if (orderIds && orderIds.length > 0) {
+            const { data: fetchedOrders, error: ordersError } = await supabase
+                .from('orders')
+                .select('*, tour_companies(*), order_items(*)')
+                .in('id', orderIds);
+
+            if (ordersError || !fetchedOrders || fetchedOrders.length === 0) {
+                return { success: false, error: ordersError?.message || 'No orders found' };
+            }
+            orders = fetchedOrders;
+            companyId = orders[0].company_id;
+
+            if (orders.some((o: any) => o.company_id !== companyId)) {
+                return { success: false, error: 'All selected orders must belong to the same company' };
+            }
+
+            periodStart = orders.reduce((min: string, o: any) => o.tour_date < min ? o.tour_date : min, orders[0].tour_date);
+            periodEnd = orders.reduce((max: string, o: any) => o.tour_date > max ? o.tour_date : max, orders[0].tour_date);
         }
 
-        // 2. Validate: All orders must belong to the same company
-        const companyId = orders[0].company_id;
-        const company = orders[0].tour_companies;
-        if (!companyId || !company) {
-            return { success: false, error: 'Orders must belong to a tour company to be invoiced' };
+        if (!companyId) {
+            return { success: false, error: 'Company ID must be provided' };
         }
 
-        if (orders.some((o: any) => o.company_id !== companyId)) {
-            return { success: false, error: 'All selected orders must belong to the same company' };
+        const { data: company, error: companyError } = await supabase
+            .from('tour_companies')
+            .select('*')
+            .eq('id', companyId)
+            .single();
+
+        if (companyError || !company) {
+            return { success: false, error: 'Company details not found' };
+        }
+
+        if (!periodStart || !periodEnd) {
+            const today = new Date().toISOString().split('T')[0];
+            periodStart = periodStart || today;
+            periodEnd = periodEnd || today;
         }
 
         // 3. Ensure Stripe Customer
@@ -240,24 +286,43 @@ export async function generateCompanyInvoice(orderIds: string[], perLunchDiscoun
         });
 
         // 5. Add items to invoice
-        // We'll group by order to make the invoice readable
         let subtotal = 0;
-        for (const order of orders) {
-            for (const item of order.order_items) {
-                const itemTotal = item.unit_price * item.quantity;
-                subtotal += itemTotal;
-                
-                await stripe.invoiceItems.create({
-                    customer: stripeCustomerId,
-                    invoice: stripeInvoice.id,
-                    amount: Math.round(itemTotal * 100),
-                    currency: 'usd',
-                    description: `${order.customer_name} - ${item.quantity}x ${item.meal_name} (${item.box_type || 'Box Lunch'})`,
-                    metadata: {
-                        order_id: order.id,
-                        item_id: item.id
-                    }
-                });
+        if (hideDetails) {
+            subtotal = customLunchCount * customLunchPrice;
+            await stripe.invoiceItems.create({
+                customer: stripeCustomerId,
+                invoice: stripeInvoice.id,
+                amount: Math.round(subtotal * 100),
+                currency: 'usd',
+                description: `${customDescription} (${customLunchCount} lunches @ $${customLunchPrice.toFixed(2)}/each)`,
+                metadata: {
+                    type: 'meal',
+                    is_consolidated: 'true',
+                    lunch_count: String(customLunchCount),
+                    lunch_price: String(customLunchPrice)
+                }
+            });
+        } else {
+            for (const order of orders) {
+                for (const item of order.order_items) {
+                    const isItemComped = item.is_comped === true;
+                    const itemUnitPrice = isItemComped ? 0 : item.unit_price;
+                    const itemTotal = itemUnitPrice * item.quantity;
+                    subtotal += itemTotal;
+                    
+                    await stripe.invoiceItems.create({
+                        customer: stripeCustomerId,
+                        invoice: stripeInvoice.id,
+                        amount: Math.round(itemTotal * 100),
+                        currency: 'usd',
+                        description: `${order.customer_name} - ${item.quantity}x ${item.meal_name} (${item.box_type || 'Box Lunch'})${isItemComped ? ' (Comped)' : ''}`,
+                        metadata: {
+                            order_id: order.id,
+                            item_id: item.id,
+                            is_comped: String(isItemComped)
+                        }
+                    });
+                }
             }
         }
 
@@ -276,9 +341,9 @@ export async function generateCompanyInvoice(orderIds: string[], perLunchDiscoun
             });
         }
 
-        // Apply custom per-lunch discount if applicable
+        // Apply custom per-lunch discount if applicable (only for detailed mode)
         let perLunchDiscountAmount = 0;
-        if (perLunchDiscountRate > 0 && perLunchDiscountCount > 0) {
+        if (!hideDetails && perLunchDiscountRate > 0 && perLunchDiscountCount > 0) {
             perLunchDiscountAmount = perLunchDiscountRate * perLunchDiscountCount;
             await stripe.invoiceItems.create({
                 customer: stripeCustomerId,
@@ -304,11 +369,8 @@ export async function generateCompanyInvoice(orderIds: string[], perLunchDiscoun
             metadata: { type: 'tax' }
         });
 
-        // Do not add static Credit Card Processing Fee to the invoice itself
-        // It will be calculated and added dynamically at checkout if paid by card
         const subtotalWithTax = discountedSubtotal + resortTax;
 
-        // 6. Delete finalizedInvoice step (keep as draft)
         // 7. Create record in Supabase invoices table as 'draft'
         const { data: dbInvoice, error: invError } = await supabase
             .from('invoices')
@@ -323,8 +385,8 @@ export async function generateCompanyInvoice(orderIds: string[], perLunchDiscoun
                 stripe_payment_link: `https://dashboard.stripe.com/invoices/${stripeInvoice.id}`, // Temporary dashboard link for draft status
                 pdf_url: null,
                 stripe_invoice_id: stripeInvoice.id,
-                period_start: orders.reduce((min: string, o: any) => o.tour_date < min ? o.tour_date : min, orders[0].tour_date),
-                period_end: orders.reduce((max: string, o: any) => o.tour_date > max ? o.tour_date : max, orders[0].tour_date),
+                period_start: periodStart,
+                period_end: periodEnd,
             })
             .select()
             .single();
@@ -343,13 +405,15 @@ export async function generateCompanyInvoice(orderIds: string[], perLunchDiscoun
         }
 
         // 8. Update orders to 'invoiced' and link them to this invoice
-        await supabase
-            .from('orders')
-            .update({ 
-                payment_status: 'invoiced',
-                invoice_id: dbInvoice.id 
-            })
-            .in('id', orderIds);
+        if (orderIds && orderIds.length > 0) {
+            await supabase
+                .from('orders')
+                .update({ 
+                    payment_status: 'invoiced',
+                    invoice_id: dbInvoice.id 
+                })
+                .in('id', orderIds);
+        }
 
         await logActivity({ 
             userRole: 'admin', 

@@ -196,6 +196,7 @@ interface OrderItem {
     unit_price: number;
     custom_fields: Record<string, any> | null;
     meal_id?: string | null;
+    is_comped?: boolean;
 }
 
 interface Order {
@@ -905,6 +906,7 @@ export function OrdersClient({
             guest_name: item.guest_name || null,
             customizations: item.customizations || null,
             unitPrice: item.unit_price,
+            is_comped: item.is_comped || false,
             dynamic_fields: {}
         }));
 
@@ -1169,7 +1171,8 @@ export function OrdersClient({
                 cookie_choice: item.cookie_choice,
                 meal_id: item.meal_id,
                 meal_name: item.meal_name,
-                unit_price: item.unit_price
+                unit_price: item.unit_price,
+                is_comped: item.is_comped
             }))
         );
 
@@ -1244,7 +1247,7 @@ export function OrdersClient({
 
             let orderLunches = 0;
             order.order_items?.forEach((item: any) => {
-                const itemCost = (item.unit_price || 0) * item.quantity;
+                const itemCost = (item.is_comped ? 0 : (item.unit_price || 0)) * item.quantity;
                 totalPrice += itemCost;
                 totalLunchesCount += item.quantity;
                 orderLunches += item.quantity;
@@ -1354,8 +1357,9 @@ export function OrdersClient({
                         </div>
                         <div className="flex flex-col items-start gap-0.5 ml-1">
                             {order.order_items?.slice(0, 5).map((item: any, i: number) => (
-                                <p key={i} className="text-[10px] font-medium text-gray-500 leading-tight">
+                                <p key={i} className="text-[10px] font-medium text-gray-500 leading-tight flex items-center gap-1">
                                     <span className="font-bold text-violet-600/80">{item.quantity}x</span> {item.meal_name}
+                                    {item.is_comped && <span className="text-[8px] bg-emerald-50 text-emerald-700 border border-emerald-200/50 px-1 rounded font-black uppercase">COMP</span>}
                                 </p>
                             ))}
                             {order.order_items && order.order_items.length > 5 && (
@@ -1469,13 +1473,30 @@ export function OrdersClient({
                                                         {item.quantity}x
                                                     </div>
                                                     <div className="space-y-0.5">
-                                                        <p className="font-extrabold text-base text-gray-900 leading-tight">{item.meal_name}</p>
+                                                        <div className="flex items-center gap-2">
+                                                            <p className="font-extrabold text-base text-gray-900 leading-tight">{item.meal_name}</p>
+                                                            {item.is_comped && (
+                                                                <span className="text-[10px] bg-emerald-50 text-emerald-700 border border-emerald-200/50 px-2 py-0.5 rounded-full font-black uppercase">COMPED</span>
+                                                            )}
+                                                        </div>
                                                         <OrderItemDetails item={item} />
                                                     </div>
                                                 </div>
                                                 <div className="text-right ml-8">
-                                                    <p className="font-bold text-base text-gray-900 tracking-tight">${(item.unit_price * item.quantity).toFixed(2)}</p>
-                                                    <p className="text-xs text-gray-400 font-semibold uppercase tracking-wider">${item.unit_price.toFixed(2)} ea</p>
+                                                    <p className="font-bold text-base text-gray-900 tracking-tight">
+                                                        {item.is_comped ? (
+                                                            <span className="text-emerald-600">$0.00</span>
+                                                        ) : (
+                                                            `$${(item.unit_price * item.quantity).toFixed(2)}`
+                                                        )}
+                                                    </p>
+                                                    <p className="text-xs text-gray-400 font-semibold uppercase tracking-wider">
+                                                        {item.is_comped ? (
+                                                            <span className="text-emerald-500 line-through">${item.unit_price.toFixed(2)} ea</span>
+                                                        ) : (
+                                                            `$${item.unit_price.toFixed(2)} ea`
+                                                        )}
+                                                    </p>
                                                 </div>
                                             </div>
                                         ))}
@@ -1509,7 +1530,7 @@ export function OrdersClient({
                                         <div className="text-right flex items-center gap-4">
                                             <span className="text-[12px] font-bold text-gray-400 uppercase tracking-widest">TOTAL AMOUNT</span>
                                             <span className="text-[20px] font-black text-violet-600 tracking-tighter">
-                                                ${order.order_items?.reduce((acc: number, item: any) => acc + (Number(item.unit_price) * item.quantity), 0).toFixed(2)}
+                                                ${order.order_items?.reduce((acc: number, item: any) => acc + (Number(item.is_comped ? 0 : item.unit_price) * item.quantity), 0).toFixed(2)}
                                             </span>
                                         </div>
                                     </div>
@@ -2582,7 +2603,7 @@ export function OrdersClient({
                     {filtered.map((order) => {
                         const isExpanded = expanded === order.id;
                         const totalItems = order.order_items?.reduce((acc: number, item: any) => acc + item.quantity, 0) || 0;
-                        const totalPrice = order.order_items?.reduce((acc: number, item: any) => acc + (Number(item.unit_price) * item.quantity), 0) || 0;
+                        const totalPrice = order.order_items?.reduce((acc: number, item: any) => acc + (Number(item.is_comped ? 0 : item.unit_price) * item.quantity), 0) || 0;
 
                         return (
                             <Card 
@@ -2743,8 +2764,9 @@ export function OrdersClient({
                                         </div>
                                         <div className="space-y-1">
                                             {order.order_items?.slice(0, 5).map((item: any, idx: number) => (
-                                                <p key={idx} className="text-[11px] font-medium text-gray-600 leading-tight truncate">
+                                                <p key={idx} className="text-[11px] font-medium text-gray-600 leading-tight truncate flex items-center gap-1">
                                                     <span className="font-bold text-violet-600">{item.quantity}x</span> {item.meal_name}
+                                                    {item.is_comped && <span className="text-[8px] bg-emerald-50 text-emerald-700 border border-emerald-200/50 px-1 rounded font-black uppercase">COMP</span>}
                                                 </p>
                                             ))}
                                             {order.order_items && order.order_items.length > 5 && (
@@ -2770,15 +2792,30 @@ export function OrdersClient({
                                                         {order.order_items?.map((item: any, i: number) => (
                                                             <div key={i} className="p-3 hover:bg-gray-50/50 transition-colors flex items-start justify-between gap-4">
                                                                 <div className="space-y-0.5 min-w-0">
-                                                                    <p className="font-extrabold text-base text-gray-900 leading-tight truncate">
+                                                                    <p className="font-extrabold text-base text-gray-900 leading-tight truncate flex items-center gap-1.5">
                                                                         <span className="text-violet-600 font-black mr-1.5">{item.quantity}x</span>
                                                                         {item.meal_name}
+                                                                        {item.is_comped && (
+                                                                            <span className="text-[9px] bg-emerald-50 text-emerald-700 border border-emerald-200/50 px-1.5 py-0.5 rounded-full font-black uppercase">COMPED</span>
+                                                                        )}
                                                                     </p>
                                                                     <OrderItemDetails item={item} />
                                                                 </div>
                                                                 <div className="text-right shrink-0">
-                                                                    <p className="font-bold text-base text-gray-900">${(Number(item.unit_price) * item.quantity).toFixed(2)}</p>
-                                                                    <p className="text-xs text-gray-400 font-semibold">${Number(item.unit_price).toFixed(2)} ea</p>
+                                                                    <p className="font-bold text-base text-gray-900">
+                                                                        {item.is_comped ? (
+                                                                            <span className="text-emerald-600">$0.00</span>
+                                                                        ) : (
+                                                                            `$${(Number(item.unit_price) * item.quantity).toFixed(2)}`
+                                                                        )}
+                                                                    </p>
+                                                                    <p className="text-xs text-gray-400 font-semibold">
+                                                                        {item.is_comped ? (
+                                                                            <span className="text-emerald-500 line-through">${Number(item.unit_price).toFixed(2)} ea</span>
+                                                                        ) : (
+                                                                            `$${Number(item.unit_price).toFixed(2)} ea`
+                                                                        )}
+                                                                    </p>
                                                                 </div>
                                                             </div>
                                                         ))}
@@ -2922,6 +2959,15 @@ export function OrdersClient({
                                                     </Select>
                                                 </div>
                                                 <div className="flex items-center gap-3 shrink-0 pt-5">
+                                                    <label className="flex items-center gap-1.5 cursor-pointer bg-white px-2 py-1 rounded-lg border border-gray-200 shadow-sm select-none h-8">
+                                                        <input 
+                                                            type="checkbox"
+                                                            checked={item.is_comped || false}
+                                                            onChange={(e) => updateEditItem(item.id, { is_comped: e.target.checked })}
+                                                            className="rounded border-gray-300 text-violet-600 focus:ring-violet-500 size-4 cursor-pointer"
+                                                        />
+                                                        <span className="text-[10px] font-black uppercase text-violet-600">Comp</span>
+                                                    </label>
                                                     <div className="flex items-center gap-1.5">
                                                         <Label className="text-[10px] font-bold text-gray-400 uppercase">Qty</Label>
                                                         <Input 
@@ -3197,6 +3243,15 @@ export function OrdersClient({
                                                         </Select>
                                                     </div>
                                                     <div className="flex items-center gap-3 shrink-0 pt-5">
+                                                        <label className="flex items-center gap-1.5 cursor-pointer bg-white px-2 py-1 rounded-lg border border-gray-200 shadow-sm select-none h-8">
+                                                            <input 
+                                                                type="checkbox"
+                                                                checked={item.is_comped || false}
+                                                                onChange={(e) => updateAddItem(item.id, { is_comped: e.target.checked })}
+                                                                className="rounded border-gray-300 text-violet-600 focus:ring-violet-500 size-4 cursor-pointer"
+                                                            />
+                                                            <span className="text-[10px] font-black uppercase text-violet-600">Comp</span>
+                                                        </label>
                                                         <div className="flex items-center gap-1.5">
                                                             <Label className="text-[10px] font-bold text-gray-400 uppercase">Qty</Label>
                                                             <Input 
