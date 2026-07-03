@@ -16,10 +16,10 @@ import {
 } from '@/components/ui/table';
 import {
     Building2, Calendar, ClipboardList, CreditCard, ExternalLink, 
-    FileText, Loader2, RefreshCw, ScrollText, CheckCircle2, ChevronRight, Trash2, Search, Mail, Copy
+    FileText, Loader2, RefreshCw, ScrollText, CheckCircle2, ChevronRight, ChevronDown, Trash2, Search, Mail, Copy
 } from 'lucide-react';
 import { cn, formatDateUS } from '@/lib/utils';
-import { fetchOrdersForInvoicing, fetchInvoicesHistory, sendInvoiceToCompany } from './actions';
+import { fetchOrdersForInvoicing, fetchInvoicesHistory, sendInvoiceToCompany, fetchInvoiceOrders } from './actions';
 import { generateCompanyInvoice } from '../orders/actions';
 import { deleteInvoice } from '../companies/actions';
 
@@ -122,6 +122,29 @@ export function InvoicesClient({ companies, initialInvoices }: InvoicesClientPro
     const [invoices, setInvoices] = useState<any[]>(initialInvoices);
     const [invoiceToDelete, setInvoiceToDelete] = useState<{ id: string; amount: number; companyId: string } | null>(null);
     const [selectedInvoiceIds, setSelectedInvoiceIds] = useState<Set<string>>(new Set());
+    const [expandedInvoiceId, setExpandedInvoiceId] = useState<string | null>(null);
+    const [expandedInvoiceOrders, setExpandedInvoiceOrders] = useState<Record<string, any[]>>({});
+    const [loadingExpandedId, setLoadingExpandedId] = useState<string | null>(null);
+
+    const toggleExpandedInvoice = async (invoiceId: string) => {
+        if (expandedInvoiceId === invoiceId) {
+            setExpandedInvoiceId(null);
+            return;
+        }
+        setExpandedInvoiceId(invoiceId);
+        // Lazy-load orders if not already fetched
+        if (!expandedInvoiceOrders[invoiceId]) {
+            setLoadingExpandedId(invoiceId);
+            try {
+                const res = await fetchInvoiceOrders(invoiceId);
+                if (res.success) {
+                    setExpandedInvoiceOrders(prev => ({ ...prev, [invoiceId]: res.orders }));
+                }
+            } finally {
+                setLoadingExpandedId(null);
+            }
+        }
+    };
     
     // UI Loading States
     const [fetching, setFetching] = useState<boolean>(false);
@@ -1262,119 +1285,267 @@ export function InvoicesClient({ companies, initialInvoices }: InvoicesClientPro
                                 </TableRow>
                             </TableHeader>
                             <TableBody>
-                                {filteredInvoices.map((invoice: any) => (
-                                    <TableRow 
-                                        key={invoice.id} 
-                                        className={cn(
-                                            "hover:bg-gray-50/50 cursor-pointer transition-colors",
-                                            selectedInvoiceIds.has(invoice.id) && "bg-violet-50/20"
-                                        )}
-                                        onClick={() => {
-                                            if (invoice.status !== 'paid') {
-                                                toggleInvoice(invoice.id);
-                                            }
-                                        }}
-                                    >
-                                        <TableCell className="text-center pl-6" onClick={(e) => e.stopPropagation()}>
-                                            {invoice.status !== 'paid' ? (
-                                                <input
-                                                    type="checkbox"
-                                                    checked={selectedInvoiceIds.has(invoice.id)}
-                                                    onChange={() => toggleInvoice(invoice.id)}
-                                                    className="rounded border-gray-300 text-violet-600 focus:ring-violet-500 cursor-pointer"
-                                                />
-                                            ) : (
-                                                <input
-                                                    type="checkbox"
-                                                    disabled
-                                                    checked={false}
-                                                    className="rounded border-gray-200 text-gray-300 cursor-not-allowed opacity-30"
-                                                />
-                                            )}
-                                        </TableCell>
-                                        <TableCell className="font-black text-gray-950 text-xs pl-2">
-                                            {invoice.tour_companies?.name || 'Unknown Company'}
-                                        </TableCell>
-                                        <TableCell className="text-xs text-gray-600 font-medium">
-                                            {formatDateUS(invoice.period_start)} — {formatDateUS(invoice.period_end)}
-                                        </TableCell>
-                                        <TableCell className="text-xs text-gray-400 font-bold">
-                                            {formatDateUS(invoice.created_at)}
-                                        </TableCell>
-                                        <TableCell className="font-black text-gray-900 text-xs">
-                                            <div className="flex items-center gap-1.5">
-                                                ${invoice.total_amount.toFixed(2)}
-                                                {invoice.discount_percentage > 0 && (
-                                                    <Badge className="bg-emerald-50 text-emerald-700 hover:bg-emerald-50 border border-emerald-100 rounded-full font-bold text-[8px] px-1.5 py-0 tracking-wider">
-                                                        -{invoice.discount_percentage}%
+                                {filteredInvoices.map((invoice: any) => {
+                                    const isExpanded = expandedInvoiceId === invoice.id;
+                                    const resortTax = invoice.tip_amount ?? 0;
+                                    return (
+                                        <React.Fragment key={invoice.id}>
+                                            <TableRow 
+                                                className={cn(
+                                                    "cursor-pointer transition-colors",
+                                                    isExpanded ? "bg-violet-50/40 hover:bg-violet-50/40" : "hover:bg-gray-50/50",
+                                                    selectedInvoiceIds.has(invoice.id) && !isExpanded && "bg-violet-50/20"
+                                                )}
+                                                onClick={() => toggleExpandedInvoice(invoice.id)}
+                                            >
+                                                <TableCell className="text-center pl-6" onClick={(e) => e.stopPropagation()}>
+                                                    {invoice.status !== 'paid' ? (
+                                                        <input
+                                                            type="checkbox"
+                                                            checked={selectedInvoiceIds.has(invoice.id)}
+                                                            onChange={() => toggleInvoice(invoice.id)}
+                                                            className="rounded border-gray-300 text-violet-600 focus:ring-violet-500 cursor-pointer"
+                                                        />
+                                                    ) : (
+                                                        <input
+                                                            type="checkbox"
+                                                            disabled
+                                                            checked={false}
+                                                            className="rounded border-gray-200 text-gray-300 cursor-not-allowed opacity-30"
+                                                        />
+                                                    )}
+                                                </TableCell>
+                                                <TableCell className="font-black text-gray-950 text-xs pl-2">
+                                                    <div className="flex items-center gap-1.5">
+                                                        <ChevronDown className={cn(
+                                                            "size-3.5 text-gray-400 transition-transform duration-200 flex-shrink-0",
+                                                            isExpanded && "rotate-180 text-violet-500"
+                                                        )} />
+                                                        {invoice.tour_companies?.name || 'Unknown Company'}
+                                                    </div>
+                                                </TableCell>
+                                                <TableCell className="text-xs text-gray-600 font-medium">
+                                                    {formatDateUS(invoice.period_start)} — {formatDateUS(invoice.period_end)}
+                                                </TableCell>
+                                                <TableCell className="text-xs text-gray-400 font-bold">
+                                                    {formatDateUS(invoice.created_at)}
+                                                </TableCell>
+                                                <TableCell className="font-black text-gray-900 text-xs">
+                                                    <div className="flex items-center gap-1.5">
+                                                        ${invoice.total_amount.toFixed(2)}
+                                                        {invoice.discount_percentage > 0 && (
+                                                            <Badge className="bg-emerald-50 text-emerald-700 hover:bg-emerald-50 border border-emerald-100 rounded-full font-bold text-[8px] px-1.5 py-0 tracking-wider">
+                                                                -{invoice.discount_percentage}%
+                                                            </Badge>
+                                                        )}
+                                                    </div>
+                                                </TableCell>
+                                                <TableCell>
+                                                    <Badge className={cn(
+                                                        "rounded-full font-bold uppercase tracking-widest text-[9px] px-2.5 py-0.5",
+                                                        invoice.status === 'paid' 
+                                                            ? "bg-emerald-50 text-emerald-700 hover:bg-emerald-50 border border-emerald-100" 
+                                                            : invoice.status === 'sent'
+                                                            ? "bg-blue-50 text-blue-700 hover:bg-blue-50 border border-blue-100"
+                                                            : "bg-amber-50 text-amber-700 hover:bg-amber-50 border border-amber-100"
+                                                    )}>
+                                                        {invoice.status}
                                                     </Badge>
-                                                )}
-                                            </div>
-                                        </TableCell>
-                                        <TableCell>
-                                            <Badge className={cn(
-                                                "rounded-full font-bold uppercase tracking-widest text-[9px] px-2.5 py-0.5",
-                                                invoice.status === 'paid' 
-                                                    ? "bg-emerald-50 text-emerald-700 hover:bg-emerald-50 border border-emerald-100" 
-                                                    : "bg-amber-50 text-amber-700 hover:bg-amber-50 border border-amber-100"
-                                            )}>
-                                                {invoice.status}
-                                            </Badge>
-                                        </TableCell>
-                                        <TableCell className="text-right pr-6" onClick={(e) => e.stopPropagation()}>
-                                            <div className="flex items-center justify-end gap-1.5">
-                                                {invoice.pdf_url && (
-                                                    <a 
-                                                        href={invoice.pdf_url} 
-                                                        target="_blank" 
-                                                        rel="noopener noreferrer"
-                                                        className="size-8 rounded-lg bg-white border border-gray-100 flex items-center justify-center text-gray-400 hover:text-violet-600 hover:border-violet-200 transition-all cursor-pointer"
-                                                        title="Download Stripe PDF"
-                                                    >
-                                                        <FileText className="size-3.5" />
-                                                    </a>
-                                                )}
-                                                {invoice.stripe_payment_link && (
-                                                    <button 
-                                                        onClick={() => handleCopyPaymentLink(invoice)}
-                                                        className={cn(
-                                                            "size-8 rounded-lg bg-white border border-gray-100 flex items-center justify-center transition-all cursor-pointer",
-                                                            invoice.status === 'draft' 
-                                                                ? "text-blue-500 hover:text-blue-600 hover:border-blue-200" 
-                                                                : "text-emerald-600 hover:text-emerald-700 hover:border-emerald-200"
+                                                </TableCell>
+                                                <TableCell className="text-right pr-6" onClick={(e) => e.stopPropagation()}>
+                                                    <div className="flex items-center justify-end gap-1.5">
+                                                        {invoice.pdf_url && (
+                                                            <a 
+                                                                href={invoice.pdf_url} 
+                                                                target="_blank" 
+                                                                rel="noopener noreferrer"
+                                                                className="size-8 rounded-lg bg-white border border-gray-100 flex items-center justify-center text-gray-400 hover:text-violet-600 hover:border-violet-200 transition-all cursor-pointer"
+                                                                title="Download Stripe PDF"
+                                                            >
+                                                                <FileText className="size-3.5" />
+                                                            </a>
                                                         )}
-                                                        title={invoice.status === 'draft' ? "Copy Stripe Draft Link" : "Copy Payment Link"}
-                                                    >
-                                                        <Copy className="size-3.5" />
-                                                    </button>
-                                                )}
-                                                {invoice.status === 'draft' && (
-                                                    <button 
-                                                        onClick={() => handleSendInvoice(invoice.id)}
-                                                        disabled={sendingInvoiceId !== null}
-                                                        className="size-8 rounded-lg bg-violet-50 border border-violet-100 flex items-center justify-center text-violet-600 hover:bg-violet-600 hover:text-white transition-all cursor-pointer disabled:opacity-50"
-                                                        title="Finalize & Send Invoice Email"
-                                                    >
-                                                        {sendingInvoiceId === invoice.id ? (
-                                                            <Loader2 className="size-3.5 animate-spin" />
-                                                        ) : (
-                                                            <Mail className="size-3.5" />
+                                                        {invoice.stripe_payment_link && (
+                                                            <button 
+                                                                onClick={() => handleCopyPaymentLink(invoice)}
+                                                                className={cn(
+                                                                    "size-8 rounded-lg bg-white border border-gray-100 flex items-center justify-center transition-all cursor-pointer",
+                                                                    invoice.status === 'draft' 
+                                                                        ? "text-blue-500 hover:text-blue-600 hover:border-blue-200" 
+                                                                        : "text-emerald-600 hover:text-emerald-700 hover:border-emerald-200"
+                                                                )}
+                                                                title={invoice.status === 'draft' ? "Copy Stripe Draft Link" : "Copy Payment Link"}
+                                                            >
+                                                                <Copy className="size-3.5" />
+                                                            </button>
                                                         )}
-                                                    </button>
-                                                )}
-                                                {invoice.status !== 'paid' && (
-                                                    <button 
-                                                        onClick={() => setInvoiceToDelete({ id: invoice.id, amount: invoice.total_amount, companyId: invoice.company_id })}
-                                                        className="size-8 rounded-lg bg-white border border-gray-100 flex items-center justify-center text-gray-400 hover:text-rose-600 hover:border-rose-200 transition-all cursor-pointer"
-                                                        title="Delete Invoice & Reset Orders"
-                                                    >
-                                                        <Trash2 className="size-3.5" />
-                                                    </button>
-                                                )}
-                                            </div>
-                                        </TableCell>
-                                    </TableRow>
-                                ))}
+                                                        {invoice.status === 'draft' && (
+                                                            <button 
+                                                                onClick={() => handleSendInvoice(invoice.id)}
+                                                                disabled={sendingInvoiceId !== null}
+                                                                className="size-8 rounded-lg bg-violet-50 border border-violet-100 flex items-center justify-center text-violet-600 hover:bg-violet-600 hover:text-white transition-all cursor-pointer disabled:opacity-50"
+                                                                title="Finalize & Send Invoice Email"
+                                                            >
+                                                                {sendingInvoiceId === invoice.id ? (
+                                                                    <Loader2 className="size-3.5 animate-spin" />
+                                                                ) : (
+                                                                    <Mail className="size-3.5" />
+                                                                )}
+                                                            </button>
+                                                        )}
+                                                        {invoice.status !== 'paid' && (
+                                                            <button 
+                                                                onClick={() => setInvoiceToDelete({ id: invoice.id, amount: invoice.total_amount, companyId: invoice.company_id })}
+                                                                className="size-8 rounded-lg bg-white border border-gray-100 flex items-center justify-center text-gray-400 hover:text-rose-600 hover:border-rose-200 transition-all cursor-pointer"
+                                                                title="Delete Invoice & Reset Orders"
+                                                            >
+                                                                <Trash2 className="size-3.5" />
+                                                            </button>
+                                                        )}
+                                                    </div>
+                                                </TableCell>
+                                            </TableRow>
+
+                                            {/* Expandable Detail Panel */}
+                                            {isExpanded && (() => {
+                                                const invoiceOrders = expandedInvoiceOrders[invoice.id] || [];
+                                                const isLoadingOrders = loadingExpandedId === invoice.id;
+
+                                                // Compute financial breakdown from stored invoice fields
+                                                const subtotal = invoice.total_amount
+                                                    + (invoice.discount_amount ?? 0)
+                                                    + (invoice.per_lunch_discount_rate ?? 0) * (invoice.per_lunch_discount_count ?? 0);
+                                                const discountedSubtotalBeforeTax = subtotal
+                                                    - (invoice.discount_amount ?? 0)
+                                                    - ((invoice.per_lunch_discount_rate ?? 0) * (invoice.per_lunch_discount_count ?? 0));
+                                                const resortTaxLine = discountedSubtotalBeforeTax * 0.04;
+                                                const processingFeeEst = (invoice.total_amount + resortTaxLine) * 0.029 + 0.30;
+
+                                                return (
+                                                    <TableRow className="bg-violet-50/10 border-b border-violet-100/60">
+                                                        <TableCell colSpan={7} className="p-0">
+                                                            <div className="border-l-4 border-violet-400 ml-6 mr-4 my-3 rounded-xl overflow-hidden shadow-sm">
+
+                                                                {/* ── Section 1: Bundled Orders ── */}
+                                                                <div className="bg-white">
+                                                                    <div className="px-4 py-3 border-b border-gray-100 flex items-center justify-between">
+                                                                        <p className="text-xs font-black text-gray-800 flex items-center gap-1.5">
+                                                                            <ClipboardList className="size-3.5 text-violet-500" />
+                                                                            Bundled Orders
+                                                                        </p>
+                                                                        <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">
+                                                                            {isLoadingOrders ? 'Loading...' : `${invoiceOrders.length} order${invoiceOrders.length !== 1 ? 's' : ''}`}
+                                                                        </p>
+                                                                    </div>
+
+                                                                    {isLoadingOrders ? (
+                                                                        <div className="flex items-center justify-center py-8">
+                                                                            <Loader2 className="size-5 animate-spin text-violet-500" />
+                                                                        </div>
+                                                                    ) : invoiceOrders.length === 0 ? (
+                                                                        <div className="py-6 text-center">
+                                                                            <p className="text-xs text-gray-400 font-medium">No linked orders found (consolidated invoice)</p>
+                                                                        </div>
+                                                                    ) : (
+                                                                        <div className="overflow-x-auto">
+                                                                            <table className="w-full text-xs">
+                                                                                <thead className="bg-gray-50/70">
+                                                                                    <tr>
+                                                                                        <th className="text-left px-4 py-2 font-bold text-gray-500 uppercase tracking-wider text-[10px]">Tour Date</th>
+                                                                                        <th className="text-left px-4 py-2 font-bold text-gray-500 uppercase tracking-wider text-[10px]">Guide / Lead</th>
+                                                                                        <th className="text-left px-4 py-2 font-bold text-gray-500 uppercase tracking-wider text-[10px]">Boxes</th>
+                                                                                        <th className="text-center px-4 py-2 font-bold text-gray-500 uppercase tracking-wider text-[10px]">Lunches</th>
+                                                                                        <th className="text-center px-4 py-2 font-bold text-emerald-600 uppercase tracking-wider text-[10px]">Comped</th>
+                                                                                        <th className="text-right px-4 py-2 font-bold text-gray-500 uppercase tracking-wider text-[10px]">Subtotal</th>
+                                                                                    </tr>
+                                                                                </thead>
+                                                                                <tbody className="divide-y divide-gray-50">
+                                                                                    {invoiceOrders.map((order: any) => {
+                                                                                        const paidItems = order.order_items.filter((i: any) => !i.is_comped);
+                                                                                        const compedItems = order.order_items.filter((i: any) => i.is_comped);
+                                                                                        const paidQty = paidItems.reduce((s: number, i: any) => s + i.quantity, 0);
+                                                                                        const compedQty = compedItems.reduce((s: number, i: any) => s + i.quantity, 0);
+                                                                                        const orderSubtotal = paidItems.reduce((s: number, i: any) => s + i.quantity * i.unit_price, 0);
+                                                                                        const boxSummary = order.order_items
+                                                                                            .map((i: any) => `${i.quantity}× ${i.meal_name}${i.is_comped ? ' (C)' : ''}`)
+                                                                                            .join(', ');
+                                                                                        return (
+                                                                                            <tr key={order.id} className="hover:bg-gray-50/50 transition-colors">
+                                                                                                <td className="px-4 py-2.5 font-bold text-gray-800 whitespace-nowrap">{formatDateUS(order.tour_date)}</td>
+                                                                                                <td className="px-4 py-2.5 font-black text-gray-900">{order.customer_name}</td>
+                                                                                                <td className="px-4 py-2.5 text-gray-500 max-w-[200px]">
+                                                                                                    <span className="truncate block" title={boxSummary}>{boxSummary}</span>
+                                                                                                </td>
+                                                                                                <td className="px-4 py-2.5 text-center font-bold text-gray-800">{paidQty}</td>
+                                                                                                <td className="px-4 py-2.5 text-center">
+                                                                                                    {compedQty > 0 ? (
+                                                                                                        <span className="inline-flex items-center justify-center size-5 rounded-full bg-emerald-50 text-emerald-700 font-black text-[10px] border border-emerald-100">{compedQty}</span>
+                                                                                                    ) : (
+                                                                                                        <span className="text-gray-300">—</span>
+                                                                                                    )}
+                                                                                                </td>
+                                                                                                <td className="px-4 py-2.5 text-right font-black text-gray-900">${orderSubtotal.toFixed(2)}</td>
+                                                                                            </tr>
+                                                                                        );
+                                                                                    })}
+                                                                                </tbody>
+                                                                            </table>
+                                                                        </div>
+                                                                    )}
+                                                                </div>
+
+                                                                {/* ── Section 2: Financial Breakdown ── */}
+                                                                <div className="bg-violet-50/30 border-t border-violet-100/60 px-4 py-3">
+                                                                    <p className="text-xs font-black text-gray-800 mb-3 flex items-center gap-1.5">
+                                                                        <CreditCard className="size-3.5 text-violet-500" />
+                                                                        Financial Breakdown
+                                                                    </p>
+                                                                    <div className="space-y-1.5 max-w-xs ml-auto">
+                                                                        <div className="flex justify-between text-xs text-gray-600 font-medium">
+                                                                            <span>Subtotal (before discounts)</span>
+                                                                            <span className="font-bold text-gray-900">${subtotal.toFixed(2)}</span>
+                                                                        </div>
+                                                                        {(invoice.discount_amount ?? 0) > 0 && (
+                                                                            <div className="flex justify-between text-xs text-emerald-600 font-bold">
+                                                                                <span>Company Discount ({invoice.discount_percentage}%)</span>
+                                                                                <span>-${(invoice.discount_amount ?? 0).toFixed(2)}</span>
+                                                                            </div>
+                                                                        )}
+                                                                        {((invoice.per_lunch_discount_rate ?? 0) * (invoice.per_lunch_discount_count ?? 0)) > 0 && (
+                                                                            <div className="flex justify-between text-xs text-emerald-600 font-bold">
+                                                                                <span>Per-Lunch Discount (${(invoice.per_lunch_discount_rate ?? 0).toFixed(2)} × {invoice.per_lunch_discount_count})</span>
+                                                                                <span>-${((invoice.per_lunch_discount_rate ?? 0) * (invoice.per_lunch_discount_count ?? 0)).toFixed(2)}</span>
+                                                                            </div>
+                                                                        )}
+                                                                        <div className="flex justify-between text-xs text-gray-600 font-medium">
+                                                                            <span>Resort Tax (4%)</span>
+                                                                            <span className="font-bold text-gray-900">${resortTaxLine.toFixed(2)}</span>
+                                                                        </div>
+                                                                        <div className="flex justify-between text-xs text-gray-400 italic font-medium">
+                                                                            <span>Credit Card Fee (est.)</span>
+                                                                            <span>${processingFeeEst.toFixed(2)}</span>
+                                                                        </div>
+                                                                        <div className="flex justify-between text-sm font-black text-gray-900 pt-2 border-t border-violet-200 mt-1">
+                                                                            <span>Invoice Total</span>
+                                                                            <span className="text-violet-700">${invoice.total_amount.toFixed(2)}</span>
+                                                                        </div>
+                                                                        {(invoice.tip_amount ?? 0) > 0 && (
+                                                                            <div className="flex justify-between text-xs text-emerald-700 font-bold pt-1">
+                                                                                <span>Tip Received 🎉</span>
+                                                                                <span>+${(invoice.tip_amount ?? 0).toFixed(2)}</span>
+                                                                            </div>
+                                                                        )}
+                                                                    </div>
+                                                                </div>
+
+                                                            </div>
+                                                        </TableCell>
+                                                    </TableRow>
+                                                );
+                                            })()}
+                                        </React.Fragment>
+                                    );
+                                })}
                             </TableBody>
                         </Table>
                     </div>

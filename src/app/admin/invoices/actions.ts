@@ -43,6 +43,26 @@ export async function fetchInvoicesHistory() {
     }
 }
 
+export async function fetchInvoiceOrders(invoiceId: string) {
+    try {
+        const supabase = createAdminClient();
+
+        const { data: orders, error } = await supabase
+            .from('orders')
+            .select('*, order_items(*)')
+            .eq('invoice_id', invoiceId)
+            .order('tour_date', { ascending: true });
+
+        if (error) throw error;
+
+        return { success: true, orders: orders || [] };
+    } catch (e: any) {
+        console.error('[fetchInvoiceOrders] Error:', e);
+        return { success: false, error: e.message || String(e), orders: [] };
+    }
+}
+
+
 export async function sendInvoiceToCompany(invoiceId: string) {
     try {
         const supabase = createAdminClient();
