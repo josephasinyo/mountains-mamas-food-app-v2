@@ -19,7 +19,7 @@ import {
     FileText, Loader2, RefreshCw, ScrollText, CheckCircle2, ChevronRight, ChevronDown, Trash2, Search, Mail, Copy
 } from 'lucide-react';
 import { cn, formatDateUS } from '@/lib/utils';
-import { fetchOrdersForInvoicing, fetchInvoicesHistory, sendInvoiceToCompany, fetchInvoiceOrders } from './actions';
+import { fetchOrdersForInvoicing, fetchInvoicesHistory, sendInvoiceToCompany, fetchInvoiceOrders, payInvoiceManually } from './actions';
 import { generateCompanyInvoice } from '../orders/actions';
 import { deleteInvoice } from '../companies/actions';
 
@@ -152,6 +152,8 @@ export function InvoicesClient({ companies, initialInvoices }: InvoicesClientPro
     const [deletingInvoice, setDeletingInvoice] = useState<boolean>(false);
     const [sendingInvoiceId, setSendingInvoiceId] = useState<string | null>(null);
     const [bulkSending, setBulkSending] = useState<boolean>(false);
+    const [invoiceToMarkPaid, setInvoiceToMarkPaid] = useState<{ id: string; amount: number } | null>(null);
+    const [markingPaidId, setMarkingPaidId] = useState<string | null>(null);
 
     // Per-Lunch Discount State
     const [applyPerLunchDiscount, setApplyPerLunchDiscount] = useState<boolean>(false);
@@ -410,6 +412,30 @@ export function InvoicesClient({ companies, initialInvoices }: InvoicesClientPro
             toast.error('An unexpected error occurred while sending invoice.', { id: toastId });
         } finally {
             setSendingInvoiceId(null);
+        }
+    };
+
+    const executeMarkAsPaid = async () => {
+        if (!invoiceToMarkPaid) return;
+        const targetId = invoiceToMarkPaid.id;
+        setMarkingPaidId(targetId);
+        const toastId = toast.loading('Marking invoice as paid...');
+        try {
+            const res = await payInvoiceManually(targetId, 'check');
+            if (res.success) {
+                toast.success('Invoice marked as paid successfully!', { id: toastId });
+                const historyRes = await fetchInvoicesHistory();
+                if (historyRes.success) {
+                    setInvoices(historyRes.invoices);
+                }
+                setInvoiceToMarkPaid(null);
+            } else {
+                toast.error(res.error || 'Failed to mark invoice as paid.', { id: toastId });
+            }
+        } catch (err: any) {
+            toast.error('An unexpected error occurred.', { id: toastId });
+        } finally {
+            setMarkingPaidId(null);
         }
     };
 
@@ -1395,6 +1421,16 @@ export function InvoicesClient({ companies, initialInvoices }: InvoicesClientPro
                                                         )}
                                                         {invoice.status !== 'paid' && (
                                                             <button 
+                                                                onClick={() => setInvoiceToMarkPaid({ id: invoice.id, amount: invoice.total_amount })}
+                                                                disabled={markingPaidId !== null}
+                                                                className="size-8 rounded-lg bg-white border border-gray-100 flex items-center justify-center text-emerald-600 hover:bg-emerald-50 hover:border-emerald-200 transition-all cursor-pointer disabled:opacity-50"
+                                                                title="Mark as Paid (Check)"
+                                                            >
+                                                                <CheckCircle2 className="size-3.5" />
+                                                            </button>
+                                                        )}
+                                                        {invoice.status !== 'paid' && (
+                                                            <button 
                                                                 onClick={() => setInvoiceToDelete({ id: invoice.id, amount: invoice.total_amount, companyId: invoice.company_id })}
                                                                 className="size-8 rounded-lg bg-white border border-gray-100 flex items-center justify-center text-gray-400 hover:text-rose-600 hover:border-rose-200 transition-all cursor-pointer"
                                                                 title="Delete Invoice & Reset Orders"
@@ -1494,47 +1530,92 @@ export function InvoicesClient({ companies, initialInvoices }: InvoicesClientPro
                                                                     )}
                                                                 </div>
 
-                                                                {/* ── Section 2: Financial Breakdown ── */}
-                                                                <div className="bg-violet-50/30 border-t border-violet-100/60 px-4 py-3">
-                                                                    <p className="text-xs font-black text-gray-800 mb-3 flex items-center gap-1.5">
-                                                                        <CreditCard className="size-3.5 text-violet-500" />
-                                                                        Financial Breakdown
-                                                                    </p>
-                                                                    <div className="space-y-1.5 max-w-xs ml-auto">
-                                                                        <div className="flex justify-between text-xs text-gray-600 font-medium">
-                                                                            <span>Subtotal (before discounts)</span>
-                                                                            <span className="font-bold text-gray-900">${subtotal.toFixed(2)}</span>
-                                                                        </div>
-                                                                        {(invoice.discount_amount ?? 0) > 0 && (
-                                                                            <div className="flex justify-between text-xs text-emerald-600 font-bold">
-                                                                                <span>Company Discount ({invoice.discount_percentage}%)</span>
-                                                                                <span>-${(invoice.discount_amount ?? 0).toFixed(2)}</span>
+                                                                {/* ── Section 2: Details & Financial Breakdown ── */}
+                                                                <div className="bg-violet-50/30 border-t border-violet-100/60 px-4 py-4">
+                                                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6 items-start">
+                                                                        
+                                                                        {/* Left Column: Stripe & Offline Payment Actions */}
+                                                                        <div className="space-y-4">
+                                                                            <div>
+                                                                                <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-0.5">Stripe Invoice Details</p>
+                                                                                {invoice.stripe_invoice_id ? (
+                                                                                    <div className="flex flex-col gap-0.5">
+                                                                                        <p className="text-xs font-mono text-violet-700 font-bold truncate" title={invoice.stripe_invoice_id}>
+                                                                                            ID: {invoice.stripe_invoice_id}
+                                                                                        </p>
+                                                                                        {invoice.sent_at && (
+                                                                                            <p className="text-[11px] text-gray-500 font-medium">
+                                                                                                Sent on {formatDateUS(invoice.sent_at)}
+                                                                                            </p>
+                                                                                        )}
+                                                                                        {invoice.paid_at && (
+                                                                                            <p className="text-[11px] text-emerald-600 font-bold">
+                                                                                                Paid on {formatDateUS(invoice.paid_at)}
+                                                                                            </p>
+                                                                                        )}
+                                                                                    </div>
+                                                                                ) : (
+                                                                                    <p className="text-xs text-gray-400">—</p>
+                                                                                )}
                                                                             </div>
-                                                                        )}
-                                                                        {((invoice.per_lunch_discount_rate ?? 0) * (invoice.per_lunch_discount_count ?? 0)) > 0 && (
-                                                                            <div className="flex justify-between text-xs text-emerald-600 font-bold">
-                                                                                <span>Per-Lunch Discount (${(invoice.per_lunch_discount_rate ?? 0).toFixed(2)} × {invoice.per_lunch_discount_count})</span>
-                                                                                <span>-${((invoice.per_lunch_discount_rate ?? 0) * (invoice.per_lunch_discount_count ?? 0)).toFixed(2)}</span>
+
+                                                                            {invoice.status !== 'paid' && (
+                                                                                <div>
+                                                                                    <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1.5">Offline Payment</p>
+                                                                                    <Button
+                                                                                        onClick={() => setInvoiceToMarkPaid({ id: invoice.id, amount: invoice.total_amount })}
+                                                                                        disabled={markingPaidId !== null}
+                                                                                        className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold h-9 px-4 text-xs rounded-xl shadow-md flex items-center gap-1.5 transition-all cursor-pointer border-none"
+                                                                                    >
+                                                                                        <CheckCircle2 className="size-4" />
+                                                                                        Mark Paid by Check
+                                                                                    </Button>
+                                                                                </div>
+                                                                            )}
+                                                                        </div>
+
+                                                                        {/* Right Column: Financial Breakdown */}
+                                                                        <div className="space-y-1.5 max-w-xs md:ml-auto w-full">
+                                                                            <p className="text-xs font-black text-gray-800 mb-2 flex items-center gap-1.5">
+                                                                                <CreditCard className="size-3.5 text-violet-500" />
+                                                                                Financial Breakdown
+                                                                            </p>
+                                                                            <div className="flex justify-between text-xs text-gray-600 font-medium">
+                                                                                <span>Subtotal (before discounts)</span>
+                                                                                <span className="font-bold text-gray-900">${subtotal.toFixed(2)}</span>
                                                                             </div>
-                                                                        )}
-                                                                        <div className="flex justify-between text-xs text-gray-600 font-medium">
-                                                                            <span>Resort Tax (4%)</span>
-                                                                            <span className="font-bold text-gray-900">${resortTaxLine.toFixed(2)}</span>
-                                                                        </div>
-                                                                        <div className="flex justify-between text-xs text-gray-400 italic font-medium">
-                                                                            <span>Credit Card Fee (est.)</span>
-                                                                            <span>${processingFeeEst.toFixed(2)}</span>
-                                                                        </div>
-                                                                        <div className="flex justify-between text-sm font-black text-gray-900 pt-2 border-t border-violet-200 mt-1">
-                                                                            <span>Invoice Total</span>
-                                                                            <span className="text-violet-700">${invoice.total_amount.toFixed(2)}</span>
-                                                                        </div>
-                                                                        {(invoice.tip_amount ?? 0) > 0 && (
-                                                                            <div className="flex justify-between text-xs text-emerald-700 font-bold pt-1">
-                                                                                <span>Tip Received 🎉</span>
-                                                                                <span>+${(invoice.tip_amount ?? 0).toFixed(2)}</span>
+                                                                            {(invoice.discount_amount ?? 0) > 0 && (
+                                                                                <div className="flex justify-between text-xs text-emerald-600 font-bold">
+                                                                                    <span>Company Discount ({invoice.discount_percentage}%)</span>
+                                                                                    <span>-${(invoice.discount_amount ?? 0).toFixed(2)}</span>
+                                                                                </div>
+                                                                            )}
+                                                                            {((invoice.per_lunch_discount_rate ?? 0) * (invoice.per_lunch_discount_count ?? 0)) > 0 && (
+                                                                                <div className="flex justify-between text-xs text-emerald-600 font-bold">
+                                                                                    <span>Per-Lunch Discount (${(invoice.per_lunch_discount_rate ?? 0).toFixed(2)} × {invoice.per_lunch_discount_count})</span>
+                                                                                    <span>-${((invoice.per_lunch_discount_rate ?? 0) * (invoice.per_lunch_discount_count ?? 0)).toFixed(2)}</span>
+                                                                                </div>
+                                                                            )}
+                                                                            <div className="flex justify-between text-xs text-gray-600 font-medium">
+                                                                                <span>Resort Tax (4%)</span>
+                                                                                <span className="font-bold text-gray-900">${resortTaxLine.toFixed(2)}</span>
                                                                             </div>
-                                                                        )}
+                                                                            <div className="flex justify-between text-xs text-gray-400 italic font-medium">
+                                                                                <span>Credit Card Fee (est.)</span>
+                                                                                <span>${processingFeeEst.toFixed(2)}</span>
+                                                                            </div>
+                                                                            <div className="flex justify-between text-sm font-black text-gray-900 pt-2 border-t border-violet-200 mt-1">
+                                                                                <span>Invoice Total</span>
+                                                                                <span className="text-violet-700">${invoice.total_amount.toFixed(2)}</span>
+                                                                            </div>
+                                                                            {(invoice.tip_amount ?? 0) > 0 && (
+                                                                                <div className="flex justify-between text-xs text-emerald-700 font-bold pt-1">
+                                                                                    <span>Tip Received 🎉</span>
+                                                                                    <span>+${(invoice.tip_amount ?? 0).toFixed(2)}</span>
+                                                                                </div>
+                                                                            )}
+                                                                        </div>
+
                                                                     </div>
                                                                 </div>
 
@@ -1576,6 +1657,21 @@ export function InvoicesClient({ companies, initialInvoices }: InvoicesClientPro
                 confirmText={deletingInvoice ? "Deleting..." : "Delete Invoice"}
                 cancelText="Keep Invoice"
                 variant="danger"
+            />
+
+            <ConfirmDialog
+                isOpen={invoiceToMarkPaid !== null}
+                onClose={() => setInvoiceToMarkPaid(null)}
+                onConfirm={executeMarkAsPaid}
+                title="Mark Invoice as Paid?"
+                description={
+                    invoiceToMarkPaid
+                        ? `Are you sure you want to manually mark the invoice of $${invoiceToMarkPaid.amount.toFixed(2)} as paid? This will record the payment and update all linked orders to paid.`
+                        : ''
+                }
+                confirmText={markingPaidId !== null ? "Marking Paid..." : "Mark as Paid"}
+                cancelText="Cancel"
+                variant="success"
             />
         </div>
     );

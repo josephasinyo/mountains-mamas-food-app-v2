@@ -1,6 +1,7 @@
 'use server';
 
 import { createAdminClient } from '@/lib/supabase/server';
+import { logActivity } from '@/lib/supabase/activity-log';
 
 export async function fetchOrdersForInvoicing(companyId: string, startDate: string, endDate: string) {
     try {
@@ -62,6 +63,87 @@ export async function fetchInvoiceOrders(invoiceId: string) {
     }
 }
 
+export async function payInvoiceManually(invoiceId: string, paymentMethod: string = 'check') {
+    try {
+        const supabase = createAdminClient();
+        const { stripe } = await import('@/lib/stripe');
+
+        // 1. Fetch invoice details
+        const { data: invoice, error: invError } = await supabase
+            .from('invoices')
+            .select('*')
+            .eq('id', invoiceId)
+            .single();
+
+        if (invError || !invoice) {
+            throw new Error(invError?.message || 'Invoice not found');
+        }
+
+        if (invoice.status === 'paid') {
+            throw new Error('Invoice is already marked as paid.');
+        }
+
+        // 2. Mark Stripe invoice as paid out-of-band if it's sent/draft on Stripe
+        try {
+            if (invoice.stripe_invoice_id) {
+                // If it's a draft, finalize it first
+                const stripeInvoice = await stripe.invoices.retrieve(invoice.stripe_invoice_id);
+                if (stripeInvoice.status === 'draft') {
+                    await stripe.invoices.finalizeInvoice(invoice.stripe_invoice_id);
+                }
+                
+                // Now pay out of band
+                await stripe.invoices.pay(invoice.stripe_invoice_id, {
+                    paid_out_of_band: true,
+                });
+            }
+        } catch (stripeErr: any) {
+            console.warn('[payInvoiceManually] Stripe pay warning:', stripeErr);
+        }
+
+        const now = new Date().toISOString();
+
+        // 3. Update database record to 'paid'
+        const { error: updateError } = await supabase
+            .from('invoices')
+            .update({
+                status: 'paid',
+                paid_at: now,
+                updated_at: now,
+            })
+            .eq('id', invoiceId);
+
+        if (updateError) throw updateError;
+
+        // 4. Mark all orders linked to this invoice as paid
+        const { error: orderError } = await supabase
+            .from('orders')
+            .update({
+                payment_status: 'paid',
+                updated_at: now,
+            })
+            .eq('invoice_id', invoiceId);
+
+        if (orderError) throw orderError;
+
+        // 5. Log activity
+        await logActivity({
+            userRole: 'admin',
+            action: 'invoice_paid_manually',
+            entityType: 'invoice',
+            entityId: invoiceId,
+            details: {
+                payment_method: paymentMethod,
+                amount: invoice.total_amount,
+            },
+        });
+
+        return { success: true };
+    } catch (e: any) {
+        console.error('[payInvoiceManually] Error:', e);
+        return { success: false, error: e.message || String(e) };
+    }
+}
 
 export async function sendInvoiceToCompany(invoiceId: string) {
     try {
