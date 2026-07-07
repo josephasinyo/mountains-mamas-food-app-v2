@@ -303,23 +303,123 @@ export async function generateCompanyInvoice(
                 }
             });
         } else {
-            for (const order of orders) {
-                for (const item of order.order_items) {
-                    const isItemComped = item.is_comped === true;
-                    const itemUnitPrice = isItemComped ? 0 : item.unit_price;
-                    const itemTotal = itemUnitPrice * item.quantity;
-                    subtotal += itemTotal;
-                    
+            // Count total line items to check against Stripe's 250-item limit.
+            // Reserve 3 slots for possible discount (percentage + per-lunch) and tax lines.
+            const totalItemCount = orders.reduce((sum: number, o: any) => sum + o.order_items.length, 0);
+            const STRIPE_ITEM_LIMIT = 247; // 250 minus up to 3 non-meal lines
+
+            if (totalItemCount <= STRIPE_ITEM_LIMIT) {
+                // Standard detailed mode: one Stripe line item per order item
+                for (const order of orders) {
+                    for (const item of order.order_items) {
+                        const isItemComped = item.is_comped === true;
+                        const itemUnitPrice = isItemComped ? 0 : item.unit_price;
+                        const itemTotal = itemUnitPrice * item.quantity;
+                        subtotal += itemTotal;
+                        
+                        await stripe.invoiceItems.create({
+                            customer: stripeCustomerId,
+                            invoice: stripeInvoice.id,
+                            amount: Math.round(itemTotal * 100),
+                            currency: 'usd',
+                            description: `${order.customer_name} - ${item.quantity}x ${item.meal_name} (${item.box_type || 'Box Lunch'})${isItemComped ? ' (Comped)' : ''}`,
+                            metadata: {
+                                order_id: order.id,
+                                item_id: item.id,
+                                is_comped: String(isItemComped)
+                            }
+                        });
+                    }
+                }
+            } else {
+                // Aggregated mode: group items by tour date to stay within Stripe's limit.
+                // Each date becomes a single line item with a summary description.
+                const dateGroups: Record<string, {
+                    items: Record<string, { meal_name: string; quantity: number; total: number; is_comped: boolean }>;
+                    orderIds: string[];
+                }> = {};
+
+                for (const order of orders) {
+                    const dateKey = order.tour_date;
+                    if (!dateGroups[dateKey]) {
+                        dateGroups[dateKey] = { items: {}, orderIds: [] };
+                    }
+                    dateGroups[dateKey].orderIds.push(order.id);
+
+                    for (const item of order.order_items) {
+                        const isItemComped = item.is_comped === true;
+                        const itemUnitPrice = isItemComped ? 0 : item.unit_price;
+                        const mealKey = `${item.meal_name}|${isItemComped}`;
+
+                        if (!dateGroups[dateKey].items[mealKey]) {
+                            dateGroups[dateKey].items[mealKey] = {
+                                meal_name: item.meal_name,
+                                quantity: 0,
+                                total: 0,
+                                is_comped: isItemComped
+                            };
+                        }
+                        dateGroups[dateKey].items[mealKey].quantity += item.quantity;
+                        dateGroups[dateKey].items[mealKey].total += itemUnitPrice * item.quantity;
+                    }
+                }
+
+                const sortedDates = Object.keys(dateGroups).sort();
+
+                if (sortedDates.length <= STRIPE_ITEM_LIMIT) {
+                    // Date-aggregated mode: one line item per tour date
+                    for (const dateKey of sortedDates) {
+                        const group = dateGroups[dateKey];
+                        const itemSummaries = Object.values(group.items).map(d =>
+                            `${d.quantity}x ${d.meal_name}${d.is_comped ? ' (Comped)' : ''}`
+                        );
+                        const dateTotal = Object.values(group.items).reduce((sum, d) => sum + d.total, 0);
+                        subtotal += dateTotal;
+
+                        const formattedDate = new Date(dateKey + 'T12:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+                        let description = `${formattedDate} — ${itemSummaries.join(', ')}`;
+                        // Stripe description max is 500 chars; truncate if needed
+                        if (description.length > 500) {
+                            description = description.slice(0, 497) + '...';
+                        }
+
+                        await stripe.invoiceItems.create({
+                            customer: stripeCustomerId,
+                            invoice: stripeInvoice.id,
+                            amount: Math.round(dateTotal * 100),
+                            currency: 'usd',
+                            description,
+                            metadata: {
+                                tour_date: dateKey,
+                                order_ids: group.orderIds.join(',').slice(0, 500),
+                                type: 'meal'
+                            }
+                        });
+                    }
+                } else {
+                    // Ultimate fallback: consolidate everything into a single line item
+                    let totalLunchCount = 0;
+                    for (const group of Object.values(dateGroups)) {
+                        for (const d of Object.values(group.items)) {
+                            subtotal += d.total;
+                            totalLunchCount += d.quantity;
+                        }
+                    }
+
+                    const firstDate = new Date(sortedDates[0] + 'T12:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+                    const lastDate = new Date(sortedDates[sortedDates.length - 1] + 'T12:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+
                     await stripe.invoiceItems.create({
                         customer: stripeCustomerId,
                         invoice: stripeInvoice.id,
-                        amount: Math.round(itemTotal * 100),
+                        amount: Math.round(subtotal * 100),
                         currency: 'usd',
-                        description: `${order.customer_name} - ${item.quantity}x ${item.meal_name} (${item.box_type || 'Box Lunch'})${isItemComped ? ' (Comped)' : ''}`,
+                        description: `Box Lunch Catering — ${totalLunchCount} lunches (${firstDate} – ${lastDate})`,
                         metadata: {
-                            order_id: order.id,
-                            item_id: item.id,
-                            is_comped: String(isItemComped)
+                            type: 'meal',
+                            is_consolidated: 'true',
+                            lunch_count: String(totalLunchCount),
+                            date_range: `${sortedDates[0]} to ${sortedDates[sortedDates.length - 1]}`
                         }
                     });
                 }
