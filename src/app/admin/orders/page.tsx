@@ -22,10 +22,9 @@ export default async function OrdersPage() {
         .select('*', { count: 'exact', head: true })
         .eq('status', 'pending');
 
-    const { data: initialLunchesData } = await supabase
-        .from('order_items')
-        .select('quantity');
-    const initialTotalLunches = (initialLunchesData || []).reduce((sum: number, item: any) => sum + (item.quantity || 1), 0);
+    const initialTotalLunches = (statsOrders || []).reduce((sum: number, o: any) => {
+        return sum + (o.order_items?.reduce((s: number, item: any) => s + (item.quantity || 1), 0) || 0);
+    }, 0);
 
     const { data: companies } = await supabase
         .from('tour_companies')
