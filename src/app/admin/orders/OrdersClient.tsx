@@ -2301,8 +2301,6 @@ export function OrdersClient({
                 </CardContent>
             </Card>
 
-            </Card>
-
             {/* Search Results Stats Summary Card (Admin Only) */}
             {userRole === 'admin' && statsOrders.length > 0 && (
                 <Card className="rounded-2xl border-gray-150 shadow-sm mb-6 bg-white overflow-hidden no-print">
