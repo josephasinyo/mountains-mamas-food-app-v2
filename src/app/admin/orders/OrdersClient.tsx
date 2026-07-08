@@ -217,6 +217,7 @@ interface Order {
 
 interface OrdersClientProps {
     initialOrders: Order[];
+    initialStatsOrders?: Order[];
     initialTotalCount?: number;
     initialTotalLunches?: number;
     initialPendingCount?: number;
@@ -245,6 +246,7 @@ const formatBoxType = (box: string | null) => {
 
 export function OrdersClient({ 
     initialOrders, 
+    initialStatsOrders,
     initialTotalCount = 0, 
     initialTotalLunches = 0, 
     initialPendingCount = 0, 
@@ -252,6 +254,7 @@ export function OrdersClient({
     initialChangeRequests = []
 }: OrdersClientProps) {
     const [orders, setOrders] = useState<Order[]>(initialOrders);
+    const [statsOrders, setStatsOrders] = useState<Order[]>(initialStatsOrders || initialOrders);
     const [showGuideBreakdown, setShowGuideBreakdown] = useState(false);
     const [expandedGuide, setExpandedGuide] = useState<string | null>(null);
     const [userRole, setUserRole] = useState<string | null>(null);
@@ -334,6 +337,7 @@ export function OrdersClient({
         });
         if (result.success) {
             setOrders(result.orders);
+            setStatsOrders((result as any).statsOrders || []);
             setTotalCount(result.totalCount);
             setTotalLunches(result.totalLunches || 0);
             setPendingCount(result.pendingCount || 0);
@@ -365,6 +369,7 @@ export function OrdersClient({
         });
         if (result.success) {
             setOrders(result.orders);
+            setStatsOrders((result as any).statsOrders || []);
             setTotalCount(result.totalCount);
             setTotalLunches(result.totalLunches || 0);
             setPendingCount(result.pendingCount || 0);
@@ -1241,7 +1246,7 @@ export function OrdersClient({
             return 'Box Lunch';
         };
 
-        sorted.forEach((order: any) => {
+        statsOrders.forEach((order: any) => {
             if (order.status === 'cancelled') return;
             ordersCount++;
 
@@ -1285,7 +1290,7 @@ export function OrdersClient({
                 lunches: stats.lunches
             })).sort((a, b) => a.name.localeCompare(b.name))
         };
-    }, [sorted]);
+    }, [statsOrders]);
 
     const renderOrderRow = (order: any, isExpanded: boolean, onToggleExpand: () => void) => {
         const rows = [
@@ -2296,97 +2301,10 @@ export function OrdersClient({
                 </CardContent>
             </Card>
 
-            {/* Pagination Controls */}
-            {totalCount > 100 && (
-                <div className="flex flex-col sm:flex-row items-center justify-between gap-4 p-4 bg-white rounded-2xl border border-gray-150 shadow-sm no-print mb-6">
-                    <div className="text-sm font-semibold text-gray-500">
-                        Showing <span className="font-bold text-gray-800">{Math.min(totalCount, (page - 1) * 100 + 1)}</span> to{' '}
-                        <span className="font-bold text-gray-800">{Math.min(totalCount, page * 100)}</span> of{' '}
-                        <span className="font-bold text-gray-800">{totalCount}</span> orders
-                    </div>
-                    <div className="flex items-center gap-3">
-                        <Button
-                            variant="outline"
-                            onClick={() => handleQueryDatabase(page - 1)}
-                            disabled={page === 1 || dbLoading}
-                            className="rounded-xl font-bold h-10 px-4 border-gray-200 hover:bg-violet-50 transition-colors"
-                        >
-                            Previous
-                        </Button>
-                        <span className="text-sm font-bold text-gray-700 flex items-center gap-2">
-                            {dbLoading && <Loader2 className="h-4 w-4 text-violet-600 animate-spin" />}
-                            Page {page} of {Math.ceil(totalCount / 100)}
-                        </span>
-                        <Button
-                            variant="outline"
-                            onClick={() => handleQueryDatabase(page + 1)}
-                            disabled={page >= Math.ceil(totalCount / 100) || dbLoading}
-                            className="rounded-xl font-bold h-10 px-4 border-gray-200 hover:bg-violet-50 transition-colors"
-                        >
-                            Next
-                        </Button>
-                    </div>
-                </div>
-            )}
-
-            {/* Bulk Actions */}
-            {selected.size > 0 && (
-                <div className="flex items-center gap-4 p-4 rounded-2xl border border-violet-200 bg-violet-50/50 shadow-sm mb-6">
-                    <span className="text-sm font-bold text-violet-700 ml-2">{selected.size} items selected</span>
-                    <div className="h-6 w-px bg-violet-200 mx-2" />
-                    <Select onValueChange={(val: string | null) => { if (val) handleBulk(val); }}>
-                        <SelectTrigger className="w-[180px] h-9 rounded-xl border-violet-200 bg-white text-xs font-bold text-violet-700">
-                            <SelectValue placeholder="Update Status" />
-                        </SelectTrigger>
-                        <SelectContent>
-                            <SelectItem value="pending">Mark Pending</SelectItem>
-                            <SelectItem value="fulfilled">Mark Fulfilled</SelectItem>
-                            <SelectItem value="cancelled">Mark Cancelled</SelectItem>
-                        </SelectContent>
-                    </Select>
-                    
-                    <Button 
-                        size="sm" 
-                        variant="ghost" 
-                        className="h-9 px-4 rounded-xl font-bold text-rose-600 hover:text-rose-700 hover:bg-rose-50 transition-all ml-auto gap-2" 
-                        onClick={async () => {
-                            if (!selected.size) return;
-                            
-                            const confirmed = await niceConfirm(
-                                'Delete Selected Orders',
-                                `Are you sure you want to delete all ${selected.size} selected order(s)? This action cannot be undone.`,
-                                'danger',
-                                'Delete'
-                            );
-                            if (!confirmed) return;
-                            
-                            setLoading(true);
-                            const result = await bulkDeleteOrders(Array.from(selected));
-                            
-                            if (result.success) {
-                                toast.success('Orders deleted successfully!');
-                                const deletedIds = new Set(selected);
-                                setOrders(prev => prev.filter(o => !deletedIds.has(o.id)));
-                                setSelected(new Set());
-                            } else {
-                                toast.error(result.error || 'Failed to delete orders');
-                            }
-                            setLoading(false);
-                        }}
-                        disabled={loading}
-                    >
-                        <Trash2 className="size-4" />
-                        {loading ? 'Deleting...' : 'Delete Selected'}
-                    </Button>
-
-                    <Button size="sm" variant="ghost" className="h-9 px-4 rounded-xl font-bold text-gray-400 hover:text-gray-600" onClick={() => setSelected(new Set())}>
-                        Deselect
-                    </Button>
-                </div>
-            )}
+            </Card>
 
             {/* Search Results Stats Summary Card (Admin Only) */}
-            {userRole === 'admin' && sorted.length > 0 && (
+            {userRole === 'admin' && statsOrders.length > 0 && (
                 <Card className="rounded-2xl border-gray-150 shadow-sm mb-6 bg-white overflow-hidden no-print">
                     <CardContent className="p-6 space-y-6">
                         <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-6">
@@ -2530,6 +2448,95 @@ export function OrdersClient({
                         )}
                     </CardContent>
                 </Card>
+            )}
+
+            {/* Pagination Controls */}
+            {totalCount > 100 && (
+                <div className="flex flex-col sm:flex-row items-center justify-between gap-4 p-4 bg-white rounded-2xl border border-gray-150 shadow-sm no-print mb-6">
+                    <div className="text-sm font-semibold text-gray-500">
+                        Showing <span className="font-bold text-gray-800">{Math.min(totalCount, (page - 1) * 100 + 1)}</span> to{' '}
+                        <span className="font-bold text-gray-800">{Math.min(totalCount, page * 100)}</span> of{' '}
+                        <span className="font-bold text-gray-800">{totalCount}</span> orders
+                    </div>
+                    <div className="flex items-center gap-3">
+                        <Button
+                            variant="outline"
+                            onClick={() => handleQueryDatabase(page - 1)}
+                            disabled={page === 1 || dbLoading}
+                            className="rounded-xl font-bold h-10 px-4 border-gray-200 hover:bg-violet-50 transition-colors"
+                        >
+                            Previous
+                        </Button>
+                        <span className="text-sm font-bold text-gray-700 flex items-center gap-2">
+                            {dbLoading && <Loader2 className="h-4 w-4 text-violet-600 animate-spin" />}
+                            Page {page} of {Math.ceil(totalCount / 100)}
+                        </span>
+                        <Button
+                            variant="outline"
+                            onClick={() => handleQueryDatabase(page + 1)}
+                            disabled={page >= Math.ceil(totalCount / 100) || dbLoading}
+                            className="rounded-xl font-bold h-10 px-4 border-gray-200 hover:bg-violet-50 transition-colors"
+                        >
+                            Next
+                        </Button>
+                    </div>
+                </div>
+            )}
+
+            {/* Bulk Actions */}
+            {selected.size > 0 && (
+                <div className="flex items-center gap-4 p-4 rounded-2xl border border-violet-200 bg-violet-50/50 shadow-sm mb-6">
+                    <span className="text-sm font-bold text-violet-700 ml-2">{selected.size} items selected</span>
+                    <div className="h-6 w-px bg-violet-200 mx-2" />
+                    <Select onValueChange={(val: string | null) => { if (val) handleBulk(val); }}>
+                        <SelectTrigger className="w-[180px] h-9 rounded-xl border-violet-200 bg-white text-xs font-bold text-violet-700">
+                            <SelectValue placeholder="Update Status" />
+                        </SelectTrigger>
+                        <SelectContent>
+                            <SelectItem value="pending">Mark Pending</SelectItem>
+                            <SelectItem value="fulfilled">Mark Fulfilled</SelectItem>
+                            <SelectItem value="cancelled">Mark Cancelled</SelectItem>
+                        </SelectContent>
+                    </Select>
+                    
+                    <Button 
+                        size="sm" 
+                        variant="ghost" 
+                        className="h-9 px-4 rounded-xl font-bold text-rose-600 hover:text-rose-700 hover:bg-rose-50 transition-all ml-auto gap-2" 
+                        onClick={async () => {
+                            if (!selected.size) return;
+                            
+                            const confirmed = await niceConfirm(
+                                'Delete Selected Orders',
+                                `Are you sure you want to delete all ${selected.size} selected order(s)? This action cannot be undone.`,
+                                'danger',
+                                'Delete'
+                            );
+                            if (!confirmed) return;
+                            
+                            setLoading(true);
+                            const result = await bulkDeleteOrders(Array.from(selected));
+                            
+                            if (result.success) {
+                                toast.success('Orders deleted successfully!');
+                                const deletedIds = new Set(selected);
+                                setOrders(prev => prev.filter(o => !deletedIds.has(o.id)));
+                                setSelected(new Set());
+                            } else {
+                                toast.error(result.error || 'Failed to delete orders');
+                            }
+                            setLoading(false);
+                        }}
+                        disabled={loading}
+                    >
+                        <Trash2 className="size-4" />
+                        {loading ? 'Deleting...' : 'Delete Selected'}
+                    </Button>
+
+                    <Button size="sm" variant="ghost" className="h-9 px-4 rounded-xl font-bold text-gray-400 hover:text-gray-600" onClick={() => setSelected(new Set())}>
+                        Deselect
+                    </Button>
+                </div>
             )}
 
             {/* Table */}

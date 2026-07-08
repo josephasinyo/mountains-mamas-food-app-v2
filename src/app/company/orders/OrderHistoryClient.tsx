@@ -196,6 +196,7 @@ interface OrderHistoryClientProps {
 
 export default function OrderHistoryClient({ initialData }: OrderHistoryClientProps) {
     const [allOrders, setAllOrders] = useState<any[]>(initialData.recentOrders || []);
+    const [statsOrders, setStatsOrders] = useState<any[]>(initialData.statsOrders || initialData.recentOrders || []);
     const [totalCount, setTotalCount] = useState(initialData.totalCount || 0);
     const [totalLunches, setTotalLunches] = useState(initialData.totalLunches || 0);
     const [pendingCount, setPendingCount] = useState(initialData.pendingCount || 0);
@@ -262,6 +263,7 @@ export default function OrderHistoryClient({ initialData }: OrderHistoryClientPr
         });
         if (result.success) {
             setAllOrders(result.orders);
+            setStatsOrders((result as any).statsOrders || []);
             setTotalCount(result.totalCount);
             setTotalLunches(result.totalLunches);
             setPendingCount(result.pendingCount);
@@ -291,6 +293,7 @@ export default function OrderHistoryClient({ initialData }: OrderHistoryClientPr
         });
         if (result.success) {
             setAllOrders(result.orders);
+            setStatsOrders((result as any).statsOrders || []);
             setTotalCount(result.totalCount);
             setTotalLunches(result.totalLunches);
             setPendingCount(result.pendingCount);
@@ -506,7 +509,7 @@ export default function OrderHistoryClient({ initialData }: OrderHistoryClientPr
             return 'Box Lunch';
         };
 
-        sortedOrders.forEach((order: any) => {
+        statsOrders.forEach((order: any) => {
             if (order.status === 'cancelled') return;
             ordersCount++;
 
@@ -550,7 +553,7 @@ export default function OrderHistoryClient({ initialData }: OrderHistoryClientPr
                 lunches: stats.lunches
             })).sort((a, b) => a.name.localeCompare(b.name))
         };
-    }, [sortedOrders]);
+    }, [statsOrders]);
 
     const renderOrderRow = (order: any, isExpanded: boolean, onToggleExpand: () => void) => {
         return [
@@ -1147,7 +1150,7 @@ export default function OrderHistoryClient({ initialData }: OrderHistoryClientPr
             </Card>
 
             {/* Search Results Stats Summary Card */}
-            {sortedOrders.length > 0 && (
+            {statsOrders.length > 0 && (
                 <Card className="rounded-2xl border-gray-150 shadow-sm mb-6 bg-white overflow-hidden no-print">
                     <CardContent className="p-6 space-y-6">
                         <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-6">

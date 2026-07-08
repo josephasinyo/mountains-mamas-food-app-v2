@@ -8,6 +8,7 @@ export default async function CompanyOrdersPage() {
     
     const initialData = {
         recentOrders: data.success ? data.orders : [],
+        statsOrders: data.success ? (data as any).statsOrders : [],
         totalCount: data.success ? data.totalCount : 0,
         totalLunches: data.success ? data.totalLunches : 0,
         pendingCount: data.success ? data.pendingCount : 0

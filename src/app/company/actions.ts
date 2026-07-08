@@ -554,8 +554,9 @@ export async function getPaginatedCompanyOrders(filters: {
         // Apply filters to stats query to compute full aggregated stats
         let statsQuery = supabase
             .from('orders')
-            .select('id, status, order_items(quantity)')
-            .eq('company_id', companyId);
+            .select('*, order_items(*), order_change_requests(*)')
+            .eq('company_id', companyId)
+            .order('created_at', { ascending: false });
 
         if (filters.status) {
             statsQuery = statsQuery.eq('status', filters.status);
@@ -602,7 +603,8 @@ export async function getPaginatedCompanyOrders(filters: {
             orders: orders || [],
             totalCount: count || 0,
             totalLunches,
-            pendingCount
+            pendingCount,
+            statsOrders: statsOrders || []
         };
     } catch (e: any) {
         console.error('Error fetching paginated company orders:', e);
