@@ -11,6 +11,29 @@ interface InvoiceLineItem {
     metadata?: any;
 }
 
+interface ParsedMealItem {
+    mealName: string;
+    quantity: number;
+    unitPrice: number;
+    total: number;
+    isComped: boolean;
+}
+
+interface DateGroup {
+    date: string;
+    dateKey: string;
+    items: ParsedMealItem[];
+    dayTotal: number;
+    dayLunchCount: number;
+}
+
+interface MealTypeSummary {
+    mealName: string;
+    totalQuantity: number;
+    totalPrice: number;
+    avgUnitPrice: number;
+}
+
 interface InvoiceData {
     id: string;
     company_name: string;
@@ -54,6 +77,8 @@ export default function InvoicePayPage() {
     const [tipInput, setTipInput] = useState('');
     const [processing, setProcessing] = useState(false);
     const [isExpanded, setIsExpanded] = useState(false);
+    const [isSummaryExpanded, setIsSummaryExpanded] = useState(false);
+    const [isItemsExpanded, setIsItemsExpanded] = useState(false);
     const [paymentMethod, setPaymentMethod] = useState<'card' | 'ach'>('card');
 
     useEffect(() => {
@@ -164,9 +189,154 @@ export default function InvoicePayPage() {
         (item) => item.metadata?.type && item.metadata.type !== 'meal'
     );
 
-    const showToggle = mealItems.length > 5;
-    const displayedMealItems = showToggle && !isExpanded ? [] : mealItems;
     const lunchesSubtotal = mealItems.reduce((sum, item) => sum + item.amount, 0);
+
+    // Parse consolidated Stripe descriptions into individual items grouped by date
+    // Format: "Jun 30 — 16x Turkey and Cheese (French Bread), 6x Roastbeef and Cheese (French Bread)"
+    // Also handles detailed items: "Customer - 2x Turkey and Cheese (French Bread)"
+    const dateGroups: DateGroup[] = [];
+    const dateGroupMap = new Map<string, DateGroup>();
+
+    for (const item of mealItems) {
+        const desc = item.description;
+        // Try to match consolidated format: "Jun 30 — items..."
+        const consolidatedMatch = desc.match(/^([A-Za-z]{3}\s+\d{1,2})\s*[—–-]\s*(.+)$/);
+        if (consolidatedMatch) {
+            const dateLabel = consolidatedMatch[1];
+            const itemsStr = consolidatedMatch[2];
+            // Parse individual items: "16x Turkey and Cheese (French Bread)"
+            const itemParts = itemsStr.split(/,\s*/);
+            const parsedItems: ParsedMealItem[] = [];
+            let totalParsedQty = 0;
+
+            for (const part of itemParts) {
+                const itemMatch = part.trim().match(/^(\d+)x\s+(.+?)(?:\s*\(Comped\))?$/);
+                if (itemMatch) {
+                    const qty = parseInt(itemMatch[1], 10);
+                    const name = itemMatch[2].trim();
+                    const isComped = part.includes('(Comped)');
+                    totalParsedQty += qty;
+                    parsedItems.push({
+                        mealName: name,
+                        quantity: qty,
+                        unitPrice: 0, // will compute after
+                        total: 0,
+                        isComped,
+                    });
+                }
+            }
+
+            // Distribute the line item amount proportionally across parsed items by quantity
+            if (totalParsedQty > 0) {
+                const nonCompedQty = parsedItems.filter(p => !p.isComped).reduce((s, p) => s + p.quantity, 0);
+                for (const pi of parsedItems) {
+                    if (pi.isComped) {
+                        pi.unitPrice = 0;
+                        pi.total = 0;
+                    } else if (nonCompedQty > 0) {
+                        pi.total = (pi.quantity / nonCompedQty) * item.amount;
+                        pi.unitPrice = pi.total / pi.quantity;
+                    }
+                }
+            }
+
+            const dateKey = dateLabel;
+            if (!dateGroupMap.has(dateKey)) {
+                const group: DateGroup = {
+                    date: dateLabel,
+                    dateKey,
+                    items: [],
+                    dayTotal: 0,
+                    dayLunchCount: 0,
+                };
+                dateGroupMap.set(dateKey, group);
+                dateGroups.push(group);
+            }
+            const group = dateGroupMap.get(dateKey)!;
+            group.items.push(...parsedItems);
+            group.dayTotal += item.amount;
+            group.dayLunchCount += totalParsedQty;
+        } else {
+            // Detailed or unrecognized format — show as a single entry
+            // Try matching: "Customer - 2x Meal (BoxType)"
+            const detailedMatch = desc.match(/^(.+?)\s*-\s*(\d+)x\s+(.+?)(?:\s*\(Comped\))?$/);
+            const dateKey = item.metadata?.tour_date || '__no_date__';
+            const dateLabel = item.metadata?.tour_date
+                ? new Date(item.metadata.tour_date + 'T12:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+                : '';
+
+            if (!dateGroupMap.has(dateKey)) {
+                const group: DateGroup = {
+                    date: dateLabel,
+                    dateKey,
+                    items: [],
+                    dayTotal: 0,
+                    dayLunchCount: 0,
+                };
+                dateGroupMap.set(dateKey, group);
+                dateGroups.push(group);
+            }
+            const group = dateGroupMap.get(dateKey)!;
+
+            if (detailedMatch) {
+                const qty = parseInt(detailedMatch[2], 10);
+                const name = detailedMatch[3].trim();
+                const isComped = desc.includes('(Comped)');
+                group.items.push({
+                    mealName: name,
+                    quantity: qty,
+                    unitPrice: isComped ? 0 : item.amount / qty,
+                    total: item.amount,
+                    isComped,
+                });
+                group.dayLunchCount += qty;
+            } else {
+                // Completely unrecognized — fallback
+                group.items.push({
+                    mealName: desc,
+                    quantity: 1,
+                    unitPrice: item.amount,
+                    total: item.amount,
+                    isComped: false,
+                });
+                group.dayLunchCount += 1;
+            }
+            group.dayTotal += item.amount;
+        }
+    }
+
+    // Total lunch count
+    const totalLunchCount = dateGroups.reduce((sum, g) => sum + g.dayLunchCount, 0);
+
+    // Build meal type summary
+    const mealTypeSummaryMap = new Map<string, MealTypeSummary>();
+    for (const group of dateGroups) {
+        for (const item of group.items) {
+            const key = item.mealName;
+            if (!mealTypeSummaryMap.has(key)) {
+                mealTypeSummaryMap.set(key, {
+                    mealName: key,
+                    totalQuantity: 0,
+                    totalPrice: 0,
+                    avgUnitPrice: 0,
+                });
+            }
+            const s = mealTypeSummaryMap.get(key)!;
+            s.totalQuantity += item.quantity;
+            s.totalPrice += item.total;
+        }
+    }
+    // Compute average unit price
+    for (const s of mealTypeSummaryMap.values()) {
+        s.avgUnitPrice = s.totalQuantity > 0 ? s.totalPrice / s.totalQuantity : 0;
+    }
+    const mealTypeSummaries = Array.from(mealTypeSummaryMap.values())
+        .sort((a, b) => b.totalQuantity - a.totalQuantity);
+
+    // Display control
+    const hasMultipleDates = dateGroups.length > 3;
+    const displayedDateGroups = hasMultipleDates && !isExpanded ? dateGroups.slice(0, 3) : dateGroups;
+    const hiddenDatesCount = dateGroups.length - 3;
 
     return (
         <div style={styles.pageWrapper}>
@@ -236,31 +406,93 @@ export default function InvoicePayPage() {
                 {/* Line Items */}
                 {invoice.line_items.length > 0 && (
                     <div style={styles.lineItemsSection}>
-                        <h3 style={styles.sectionTitle}>Order Details</h3>
-                        <div style={styles.lineItemsTable}>
-                            {displayedMealItems.map((item, i) => (
-                                <div key={i} style={{
-                                    ...styles.lineItemRow,
-                                    backgroundColor: item.amount < 0 ? '#f0fdf4' : 'transparent',
-                                }}>
-                                    <span style={styles.lineItemDesc}>{item.description}</span>
-                                    <span style={{
-                                        ...styles.lineItemAmount,
-                                        color: item.amount < 0 ? '#16a34a' : '#111827',
-                                    }}>
-                                        {item.amount < 0 ? '-' : ''}{formatCurrency(Math.abs(item.amount))}
-                                    </span>
+                        {/* Header with total lunch count */}
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+                            <h3 style={{ ...styles.sectionTitle, marginBottom: 0 }}>Order Details</h3>
+                            {totalLunchCount > 0 && (
+                                <div style={styles.lunchCountBadge}>
+                                    <span style={styles.lunchCountNumber}>{totalLunchCount}</span>
+                                    <span style={styles.lunchCountLabel}>Total Lunches</span>
                                 </div>
-                            ))}
+                            )}
                         </div>
 
-                        {showToggle && (
+                        {/* Expandable Summary by Meal Type */}
+                        {mealTypeSummaries.length > 1 && (
+                            <div style={styles.summarySection}>
+                                <button
+                                    onClick={() => setIsSummaryExpanded(!isSummaryExpanded)}
+                                    className="btn-expand"
+                                    style={styles.summaryToggle}
+                                >
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                            <path d="M3 3h7v7H3zM14 3h7v7h-7zM3 14h7v7H3zM14 14h7v7h-7z" />
+                                        </svg>
+                                        <span>Summary by Meal Type ({mealTypeSummaries.length} types)</span>
+                                    </div>
+                                    <svg
+                                        width="16"
+                                        height="16"
+                                        viewBox="0 0 24 24"
+                                        fill="none"
+                                        stroke="currentColor"
+                                        strokeWidth="2.5"
+                                        strokeLinecap="round"
+                                        strokeLinejoin="round"
+                                        style={{
+                                            transform: isSummaryExpanded ? 'rotate(180deg)' : 'rotate(0deg)',
+                                            transition: 'transform 0.2s ease',
+                                        }}
+                                    >
+                                        <polyline points="6 9 12 15 18 9" />
+                                    </svg>
+                                </button>
+
+                                {isSummaryExpanded && (
+                                    <div style={styles.summaryContent}>
+                                        {/* Table header */}
+                                        <div style={styles.summaryHeaderRow}>
+                                            <span style={{ ...styles.summaryHeaderCell, flex: 2 }}>Meal Type</span>
+                                            <span style={{ ...styles.summaryHeaderCell, textAlign: 'center' as const }}>Qty</span>
+                                            <span style={{ ...styles.summaryHeaderCell, textAlign: 'right' as const }}>Unit Price</span>
+                                            <span style={{ ...styles.summaryHeaderCell, textAlign: 'right' as const }}>Total</span>
+                                        </div>
+                                        {mealTypeSummaries.map((s, i) => (
+                                            <div key={i} style={styles.summaryRow}>
+                                                <span style={{ ...styles.summaryCell, flex: 2, fontWeight: 600, color: '#374151' }}>{s.mealName}</span>
+                                                <span style={{ ...styles.summaryCell, textAlign: 'center' as const, fontWeight: 700, color: '#6d28d9' }}>{s.totalQuantity}</span>
+                                                <span style={{ ...styles.summaryCell, textAlign: 'right' as const, color: '#6b7280' }}>{formatCurrency(s.avgUnitPrice)}</span>
+                                                <span style={{ ...styles.summaryCell, textAlign: 'right' as const, fontWeight: 700, color: '#111827' }}>{formatCurrency(s.totalPrice)}</span>
+                                            </div>
+                                        ))}
+                                        <div style={styles.summaryTotalRow}>
+                                            <span style={{ ...styles.summaryCell, flex: 2, fontWeight: 800, color: '#111827' }}>Total</span>
+                                            <span style={{ ...styles.summaryCell, textAlign: 'center' as const, fontWeight: 800, color: '#6d28d9' }}>{totalLunchCount}</span>
+                                            <span style={styles.summaryCell}></span>
+                                            <span style={{ ...styles.summaryCell, textAlign: 'right' as const, fontWeight: 800, color: '#111827' }}>{formatCurrency(lunchesSubtotal)}</span>
+                                        </div>
+                                    </div>
+                                )}
+                            </div>
+                        )}
+
+                        {/* Items grouped by tour date (collapsible) */}
+                        <div style={styles.summarySection}>
                             <button
                                 onClick={() => setIsExpanded(!isExpanded)}
                                 className="btn-expand"
-                                style={styles.expandButton}
+                                style={styles.summaryToggle}
                             >
-                                <span>{isExpanded ? 'Show Less' : `Show All Orders (${mealItems.length})`}</span>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                        <rect x="3" y="4" width="18" height="18" rx="2" ry="2" />
+                                        <line x1="16" y1="2" x2="16" y2="6" />
+                                        <line x1="8" y1="2" x2="8" y2="6" />
+                                        <line x1="3" y1="10" x2="21" y2="10" />
+                                    </svg>
+                                    <span>Items by Tour Date ({dateGroups.length} days)</span>
+                                </div>
                                 <svg
                                     width="16"
                                     height="16"
@@ -278,7 +510,54 @@ export default function InvoicePayPage() {
                                     <polyline points="6 9 12 15 18 9" />
                                 </svg>
                             </button>
-                        )}
+
+                            {isExpanded && (
+                                <div style={{ padding: '8px 4px' }}>
+                                    {dateGroups.map((group, gi) => (
+                                        <div key={gi} style={{ marginBottom: gi < dateGroups.length - 1 ? '8px' : 0 }}>
+                                            {group.date && (
+                                                <div style={styles.dateHeader}>
+                                                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ opacity: 0.6 }}>
+                                                            <rect x="3" y="4" width="18" height="18" rx="2" ry="2" />
+                                                            <line x1="16" y1="2" x2="16" y2="6" />
+                                                            <line x1="8" y1="2" x2="8" y2="6" />
+                                                            <line x1="3" y1="10" x2="21" y2="10" />
+                                                        </svg>
+                                                        <span>{group.date}</span>
+                                                    </div>
+                                                    <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                                                        <span style={styles.dateHeaderCount}>{group.dayLunchCount} lunches</span>
+                                                        <span style={styles.dateHeaderAmount}>{formatCurrency(group.dayTotal)}</span>
+                                                    </div>
+                                                </div>
+                                            )}
+                                            {group.items.map((meal, mi) => (
+                                                <div key={mi} style={{
+                                                    ...styles.lineItemRow,
+                                                    backgroundColor: meal.isComped ? '#f0fdf4' : 'transparent',
+                                                    paddingLeft: group.date ? '28px' : '12px',
+                                                }}>
+                                                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flex: 1, paddingRight: '16px' }}>
+                                                        <span style={styles.itemQtyBadge}>{meal.quantity}x</span>
+                                                        <span style={styles.lineItemDesc}>
+                                                            {meal.mealName}
+                                                            {meal.isComped && <span style={styles.compedBadge}>Comped</span>}
+                                                        </span>
+                                                    </div>
+                                                    <span style={{
+                                                        ...styles.lineItemAmount,
+                                                        color: meal.isComped ? '#16a34a' : '#111827',
+                                                    }}>
+                                                        {formatCurrency(meal.total)}
+                                                    </span>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    ))}
+                                </div>
+                            )}
+                        </div>
 
                         {/* Lunches Subtotal Row */}
                         <div style={{
@@ -624,6 +903,125 @@ const styles: Record<string, React.CSSProperties> = {
         height: '1px',
         background: '#e5e7eb',
         margin: '12px 0',
+    },
+    lunchCountBadge: {
+        display: 'flex',
+        alignItems: 'center',
+        gap: '6px',
+        background: 'linear-gradient(135deg, #ede9fe 0%, #f5f3ff 100%)',
+        padding: '6px 14px',
+        borderRadius: '100px',
+        border: '1px solid #ddd6fe',
+    },
+    lunchCountNumber: {
+        fontSize: '18px',
+        fontWeight: 900,
+        color: '#6d28d9',
+        lineHeight: '1',
+    },
+    lunchCountLabel: {
+        fontSize: '11px',
+        fontWeight: 700,
+        color: '#7c3aed',
+        textTransform: 'uppercase' as const,
+        letterSpacing: '0.05em',
+    },
+    summarySection: {
+        marginBottom: '16px',
+        borderRadius: '12px',
+        border: '1px solid #e5e7eb',
+        overflow: 'hidden',
+    },
+    summaryToggle: {
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        width: '100%',
+        padding: '12px 16px',
+        background: '#f9fafb',
+        border: 'none',
+        color: '#4b5563',
+        fontSize: '13px',
+        fontWeight: 700,
+        cursor: 'pointer',
+        transition: 'all 0.15s ease',
+    },
+    summaryContent: {
+        padding: '0 4px 8px',
+        background: '#ffffff',
+    },
+    summaryHeaderRow: {
+        display: 'flex',
+        padding: '10px 12px 6px',
+        borderBottom: '1px solid #f3f4f6',
+    },
+    summaryHeaderCell: {
+        fontSize: '10px',
+        fontWeight: 800,
+        color: '#9ca3af',
+        textTransform: 'uppercase' as const,
+        letterSpacing: '0.08em',
+        flex: 1,
+    },
+    summaryRow: {
+        display: 'flex',
+        padding: '8px 12px',
+        borderBottom: '1px solid #f9fafb',
+        alignItems: 'center',
+    },
+    summaryCell: {
+        fontSize: '12px',
+        flex: 1,
+    },
+    summaryTotalRow: {
+        display: 'flex',
+        padding: '10px 12px',
+        borderTop: '2px solid #ede9fe',
+        background: '#faf5ff',
+        borderRadius: '0 0 8px 8px',
+        alignItems: 'center',
+    },
+    dateHeader: {
+        display: 'flex',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        padding: '8px 12px',
+        background: '#f9fafb',
+        borderRadius: '8px 8px 0 0',
+        marginTop: '4px',
+        fontSize: '12px',
+        fontWeight: 700,
+        color: '#6b7280',
+    },
+    dateHeaderCount: {
+        fontSize: '11px',
+        fontWeight: 600,
+        color: '#9ca3af',
+    },
+    dateHeaderAmount: {
+        fontSize: '12px',
+        fontWeight: 800,
+        color: '#374151',
+    },
+    itemQtyBadge: {
+        fontSize: '11px',
+        fontWeight: 800,
+        color: '#6d28d9',
+        background: '#ede9fe',
+        padding: '2px 6px',
+        borderRadius: '6px',
+        whiteSpace: 'nowrap' as const,
+        flexShrink: 0,
+    },
+    compedBadge: {
+        fontSize: '10px',
+        fontWeight: 700,
+        color: '#16a34a',
+        background: '#dcfce7',
+        padding: '1px 6px',
+        borderRadius: '4px',
+        marginLeft: '6px',
+        letterSpacing: '0.03em',
     },
     expandButton: {
         display: 'flex',

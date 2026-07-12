@@ -1399,7 +1399,7 @@ export default function OrderHistoryClient({ initialData }: OrderHistoryClientPr
                         sortedOrders.map((order: any) => {
                             const isExpanded = expanded === order.id;
                             const totalItems = order.order_items?.reduce((acc: number, item: any) => acc + item.quantity, 0) || 0;
-                            const totalPrice = order.order_items?.reduce((acc: number, item: any) => acc + (Number(item.unit_price) * item.quantity), 0) || 0;
+                            const totalPrice = order.order_items?.reduce((acc: number, item: any) => acc + (Number(item.is_comped ? 0 : item.unit_price) * item.quantity), 0) || 0;
 
                             return (
                                 <Card 
@@ -1535,9 +1535,12 @@ export default function OrderHistoryClient({ initialData }: OrderHistoryClientPr
                                             </div>
                                             
                                             <div className="text-right">
-                                                <span className="text-[10px] text-gray-400 font-bold uppercase block">Placed At</span>
-                                                <span className="text-[12px] font-semibold text-gray-400">
-                                                    {isMounted ? formatDateUS(order.created_at) : ''}
+                                                <span className="text-[9px] text-gray-400 font-bold uppercase block leading-none mb-1">Total Price</span>
+                                                <span className="text-sm font-black text-violet-600 block">
+                                                    ${totalPrice.toFixed(2)}
+                                                </span>
+                                                <span className="text-[9px] text-gray-400 mt-1 block">
+                                                    Placed: {isMounted ? formatDateUS(order.created_at) : ''}
                                                 </span>
                                             </div>
                                         </div>
@@ -1835,7 +1838,7 @@ export default function OrderHistoryClient({ initialData }: OrderHistoryClientPr
                                         className="w-full py-4 border-dashed border-2 border-violet-200 hover:border-violet-400 hover:bg-violet-50 text-violet-600 font-bold rounded-2xl flex items-center justify-center gap-2 transition-all mt-4"
                                     >
                                         <Plus className="size-4" />
-                                        Add Selection
+                                        Add Lunch
                                     </Button>
                                 </div>
                             </div>

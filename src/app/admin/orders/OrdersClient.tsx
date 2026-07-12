@@ -3081,7 +3081,7 @@ export function OrdersClient({
                                         className="w-full py-4 border-dashed border-2 border-violet-200 hover:border-violet-400 hover:bg-violet-50 text-violet-600 font-bold rounded-2xl flex items-center justify-center gap-2 transition-all mt-4"
                                     >
                                         <Plus className="size-4" />
-                                        Add Selection
+                                        Add Lunch
                                     </Button>
                                 </div>
                             </div>
@@ -3365,7 +3365,7 @@ export function OrdersClient({
                                             className="w-full py-4 border-dashed border-2 border-violet-200 hover:border-violet-400 hover:bg-violet-50 text-violet-600 font-bold rounded-2xl flex items-center justify-center gap-2 transition-all mt-4"
                                         >
                                             <Plus className="size-4" />
-                                            Add Selection
+                                            Add Lunch
                                         </Button>
                                     </div>
                                 ) : (

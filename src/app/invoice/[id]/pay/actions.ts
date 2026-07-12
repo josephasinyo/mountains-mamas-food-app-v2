@@ -31,13 +31,41 @@ export async function fetchInvoiceForPayment(invoiceId: string) {
                     lineItems.push({
                         description: line.description || 'Item',
                         amount: line.amount / 100, // Convert cents to dollars
-                        metadata: line.metadata,
+                        metadata: line.metadata ? { ...line.metadata } : {},
                     });
                 }
             } catch (err) {
                 console.error('[fetchInvoiceForPayment] Failed to fetch line items from Stripe:', err);
                 // If Stripe retrieval fails, we'll show just the total
             }
+        }
+
+        // Enrich line items with tour_date from the database.
+        // Detailed-mode items have order_id in metadata but no tour_date.
+        // We fetch orders linked to this invoice to build a mapping.
+        try {
+            const { data: linkedOrders } = await supabase
+                .from('orders')
+                .select('id, tour_date')
+                .eq('invoice_id', invoiceId);
+
+            if (linkedOrders && linkedOrders.length > 0) {
+                const orderDateMap = new Map<string, string>();
+                for (const o of linkedOrders) {
+                    orderDateMap.set(o.id, o.tour_date);
+                }
+
+                for (const item of lineItems) {
+                    if (item.metadata?.order_id && !item.metadata?.tour_date) {
+                        const tourDate = orderDateMap.get(item.metadata.order_id);
+                        if (tourDate) {
+                            item.metadata.tour_date = tourDate;
+                        }
+                    }
+                }
+            }
+        } catch (err) {
+            console.error('[fetchInvoiceForPayment] Failed to enrich line items with tour dates:', err);
         }
 
         return {

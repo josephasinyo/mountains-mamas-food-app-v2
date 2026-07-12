@@ -297,6 +297,7 @@ export default function CompanyDashboardClient({ initialData }: CompanyDashboard
                             {sortedOrders && sortedOrders.length > 0 ? (
                                 sortedOrders.map((order: any) => {
                                     const totalItems = order.order_items?.reduce((acc: number, item: any) => acc + item.quantity, 0) || 0;
+                                    const totalPrice = order.order_items?.reduce((acc: number, item: any) => acc + (Number(item.is_comped ? 0 : item.unit_price) * item.quantity), 0) || 0;
                                     const isExpanded = expanded === order.id;
                                     return (
                                         <div 
@@ -313,15 +314,6 @@ export default function CompanyDashboardClient({ initialData }: CompanyDashboard
                                                         <h4 className="font-bold text-sm text-gray-900 leading-tight">{order.guide_name || order.customer_name}</h4>
                                                     </div>
                                                 </div>
-                                                <Badge variant="outline" className={`
-                                                    rounded-lg px-2 py-0.5 text-[9px] font-bold uppercase tracking-wider border-transparent shadow-none
-                                                    ${order.status === 'pending' ? 'bg-amber-50 text-amber-700 border-amber-200' : ''}
-                                                    ${order.status === 'fulfilled' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : ''}
-                                                    ${order.status === 'cancelled' ? 'bg-rose-50 text-rose-700 border-rose-200' : ''}
-                                                    ${order.status === 'ticket_created' ? 'bg-violet-50 text-violet-700 border-violet-200' : ''}
-                                                `}>
-                                                    {order.status.replace('_', ' ')}
-                                                </Badge>
                                             </div>
 
                                             <div className="grid grid-cols-2 gap-2 text-[11px] border-t border-b border-gray-50 py-2 mt-2 text-gray-500 font-semibold">
@@ -335,6 +327,25 @@ export default function CompanyDashboardClient({ initialData }: CompanyDashboard
                                                     <span className="text-gray-400 font-semibold">{formatDateUS(order.created_at)}</span>
                                                     <span className="text-[10px] text-gray-400 mt-0.5">
                                                         {new Date(order.created_at).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}
+                                                    </span>
+                                                </div>
+                                            </div>
+
+                                            <div className="flex items-center justify-between pt-2 mt-2">
+                                                <Badge variant="outline" className={`
+                                                    rounded-lg px-2 py-0.5 text-[9px] font-bold uppercase tracking-wider border-transparent shadow-none
+                                                    ${order.status === 'pending' ? 'bg-amber-50 text-amber-700 border-amber-200' : ''}
+                                                    ${order.status === 'fulfilled' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : ''}
+                                                    ${order.status === 'cancelled' ? 'bg-rose-50 text-rose-700 border-rose-200' : ''}
+                                                    ${order.status === 'ticket_created' ? 'bg-violet-50 text-violet-700 border-violet-200' : ''}
+                                                `}>
+                                                    {order.status.replace('_', ' ')}
+                                                </Badge>
+
+                                                <div className="text-right">
+                                                    <span className="text-[9px] text-gray-400 font-bold uppercase block leading-none mb-1">Total Price</span>
+                                                    <span className="text-xs font-black text-violet-600">
+                                                        ${totalPrice.toFixed(2)}
                                                     </span>
                                                 </div>
                                             </div>
