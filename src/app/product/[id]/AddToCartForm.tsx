@@ -123,6 +123,22 @@ export default function AddToCartForm({ item }: Props) {
     return ['Chocolate Chip'];
   }, [config, globalSettings]);
 
+  // Compute the default bread option (company-specific overrides)
+  const defaultBreadOption = useMemo(() => {
+    if (company?.slug === 'teton-excursions-llc' && dynamicBreadOptions.length > 0) {
+      // "The Vegetarian" sandwich defaults to "Whole Grain Focaccia"
+      if (item.name === 'The Vegetarian') {
+        const wholeGrain = dynamicBreadOptions.find((b: string) => b === 'Whole Grain Focaccia');
+        if (wholeGrain) return wholeGrain;
+      } else {
+        // All other sandwiches default to "Herby Focaccia"
+        const herby = dynamicBreadOptions.find((b: string) => b === 'Herby Focaccia');
+        if (herby) return herby;
+      }
+    }
+    return dynamicBreadOptions[0];
+  }, [company?.slug, item.name, dynamicBreadOptions]);
+
   // State
   const [quantity, setQuantity] = useState<number | string>(1);
   const [openDropdown, setOpenDropdown] = useState<string | null>(null);
@@ -136,7 +152,7 @@ export default function AddToCartForm({ item }: Props) {
       const initialValues: Record<string, any> = {};
       formFields.forEach(field => {
         if (field.location === 'meal_page') {
-          if (field.name === 'bread_type') initialValues[field.name] = dynamicBreadOptions[0];
+          if (field.name === 'bread_type') initialValues[field.name] = defaultBreadOption;
           else if (field.name === 'cookie_choice') initialValues[field.name] = dynamicCookieOptions[0];
           else if (field.name === 'sandwich_options') initialValues[field.name] = SANDWICH_OPTIONS[0];
           else if (field.name === 'dressing_options') initialValues[field.name] = DRESSING_OPTIONS[0];
@@ -145,7 +161,7 @@ export default function AddToCartForm({ item }: Props) {
       });
       setFieldValues(initialValues);
     }
-  }, [formFields, dynamicBreadOptions, dynamicCookieOptions]);
+  }, [formFields, dynamicBreadOptions, dynamicCookieOptions, defaultBreadOption]);
 
   const handleFieldChange = (name: string, value: any) => {
     setFieldValues(prev => {
@@ -194,7 +210,7 @@ export default function AddToCartForm({ item }: Props) {
   // Sync selected options when the dynamic lists change
   useEffect(() => {
     if (dynamicBreadOptions.length > 0 && !fieldValues['bread_type']) {
-      handleFieldChange('bread_type', dynamicBreadOptions[0]);
+      handleFieldChange('bread_type', defaultBreadOption);
     }
     if (dynamicCookieOptions.length > 0 && !fieldValues['cookie_choice']) {
       handleFieldChange('cookie_choice', dynamicCookieOptions[0]);
