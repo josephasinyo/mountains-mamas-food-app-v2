@@ -14,6 +14,7 @@ import { completeForcedPasswordChange } from '@/app/company/actions';
 export default function ResetPasswordPage() {
     const [password, setPassword] = useState('');
     const [confirmPassword, setConfirmPassword] = useState('');
+    const [showPassword, setShowPassword] = useState(false);
     const [loading, setLoading] = useState(false);
     const [exchanging, setExchanging] = useState(false);
     const [error, setError] = useState('');
@@ -142,13 +143,20 @@ export default function ResetPasswordPage() {
                                     <div className="relative">
                                         <Lock className="absolute left-4 top-3.5 size-4 text-gray-400" />
                                         <Input
-                                            type="password"
+                                            type={showPassword ? "text" : "password"}
                                             placeholder="••••••••"
                                             value={password}
                                             onChange={(e) => setPassword(e.target.value)}
                                             required
-                                            className="h-12 pl-11 rounded-xl border-gray-100 bg-gray-50/50 focus:bg-white focus:ring-violet-500/20 font-medium transition-all"
+                                            className="h-12 pl-11 pr-11 rounded-xl border-gray-100 bg-gray-50/50 focus:bg-white focus:ring-violet-500/20 font-medium transition-all placeholder:text-gray-400 placeholder:font-normal"
                                         />
+                                        <button
+                                            type="button"
+                                            onClick={() => setShowPassword(!showPassword)}
+                                            className="absolute right-4 top-3.5 text-gray-400 hover:text-gray-600 transition-colors text-xs font-bold"
+                                        >
+                                            {showPassword ? 'Hide' : 'Show'}
+                                        </button>
                                     </div>
                                 </div>
 
@@ -157,13 +165,20 @@ export default function ResetPasswordPage() {
                                     <div className="relative">
                                         <Lock className="absolute left-4 top-3.5 size-4 text-gray-400" />
                                         <Input
-                                            type="password"
+                                            type={showPassword ? "text" : "password"}
                                             placeholder="••••••••"
                                             value={confirmPassword}
                                             onChange={(e) => setConfirmPassword(e.target.value)}
                                             required
-                                            className="h-12 pl-11 rounded-xl border-gray-100 bg-gray-50/50 focus:bg-white focus:ring-violet-500/20 font-medium transition-all"
+                                            className="h-12 pl-11 pr-11 rounded-xl border-gray-100 bg-gray-50/50 focus:bg-white focus:ring-violet-500/20 font-medium transition-all placeholder:text-gray-400 placeholder:font-normal"
                                         />
+                                        <button
+                                            type="button"
+                                            onClick={() => setShowPassword(!showPassword)}
+                                            className="absolute right-4 top-3.5 text-gray-400 hover:text-gray-600 transition-colors text-xs font-bold"
+                                        >
+                                            {showPassword ? 'Hide' : 'Show'}
+                                        </button>
                                     </div>
                                 </div>
 

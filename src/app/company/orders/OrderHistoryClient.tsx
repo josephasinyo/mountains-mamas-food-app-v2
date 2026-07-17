@@ -60,7 +60,7 @@ import { Label } from '@/components/ui/label';
 import { motion, AnimatePresence } from 'framer-motion';
 import { updateCompanyOrderStatus, deleteCompanyOrder, getCompanyMenuSelections, getPaginatedCompanyOrders } from '../actions';
 import { createOrderChangeRequest } from './change-actions';
-import { isMoreThan24HoursAway } from './date-utils';
+import { isMoreThan14HoursAway } from './date-utils';
 import { toast } from 'sonner';
 import { OrderItemCustomFields } from '@/components/ui/OrderItemCustomFields';
 
@@ -809,8 +809,8 @@ export default function OrderHistoryClient({ initialData }: OrderHistoryClientPr
     async function handleStatus(id: string, status: string) {
         if (status === 'cancelled') {
             const order = allOrders.find(o => o.id === id);
-            if (order && !isMoreThan24HoursAway(order.tour_date, order.pickup_time)) {
-                toast.error('Order changes or cancellations are only possible at least 24 hours prior to scheduled tour pickup.');
+            if (order && !isMoreThan14HoursAway(order.tour_date, order.pickup_time)) {
+                toast.error('Order changes or cancellations are only possible at least 14 hours prior to scheduled tour pickup.');
                 return;
             }
             setLoading(true);
@@ -846,8 +846,8 @@ export default function OrderHistoryClient({ initialData }: OrderHistoryClientPr
     async function executeDelete() {
         if (!orderToDelete) return;
         const order = allOrders.find(o => o.id === orderToDelete);
-        if (order && !isMoreThan24HoursAway(order.tour_date, order.pickup_time)) {
-            toast.error('Order changes or deletions are only possible at least 24 hours prior to scheduled tour pickup.');
+        if (order && !isMoreThan14HoursAway(order.tour_date, order.pickup_time)) {
+            toast.error('Order changes or deletions are only possible at least 14 hours prior to scheduled tour pickup.');
             setOrderToDelete(null);
             return;
         }
@@ -884,8 +884,8 @@ export default function OrderHistoryClient({ initialData }: OrderHistoryClientPr
             toast.error('The selected tour date cannot be in the past.');
             return;
         }
-        if (!isMoreThan24HoursAway(tourDate, pickupTime)) {
-            toast.error('Order changes or deletions are only possible at least 24 hours prior to scheduled tour pickup.');
+        if (!isMoreThan14HoursAway(tourDate, pickupTime)) {
+            toast.error('Order changes or deletions are only possible at least 14 hours prior to scheduled tour pickup.');
             return;
         }
         setLoading(true);

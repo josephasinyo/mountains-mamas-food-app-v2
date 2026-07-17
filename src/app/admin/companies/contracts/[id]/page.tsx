@@ -118,7 +118,7 @@ export default async function ContractDetailPage({ params }: PageProps) {
                         <div>
                             <h3 className="font-bold text-gray-800 text-xs mb-1">3. Final Order Finalization & Cutoff Time</h3>
                             <p>
-                                To ensure the availability of fresh ingredients and timely preparation, all box lunch orders must be configured and locked exactly <strong>24 hours prior</strong> to the scheduled pickup time. Any orders requested inside this 24-hour cutoff window are subject to direct café management phone approval, kitchen capacity, and immediate stock availability.
+                                To ensure the availability of fresh ingredients and timely preparation, all box lunch orders must be configured and locked exactly <strong>14 hours prior</strong> to the scheduled pickup time. Any orders requested inside this 14-hour cutoff window are subject to direct café management phone approval, kitchen capacity, and immediate stock availability.
                             </p>
                         </div>
 
@@ -132,7 +132,7 @@ export default async function ContractDetailPage({ params }: PageProps) {
                         <div>
                             <h3 className="font-bold text-gray-800 text-xs mb-1">5. Cancellation & Adjustments Policy</h3>
                             <p>
-                                Cancellations, group size reductions, or changes in product choices must be updated in the system at least 24 hours prior to the scheduled tour. Failure to notify the café within this window will result in the initial registered quantities being billed to the monthly invoice in full.
+                                Cancellations, group size reductions, or changes in product choices must be updated in the system at least 14 hours prior to the scheduled tour. Failure to notify the café within this window will result in the initial registered quantities being billed to the monthly invoice in full.
                             </p>
                         </div>
 

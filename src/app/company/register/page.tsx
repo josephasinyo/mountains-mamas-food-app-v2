@@ -188,15 +188,15 @@ export default function RegisterCompanyPage() {
     const nextStep = () => {
         setFormError('');
         if (step === 1) {
-            if (!name.trim()) return setFormError('Company Name is required.');
-            if (!slugAvailable) return setFormError('A company with this slug already exists.');
-            if (!email.trim() || !email.includes('@')) return setFormError('A valid email address is required.');
-            if (!signerName.trim()) return setFormError('Legal Representative Name is required.');
-            if (!signerTitle.trim()) return setFormError('Representative Title is required.');
-            if (password.length < 8) return setFormError('Password must be at least 8 characters.');
-            if (!/[A-Z]/.test(password)) return setFormError('Password must contain at least one uppercase letter.');
-            if (!/[0-9]/.test(password)) return setFormError('Password must contain at least one number.');
-            if (password !== confirmPassword) return setFormError('Passwords do not match.');
+            if (!name.trim()) { toast.error('Company Name is required.'); return; }
+            if (!slugAvailable) { toast.error('A company with this slug already exists.'); return; }
+            if (!email.trim() || !email.includes('@')) { toast.error('A valid email address is required.'); return; }
+            if (!signerName.trim()) { toast.error('Legal Representative Name is required.'); return; }
+            if (!signerTitle.trim()) { toast.error('Representative Title is required.'); return; }
+            if (password.length < 8) { toast.error('Password must be at least 8 characters.'); return; }
+            if (!/[A-Z]/.test(password)) { toast.error('Password must contain at least one uppercase letter.'); return; }
+            if (!/[0-9]/.test(password)) { toast.error('Password must contain at least one number.'); return; }
+            if (password !== confirmPassword) { toast.error('Passwords do not match.'); return; }
             
             // Populate signer defaults based on profile values
             setSignerEmail(email);
@@ -365,187 +365,198 @@ export default function RegisterCompanyPage() {
                                 >
                                     <div>
                                         <h2 className="text-xl font-bold text-gray-900">Partner Details</h2>
-                                        <p className="text-sm text-gray-500 mt-0.5">Let&apos;s set up your tour company listing and login credentials.</p>
+                                        <p className="text-sm text-gray-500 mt-0.5">Let&apos;s set up your tour company listing and information.</p>
                                     </div>
 
-                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-                                        <div className="space-y-2">
-                                            <Label className="text-[10px] font-black uppercase tracking-wider text-gray-400 ml-1">Company Name *</Label>
-                                            <div className="relative">
-                                                <Building2 className="absolute left-4 top-3.5 size-4 text-gray-400" />
-                                                <Input
-                                                    placeholder="Grizzly Adventures"
-                                                    value={name}
-                                                    onChange={(e) => setName(e.target.value)}
-                                                    className="h-12 pl-11 rounded-xl border-gray-100 bg-gray-50/50 focus:bg-white font-medium transition-all text-sm"
-                                                />
-                                            </div>
-                                            {slug && (
-                                                <div className="flex items-center gap-2 mt-1.5 ml-1 text-xs">
-                                                    {slugLoading ? (
-                                                        <span className="text-gray-400 flex items-center gap-1"><Loader2 className="size-3 animate-spin" /> Verifying...</span>
-                                                    ) : slugAvailable ? (
-                                                        <span className="text-emerald-600 font-bold flex items-center gap-1">✓ Order Link: <code>/{slug}</code></span>
-                                                    ) : (
-                                                        <span className="text-rose-500 font-bold flex items-center gap-1">✗ Name already taken</span>
-                                                    )}
+                                    {/* Partner Information Fields */}
+                                    <div className="space-y-5">
+                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+                                            <div className="space-y-2">
+                                                <Label className="text-[10px] font-black uppercase tracking-wider text-gray-400 ml-1">Company Name *</Label>
+                                                <div className="relative">
+                                                    <Building2 className="absolute left-4 top-3.5 size-4 text-gray-400" />
+                                                    <Input
+                                                        placeholder="Grizzly Adventures"
+                                                        value={name}
+                                                        onChange={(e) => setName(e.target.value)}
+                                                        className="h-12 pl-11 rounded-xl border-gray-100 bg-gray-50/50 focus:bg-white font-medium transition-all text-sm placeholder:text-gray-400 placeholder:font-normal"
+                                                    />
                                                 </div>
-                                            )}
+                                                {slug && (
+                                                    <div className="flex items-center gap-2 mt-1.5 ml-1 text-xs">
+                                                        {slugLoading ? (
+                                                            <span className="text-gray-400 flex items-center gap-1"><Loader2 className="size-3 animate-spin" /> Verifying...</span>
+                                                        ) : slugAvailable ? (
+                                                            <span className="text-emerald-600 font-bold flex items-center gap-1">✓ Order Link: <code>/{slug}</code></span>
+                                                        ) : (
+                                                            <span className="text-rose-500 font-bold flex items-center gap-1">✗ Name already taken</span>
+                                                        )}
+                                                    </div>
+                                                )}
+                                            </div>
+
+                                            <div className="space-y-2">
+                                                <Label className="text-[10px] font-black uppercase tracking-wider text-gray-400 ml-1">Company Email *</Label>
+                                                <div className="relative">
+                                                    <Mail className="absolute left-4 top-3.5 size-4 text-gray-400" />
+                                                    <Input
+                                                        type="email"
+                                                        placeholder="company@grizzly.com"
+                                                        value={email}
+                                                        onChange={(e) => setEmail(e.target.value)}
+                                                        className="h-12 pl-11 rounded-xl border-gray-100 bg-gray-50/50 focus:bg-white font-medium transition-all text-sm placeholder:text-gray-400 placeholder:font-normal"
+                                                    />
+                                                </div>
+                                            </div>
                                         </div>
 
-                                        <div className="space-y-2">
-                                            <Label className="text-[10px] font-black uppercase tracking-wider text-gray-400 ml-1">Company Email *</Label>
-                                            <div className="relative">
-                                                <Mail className="absolute left-4 top-3.5 size-4 text-gray-400" />
-                                                <Input
-                                                    type="email"
-                                                    placeholder="company@grizzly.com"
-                                                    value={email}
-                                                    onChange={(e) => setEmail(e.target.value)}
-                                                    className="h-12 pl-11 rounded-xl border-gray-100 bg-gray-50/50 focus:bg-white font-medium transition-all text-sm"
-                                                />
+                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+                                            <div className="space-y-2">
+                                                <Label className="text-[10px] font-black uppercase tracking-wider text-gray-400 ml-1">Legal Representative Name *</Label>
+                                                <div className="relative">
+                                                    <User className="absolute left-4 top-3.5 size-4 text-gray-400" />
+                                                    <Input
+                                                        placeholder="John Doe"
+                                                        value={signerName}
+                                                        onChange={(e) => {
+                                                            setSignerName(e.target.value);
+                                                            if (signatureMethod === 'type') setTypedSignature(e.target.value);
+                                                        }}
+                                                        className="h-12 pl-11 rounded-xl border-gray-100 bg-gray-50/50 focus:bg-white font-medium transition-all text-sm placeholder:text-gray-400 placeholder:font-normal"
+                                                    />
+                                                </div>
+                                            </div>
+
+                                            <div className="space-y-2">
+                                                <Label className="text-[10px] font-black uppercase tracking-wider text-gray-400 ml-1">Representative Title *</Label>
+                                                <div className="relative">
+                                                    <Type className="absolute left-4 top-3.5 size-4 text-gray-400" />
+                                                    <Input
+                                                        placeholder="CEO / Owner / Manager"
+                                                        value={signerTitle}
+                                                        onChange={(e) => setSignerTitle(e.target.value)}
+                                                        className="h-12 pl-11 rounded-xl border-gray-100 bg-gray-50/50 focus:bg-white font-medium transition-all text-sm placeholder:text-gray-400 placeholder:font-normal"
+                                                    />
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+                                            <div className="space-y-2">
+                                                <Label className="text-[10px] font-black uppercase tracking-wider text-gray-400 ml-1">Company Phone</Label>
+                                                <div className="relative">
+                                                    <Phone className="absolute left-4 top-3.5 size-4 text-gray-400" />
+                                                    <Input
+                                                        placeholder="(406) 555-0199"
+                                                        value={phone}
+                                                        onChange={(e) => setPhone(e.target.value)}
+                                                        className="h-12 pl-11 rounded-xl border-gray-100 bg-gray-50/50 focus:bg-white font-medium transition-all text-sm placeholder:text-gray-400 placeholder:font-normal"
+                                                    />
+                                                </div>
                                             </div>
                                         </div>
                                     </div>
 
-                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-                                        <div className="space-y-2">
-                                            <Label className="text-[10px] font-black uppercase tracking-wider text-gray-400 ml-1">Legal Representative Name *</Label>
-                                            <div className="relative">
-                                                <User className="absolute left-4 top-3.5 size-4 text-gray-400" />
-                                                <Input
-                                                    placeholder="John Doe"
-                                                    value={signerName}
-                                                    onChange={(e) => {
-                                                        setSignerName(e.target.value);
-                                                        if (signatureMethod === 'type') setTypedSignature(e.target.value);
-                                                    }}
-                                                    className="h-12 pl-11 rounded-xl border-gray-100 bg-gray-50/50 focus:bg-white font-medium transition-all text-sm"
-                                                />
-                                            </div>
+                                    {/* Security Credentials Section */}
+                                    <div className="pt-6 border-t border-gray-100 space-y-4">
+                                        <div>
+                                            <h3 className="text-sm font-black uppercase tracking-wider text-gray-900">Security Credentials</h3>
+                                            <p className="text-xs text-gray-500 mt-0.5">Define your account password to securely access the partner dashboard later.</p>
                                         </div>
 
-                                        <div className="space-y-2">
-                                            <Label className="text-[10px] font-black uppercase tracking-wider text-gray-400 ml-1">Representative Title *</Label>
-                                            <div className="relative">
-                                                <Type className="absolute left-4 top-3.5 size-4 text-gray-400" />
-                                                <Input
-                                                    placeholder="CEO / Owner / Manager"
-                                                    value={signerTitle}
-                                                    onChange={(e) => setSignerTitle(e.target.value)}
-                                                    className="h-12 pl-11 rounded-xl border-gray-100 bg-gray-50/50 focus:bg-white font-medium transition-all text-sm"
-                                                />
-                                            </div>
-                                        </div>
-                                    </div>
-
-                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-                                        <div className="space-y-2">
-                                            <Label className="text-[10px] font-black uppercase tracking-wider text-gray-400 ml-1">Company Phone</Label>
-                                            <div className="relative">
-                                                <Phone className="absolute left-4 top-3.5 size-4 text-gray-400" />
-                                                <Input
-                                                    placeholder="(406) 555-0199"
-                                                    value={phone}
-                                                    onChange={(e) => setPhone(e.target.value)}
-                                                    className="h-12 pl-11 rounded-xl border-gray-100 bg-gray-50/50 focus:bg-white font-medium transition-all text-sm"
-                                                />
-                                            </div>
-                                        </div>
-
-                                        <div className="space-y-2">
-                                            <Label className="text-[10px] font-black uppercase tracking-wider text-gray-400 ml-1">Choose Password *</Label>
-                                            <div className="relative">
-                                                <Lock className="absolute left-4 top-3.5 size-4 text-gray-400" />
-                                                <Input
-                                                    type={showPassword ? "text" : "password"}
-                                                    placeholder="••••••••"
-                                                    value={password}
-                                                    onChange={(e) => setPassword(e.target.value)}
-                                                    className="h-12 pl-11 pr-11 rounded-xl border-gray-100 bg-gray-50/50 focus:bg-white font-medium transition-all text-sm"
-                                                />
-                                                <button
-                                                    type="button"
-                                                    onClick={() => setShowPassword(!showPassword)}
-                                                    className="absolute right-4 top-3.5 text-gray-400 hover:text-gray-600 transition-colors"
-                                                >
-                                                    {showPassword ? 'Hide' : 'Show'}
-                                                </button>
-                                            </div>
-                                            <div className="space-y-2 mt-2 ml-1">
-                                                
-                                                <div className="p-3.5 rounded-2xl bg-gray-50 border border-gray-100 space-y-2">
-                                                    <p className="text-[10px] font-black uppercase tracking-wider text-gray-400">Password Requirements:</p>
-                                                    <div className="grid grid-cols-1 gap-1.5 text-xs font-semibold">
-                                                        <div className={`flex items-center gap-2 transition-colors ${password.length >= 8 ? 'text-emerald-600' : 'text-gray-400'}`}>
-                                                            <Check className={`size-3.5 transition-transform ${password.length >= 8 ? 'text-emerald-500 scale-110' : 'text-gray-300'}`} />
-                                                            <span>At least 8 characters</span>
-                                                        </div>
-                                                        <div className={`flex items-center gap-2 transition-colors ${/[A-Z]/.test(password) ? 'text-emerald-600' : 'text-gray-400'}`}>
-                                                            <Check className={`size-3.5 transition-transform ${/[A-Z]/.test(password) ? 'text-emerald-500 scale-110' : 'text-gray-300'}`} />
-                                                            <span>At least one uppercase letter</span>
-                                                        </div>
-                                                        <div className={`flex items-center gap-2 transition-colors ${/[0-9]/.test(password) ? 'text-emerald-600' : 'text-gray-400'}`}>
-                                                            <Check className={`size-3.5 transition-transform ${/[0-9]/.test(password) ? 'text-emerald-500 scale-110' : 'text-gray-300'}`} />
-                                                            <span>At least one number</span>
+                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+                                            <div className="space-y-2">
+                                                <Label className="text-[10px] font-black uppercase tracking-wider text-gray-400 ml-1">Choose Password *</Label>
+                                                <div className="relative">
+                                                    <Lock className="absolute left-4 top-3.5 size-4 text-gray-400" />
+                                                    <Input
+                                                        type={showPassword ? "text" : "password"}
+                                                        placeholder="••••••••"
+                                                        value={password}
+                                                        onChange={(e) => setPassword(e.target.value)}
+                                                        className="h-12 pl-11 pr-11 rounded-xl border-gray-100 bg-gray-50/50 focus:bg-white font-medium transition-all text-sm placeholder:text-gray-400 placeholder:font-normal"
+                                                    />
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => setShowPassword(!showPassword)}
+                                                        className="absolute right-4 top-3.5 text-gray-400 hover:text-gray-600 transition-colors text-xs font-bold"
+                                                    >
+                                                        {showPassword ? 'Hide' : 'Show'}
+                                                    </button>
+                                                </div>
+                                                <div className="space-y-2 mt-2 ml-1">
+                                                    <div className="p-3.5 rounded-2xl bg-gray-50 border border-gray-100 space-y-2">
+                                                        <p className="text-[10px] font-black uppercase tracking-wider text-gray-400">Password Requirements:</p>
+                                                        <div className="grid grid-cols-1 gap-1.5 text-xs font-semibold">
+                                                            <div className={`flex items-center gap-2 transition-colors ${password.length >= 8 ? 'text-emerald-600' : 'text-gray-400'}`}>
+                                                                <Check className={`size-3.5 transition-transform ${password.length >= 8 ? 'text-emerald-500 scale-110' : 'text-gray-300'}`} />
+                                                                <span>At least 8 characters</span>
+                                                            </div>
+                                                            <div className={`flex items-center gap-2 transition-colors ${/[A-Z]/.test(password) ? 'text-emerald-600' : 'text-gray-400'}`}>
+                                                                <Check className={`size-3.5 transition-transform ${/[A-Z]/.test(password) ? 'text-emerald-500 scale-110' : 'text-gray-300'}`} />
+                                                                <span>At least one uppercase letter</span>
+                                                            </div>
+                                                            <div className={`flex items-center gap-2 transition-colors ${/[0-9]/.test(password) ? 'text-emerald-600' : 'text-gray-400'}`}>
+                                                                <Check className={`size-3.5 transition-transform ${/[0-9]/.test(password) ? 'text-emerald-500 scale-110' : 'text-gray-300'}`} />
+                                                                <span>At least one number</span>
+                                                            </div>
                                                         </div>
                                                     </div>
                                                 </div>
                                             </div>
-                                        </div>
-                                    </div>
 
-                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-                                        <div className="space-y-2 md:col-start-2">
-                                            <Label className="text-[10px] font-black uppercase tracking-wider text-gray-400 ml-1">Confirm Password *</Label>
-                                            <div className="relative">
-                                                <Lock className="absolute left-4 top-3.5 size-4 text-gray-400" />
-                                                <Input
-                                                    type={showPassword ? "text" : "password"}
-                                                    placeholder="••••••••"
-                                                    value={confirmPassword}
-                                                    onChange={(e) => setConfirmPassword(e.target.value)}
-                                                    className={`h-12 pl-11 rounded-xl bg-gray-50/50 focus:bg-white font-medium transition-all text-sm ${
-                                                        confirmPassword 
-                                                            ? password === confirmPassword 
-                                                                ? 'border-emerald-200 focus:border-emerald-500 focus:ring-emerald-500/20' 
-                                                                : 'border-rose-200 focus:border-rose-500 focus:ring-rose-500/20'
-                                                            : 'border-gray-100'
-                                                    }`}
-                                                />
+                                            <div className="space-y-2">
+                                                <Label className="text-[10px] font-black uppercase tracking-wider text-gray-400 ml-1">Confirm Password *</Label>
+                                                <div className="relative">
+                                                    <Lock className="absolute left-4 top-3.5 size-4 text-gray-400" />
+                                                    <Input
+                                                        type={showPassword ? "text" : "password"}
+                                                        placeholder="••••••••"
+                                                        value={confirmPassword}
+                                                        onChange={(e) => setConfirmPassword(e.target.value)}
+                                                        className={`h-12 pl-11 rounded-xl bg-gray-50/50 focus:bg-white font-medium transition-all text-sm placeholder:text-gray-400 placeholder:font-normal ${
+                                                            confirmPassword 
+                                                                ? password === confirmPassword 
+                                                                    ? 'border-emerald-200 focus:border-emerald-500 focus:ring-emerald-500/20' 
+                                                                    : 'border-rose-200 focus:border-rose-500 focus:ring-rose-500/20'
+                                                                : 'border-gray-100'
+                                                        }`}
+                                                    />
+                                                </div>
+                                                <AnimatePresence>
+                                                    {confirmPassword && password !== confirmPassword && (
+                                                        <motion.p
+                                                            initial={{ opacity: 0, y: -5 }}
+                                                            animate={{ opacity: 1, y: 0 }}
+                                                            exit={{ opacity: 0, y: -5 }}
+                                                            className="text-[10px] text-rose-500 font-bold uppercase tracking-wider mt-1.5 ml-1 flex items-center gap-1"
+                                                        >
+                                                            <ShieldAlert className="size-3 text-rose-500 animate-pulse" /> Passwords do not match
+                                                        </motion.p>
+                                                    )}
+                                                    {confirmPassword && password === confirmPassword && (
+                                                        <motion.p
+                                                            initial={{ opacity: 0, y: -5 }}
+                                                            animate={{ opacity: 1, y: 0 }}
+                                                            exit={{ opacity: 0, y: -5 }}
+                                                            className="text-[10px] text-emerald-600 font-bold uppercase tracking-wider mt-1.5 ml-1 flex items-center gap-1"
+                                                        >
+                                                            <CheckCircle2 className="size-3 text-emerald-500" /> Passwords match
+                                                        </motion.p>
+                                                    )}
+                                                </AnimatePresence>
                                             </div>
-                                            <AnimatePresence>
-                                                {confirmPassword && password !== confirmPassword && (
-                                                    <motion.p
-                                                        initial={{ opacity: 0, y: -5 }}
-                                                        animate={{ opacity: 1, y: 0 }}
-                                                        exit={{ opacity: 0, y: -5 }}
-                                                        className="text-[10px] text-rose-500 font-bold uppercase tracking-wider mt-1.5 ml-1 flex items-center gap-1"
-                                                    >
-                                                        <ShieldAlert className="size-3 text-rose-500 animate-pulse" /> Passwords do not match
-                                                    </motion.p>
-                                                )}
-                                                {confirmPassword && password === confirmPassword && (
-                                                    <motion.p
-                                                        initial={{ opacity: 0, y: -5 }}
-                                                        animate={{ opacity: 1, y: 0 }}
-                                                        exit={{ opacity: 0, y: -5 }}
-                                                        className="text-[10px] text-emerald-600 font-bold uppercase tracking-wider mt-1.5 ml-1 flex items-center gap-1"
-                                                    >
-                                                        <CheckCircle2 className="size-3 text-emerald-500" /> Passwords match
-                                                    </motion.p>
-                                                )}
-                                            </AnimatePresence>
                                         </div>
                                     </div>
 
+                                    {/* Action Buttons */}
                                     <div className="pt-6 border-t border-gray-100 flex items-center justify-between">
                                         <Link href="/company/login" className="inline-flex items-center text-xs font-bold text-gray-400 hover:text-gray-600 transition-colors uppercase tracking-wider">
                                             <ArrowLeft className="size-4 mr-2" /> Back to Sign In
                                         </Link>
                                         <Button 
                                             onClick={nextStep} 
-                                            disabled={!name.trim() || !email.trim() || !signerName.trim() || !signerTitle.trim() || !slugAvailable || passwordStrength < 3 || password !== confirmPassword}
+                                            disabled={loading}
                                             className="h-11 rounded-xl bg-violet-600 hover:bg-violet-700 font-bold px-6 shadow-md transition-all gap-1.5"
                                         >
                                             Continue <ArrowRight className="size-4" />
@@ -679,7 +690,7 @@ export default function RegisterCompanyPage() {
 
                                         <div>
                                             <p className="font-bold text-gray-800">3. Final Order Finalization & Cutoff Time</p>
-                                            <p className="mt-1">All orders must be submitted and locked at least <strong>24 hours prior</strong> to the scheduled pickup time. Any orders requested after this cutoff window must be approved directly by the café management via telephone and are subject to active kitchen ingredient availability.</p>
+                                            <p className="mt-1">All orders must be submitted and locked at least <strong>14 hours prior</strong> to the scheduled pickup time. Any orders requested after this cutoff window must be approved directly by the café management via telephone and are subject to active kitchen ingredient availability.</p>
                                         </div>
 
                                         <div>
@@ -689,7 +700,7 @@ export default function RegisterCompanyPage() {
 
                                         <div>
                                             <p className="font-bold text-gray-800">5. Cancellation & Adjustments</p>
-                                            <p className="mt-1">Cancellations or changes in guest counts must be updated at least 24 hours prior to the tour. Failure to notify inside the 24-hour cutoff will result in the original scheduled counts being billed to the invoice.</p>
+                                            <p className="mt-1">Cancellations or changes in guest counts must be updated at least 14 hours prior to the tour. Failure to notify inside the 14-hour cutoff will result in the original scheduled counts being billed to the invoice.</p>
                                         </div>
 
                                         <div>
@@ -709,7 +720,7 @@ export default function RegisterCompanyPage() {
                                                     setSignerName(e.target.value);
                                                     if (signatureMethod === 'type') setTypedSignature(e.target.value);
                                                 }}
-                                                className="h-10 rounded-xl bg-white border-gray-100 text-xs font-semibold"
+                                                className="h-10 rounded-xl bg-white border-gray-100 text-xs font-semibold placeholder:text-gray-400 placeholder:font-normal"
                                             />
                                         </div>
                                         <div className="space-y-1.5">
@@ -719,7 +730,7 @@ export default function RegisterCompanyPage() {
                                                 placeholder="j.doe@grizzly.com"
                                                 value={signerEmail}
                                                 onChange={(e) => setSignerEmail(e.target.value)}
-                                                className="h-10 rounded-xl bg-white border-gray-100 text-xs font-semibold"
+                                                className="h-10 rounded-xl bg-white border-gray-100 text-xs font-semibold placeholder:text-gray-400 placeholder:font-normal"
                                             />
                                         </div>
                                         <div className="space-y-1.5">
@@ -728,7 +739,7 @@ export default function RegisterCompanyPage() {
                                                 placeholder="Director of Operations"
                                                 value={signerTitle}
                                                 onChange={(e) => setSignerTitle(e.target.value)}
-                                                className="h-10 rounded-xl bg-white border-gray-100 text-xs font-semibold"
+                                                className="h-10 rounded-xl bg-white border-gray-100 text-xs font-semibold placeholder:text-gray-400 placeholder:font-normal"
                                             />
                                         </div>
                                     </div>
@@ -789,7 +800,7 @@ export default function RegisterCompanyPage() {
                                                     placeholder="Type Representative Name"
                                                     value={typedSignature}
                                                     onChange={(e) => setTypedSignature(e.target.value)}
-                                                    className="h-12 rounded-xl border-gray-100 bg-gray-50/50 focus:bg-white font-medium text-sm transition-all"
+                                                    className="h-12 rounded-xl border-gray-100 bg-gray-50/50 focus:bg-white font-medium text-sm transition-all placeholder:text-gray-400 placeholder:font-normal"
                                                 />
                                                 {typedSignature && (
                                                     <div className="h-20 bg-gray-50/70 border border-dashed border-gray-200 rounded-2xl flex items-center justify-center shadow-inner relative overflow-hidden">

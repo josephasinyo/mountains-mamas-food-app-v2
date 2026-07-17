@@ -7,7 +7,7 @@ import { formatDateUS } from '@/lib/utils';
 import { revalidatePath } from 'next/cache';
 import { cookies } from 'next/headers';
 
-import { isMoreThan24HoursAway } from './date-utils';
+import { isMoreThan14HoursAway } from './date-utils';
 
 export async function createOrderChangeRequest(
     orderId: string,
@@ -68,11 +68,11 @@ export async function createOrderChangeRequest(
             }
         }
 
-        // 3. Enforce 24-hour cutoff check
-        if (!isMoreThan24HoursAway(order.tour_date, order.pickup_time)) {
+        // 3. Enforce 14-hour cutoff check
+        if (!isMoreThan14HoursAway(order.tour_date, order.pickup_time)) {
             return {
                 success: false,
-                error: 'Order changes or cancellations are only possible at least 24 hours prior to scheduled tour pickup.'
+                error: 'Order changes or cancellations are only possible at least 14 hours prior to scheduled tour pickup.'
             };
         }
 

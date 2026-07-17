@@ -1,5 +1,5 @@
-// Helper to check if tour pickup is > 24 hours away
-export function isMoreThan24HoursAway(tourDateStr: string, pickupTimeStr: string | null): boolean {
+// Helper to check if tour pickup is > 14 hours away
+export function isMoreThan14HoursAway(tourDateStr: string, pickupTimeStr: string | null): boolean {
     try {
         const datePart = tourDateStr; // YYYY-MM-DD
         let timePart = '08:00:00';
@@ -21,7 +21,7 @@ export function isMoreThan24HoursAway(tourDateStr: string, pickupTimeStr: string
         const now = new Date();
         const diffMs = pickupDate.getTime() - now.getTime();
         const diffHours = diffMs / (1000 * 60 * 60);
-        return diffHours > 24;
+        return diffHours > 14;
     } catch {
         return false;
     }
