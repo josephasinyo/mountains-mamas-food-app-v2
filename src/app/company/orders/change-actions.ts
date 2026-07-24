@@ -7,7 +7,7 @@ import { formatDateUS } from '@/lib/utils';
 import { revalidatePath } from 'next/cache';
 import { cookies } from 'next/headers';
 
-import { isMoreThan14HoursAway } from './date-utils';
+import { isMoreThan14HoursAway, getHoursUntilPickup } from './date-utils';
 
 export async function createOrderChangeRequest(
     orderId: string,
@@ -54,7 +54,7 @@ export async function createOrderChangeRequest(
             .single();
 
         if (orderErr || !order) return { success: false, error: 'Order not found.' };
-        if (order.company_id !== companyId) return { success: false, error: 'Unauthorized.' };
+        if (order.company_id !== companyId && !isAdmin) return { success: false, error: 'Unauthorized.' };
         if (order.status === 'fulfilled') return { success: false, error: 'Fulfilled orders cannot be modified or deleted.' };
 
         // Validate that the proposed tour date is not in the past (Mountain Time - America/Denver)
@@ -68,15 +68,127 @@ export async function createOrderChangeRequest(
             }
         }
 
-        // 3. Enforce 14-hour cutoff check
-        if (!isMoreThan14HoursAway(order.tour_date, order.pickup_time)) {
+        const effectiveTourDate = (type === 'update' && details?.tour_date) ? details.tour_date : order.tour_date;
+        const effectivePickupTime = (type === 'update' && details?.pickup_time !== undefined) ? details.pickup_time : order.pickup_time;
+
+        const origHours = getHoursUntilPickup(order.tour_date, order.pickup_time);
+        const propHours = getHoursUntilPickup(effectiveTourDate, effectivePickupTime);
+        const hoursUntilPickup = Math.min(origHours, propHours);
+
+        // 3. Enforce 3-Tier Modification Policy
+        // Tier 3: Less than 14 hours away -> Locked. Must call/text Kim.
+        if (!isAdmin && hoursUntilPickup < 14) {
             return {
                 success: false,
-                error: 'Order changes or cancellations are only possible at least 14 hours prior to scheduled tour pickup.'
+                error: 'Please call or text Kim at 406-461-1024 to make changes'
             };
         }
 
-        // 4. Create the request in database
+        // Tier 1: 24+ hours away -> Direct modification without approval
+        if (hoursUntilPickup >= 24) {
+            if (type === 'delete') {
+                await supabase.from('order_items').delete().eq('order_id', orderId);
+                const { error: delErr } = await supabase.from('orders').delete().eq('id', orderId);
+                if (delErr) throw delErr;
+            } else if (type === 'cancel') {
+                const { error: cancelErr } = await supabase
+                    .from('orders')
+                    .update({ status: 'cancelled' })
+                    .eq('id', orderId);
+                if (cancelErr) throw cancelErr;
+            } else if (type === 'update' && details) {
+                const { error: orderError } = await supabase
+                    .from('orders')
+                    .update({
+                        customer_name: details.customer_name,
+                        guide_name: details.guide_name,
+                        tour_date: details.tour_date,
+                        pickup_time: details.pickup_time,
+                        notes: details.notes
+                    })
+                    .eq('id', orderId);
+
+                if (orderError) throw orderError;
+
+                if (details.items) {
+                    const { data: dbItems, error: getErr } = await supabase
+                        .from('order_items')
+                        .select('id')
+                        .eq('order_id', orderId);
+                    if (getErr) throw getErr;
+
+                    const dbItemIds = (dbItems || []).map((di: any) => di.id);
+                    const proposedItemIds = details.items
+                        .filter((item: any) => item.id && !item.id.startsWith('temp-'))
+                        .map((item: any) => item.id);
+
+                    const idsToDelete = dbItemIds.filter((id: string) => !proposedItemIds.includes(id));
+                    if (idsToDelete.length > 0) {
+                        const { error: delItemsErr } = await supabase
+                            .from('order_items')
+                            .delete()
+                            .in('id', idsToDelete);
+                        if (delItemsErr) throw delItemsErr;
+                    }
+
+                    for (const item of details.items) {
+                        if (item.id && item.id.startsWith('temp-')) {
+                            const { error: insertErr } = await supabase
+                                .from('order_items')
+                                .insert({
+                                    order_id: orderId,
+                                    meal_id: item.meal_id || null,
+                                    meal_name: item.meal_name,
+                                    quantity: item.quantity,
+                                    box_type: item.box_type || null,
+                                    bread_type: item.bread_type || null,
+                                    cookie_choice: item.cookie_choice || null,
+                                    guest_name: item.guest_name || null,
+                                    customizations: item.customizations || null,
+                                    unit_price: item.unit_price || 0
+                                });
+                            if (insertErr) throw insertErr;
+                        } else {
+                            const { error: itemError } = await supabase
+                                .from('order_items')
+                                .update({
+                                    meal_id: item.meal_id || null,
+                                    meal_name: item.meal_name,
+                                    quantity: item.quantity,
+                                    customizations: item.customizations || null,
+                                    guest_name: item.guest_name || null,
+                                    box_type: item.box_type || null,
+                                    bread_type: item.bread_type || null,
+                                    cookie_choice: item.cookie_choice || null,
+                                    unit_price: item.unit_price || 0
+                                })
+                                .eq('id', item.id);
+
+                            if (itemError) throw itemError;
+                        }
+                    }
+                }
+            }
+
+            await logActivity({
+                userRole: isAdmin ? 'admin' : 'company',
+                action: `order_${type}_direct`,
+                entityType: 'order',
+                entityId: orderId,
+                details: { direct: true }
+            });
+
+            revalidatePath('/admin/orders');
+            revalidatePath('/company/orders');
+
+            return {
+                success: true,
+                isDirect: true,
+                message: type === 'delete' ? 'Order deleted successfully' : type === 'cancel' ? 'Order cancelled successfully' : 'Order updated successfully'
+            };
+        }
+
+        // Tier 2: 14 to 24 hours away -> Create Change Request for Admin Approval
         const { data: request, error: reqErr } = await supabase
             .from('order_change_requests')
             .insert({
@@ -91,7 +203,7 @@ export async function createOrderChangeRequest(
 
         if (reqErr) throw reqErr;
 
-        // 5. Send Notification Email to Admin
+        // Send Notification Email to Admin
         const adminEmail = process.env.ADMIN_EMAIL || 'mountainmamascafe@gmail.com';
         const companyName = order.tour_companies?.name || 'Partner Company';
 
@@ -150,7 +262,10 @@ export async function createOrderChangeRequest(
             details: { type, request_id: request.id }
         });
 
-        return { success: true };
+        revalidatePath('/admin/orders');
+        revalidatePath('/company/orders');
+
+        return { success: true, isDirect: false, message: 'Change request submitted to admin for approval' };
     } catch (e: any) {
         console.error('[createOrderChangeRequest] Error:', e);
         return { success: false, error: e.message || String(e) };

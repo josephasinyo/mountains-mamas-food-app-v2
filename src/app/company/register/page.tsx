@@ -689,8 +689,8 @@ export default function RegisterCompanyPage() {
                                         </div>
 
                                         <div>
-                                            <p className="font-bold text-gray-800">3. Final Order Finalization & Cutoff Time</p>
-                                            <p className="mt-1">All orders must be submitted and locked at least <strong>14 hours prior</strong> to the scheduled pickup time. Any orders requested after this cutoff window must be approved directly by the café management via telephone and are subject to active kitchen ingredient availability.</p>
+                                            <p className="font-bold text-gray-800">3. Order Modification & Cutoff Policy</p>
+                                            <p className="mt-1">Orders modified or submitted <strong>more than 24 hours prior</strong> to the scheduled pickup time are applied immediately without requiring approval. Order modifications requested <strong>between 14 and 24 hours prior</strong> to pickup will submit a change request requiring admin approval. <strong>Less than 14 hours prior</strong> to pickup, online changes are no longer allowed and the Company must contact café management directly for approval.</p>
                                         </div>
 
                                         <div>
@@ -699,8 +699,8 @@ export default function RegisterCompanyPage() {
                                         </div>
 
                                         <div>
-                                            <p className="font-bold text-gray-800">5. Cancellation & Adjustments</p>
-                                            <p className="mt-1">Cancellations or changes in guest counts must be updated at least 14 hours prior to the tour. Failure to notify inside the 14-hour cutoff will result in the original scheduled counts being billed to the invoice.</p>
+                                            <p className="font-bold text-gray-800">5. Cancellation & Adjustments Policy</p>
+                                            <p className="mt-1">Cancellations or guest count changes updated <strong>more than 24 hours prior</strong> to the tour take effect immediately. Changes submitted <strong>between 14 and 24 hours prior</strong> require admin approval. Cancellations or changes requested <strong>less than 14 hours prior</strong> to pickup are locked online and must be requested directly via phone; unapproved changes inside this 14-hour window will result in the original scheduled counts being billed to the invoice.</p>
                                         </div>
 
                                         <div>

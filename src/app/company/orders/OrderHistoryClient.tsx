@@ -12,7 +12,7 @@ import {
     LayoutGrid, List, Loader2, Plus,
 } from 'lucide-react';
 import { Button, buttonVariants } from '@/components/ui/button';
-import { cn, formatDateUS, formatDateTimeUS } from '@/lib/utils';
+import { cn, formatDateUS, formatDateTimeUS, safePrint, findGfCookieOption } from '@/lib/utils';
 import { OrderItemDetails } from '@/components/ui/OrderItemCustomFields';
 import { useCompany } from '@/components/context/CompanyProvider';
 
@@ -60,7 +60,7 @@ import { Label } from '@/components/ui/label';
 import { motion, AnimatePresence } from 'framer-motion';
 import { updateCompanyOrderStatus, deleteCompanyOrder, getCompanyMenuSelections, getPaginatedCompanyOrders } from '../actions';
 import { createOrderChangeRequest } from './change-actions';
-import { isMoreThan14HoursAway } from './date-utils';
+import { isMoreThan14HoursAway, isMoreThan24HoursAway, getHoursUntilPickup, PICKUP_TIME_OPTIONS, getFormattedRemainingTime } from './date-utils';
 import { toast } from 'sonner';
 import { OrderItemCustomFields } from '@/components/ui/OrderItemCustomFields';
 
@@ -661,16 +661,7 @@ export default function OrderHistoryClient({ initialData }: OrderHistoryClientPr
                         {order.status !== 'fulfilled' && (
                             <DropdownMenuItem 
                                 className="rounded-lg gap-2 font-bold text-gray-700 focus:bg-violet-50 focus:text-violet-700 cursor-pointer"
-                                onClick={() => {
-                                    setEditingOrder(order);
-                                    setCustomerName(order.customer_name || '');
-                                    setGuideName(order.guide_name || '');
-                                    setTourDate(order.tour_date || '');
-                                    setPickupTime(order.pickup_time || '');
-                                    setNotes(order.notes || '');
-                                    setEditItems(JSON.parse(JSON.stringify(order.order_items || [])));
-                                    setIsEditDialogOpen(true);
-                                }}
+                                onClick={() => handleOpenEditModal(order)}
                             >
                                 <Pencil className="size-3.5" /> Edit Order
                             </DropdownMenuItem>
@@ -809,20 +800,28 @@ export default function OrderHistoryClient({ initialData }: OrderHistoryClientPr
     async function handleStatus(id: string, status: string) {
         if (status === 'cancelled') {
             const order = allOrders.find(o => o.id === id);
-            if (order && !isMoreThan14HoursAway(order.tour_date, order.pickup_time)) {
-                toast.error('Order changes or cancellations are only possible at least 14 hours prior to scheduled tour pickup.');
-                return;
+            if (order) {
+                const hours = getHoursUntilPickup(order.tour_date, order.pickup_time);
+                if (hours < 14) {
+                    toast.error('Please call or text Kim at 406-461-1024 to make changes');
+                    return;
+                }
             }
             setLoading(true);
             const result = await createOrderChangeRequest(id, 'cancel');
             if (result.success) {
-                toast.success('Cancellation request submitted to admin for approval');
-                setAllOrders(prev => prev.map(o => o.id === id ? {
-                    ...o,
-                    order_change_requests: [{ type: 'cancel', status: 'pending' }]
-                } : o));
+                if (result.isDirect) {
+                    toast.success(result.message || 'Order cancelled successfully');
+                    setAllOrders(prev => prev.map(o => o.id === id ? { ...o, status: 'cancelled' } : o));
+                } else {
+                    toast.success(result.message || 'Cancellation request submitted to admin for approval');
+                    setAllOrders(prev => prev.map(o => o.id === id ? {
+                        ...o,
+                        order_change_requests: [{ type: 'cancel', status: 'pending' }]
+                    } : o));
+                }
             } else {
-                toast.error(result.error || 'Failed to submit cancellation request');
+                toast.error(result.error || 'Failed to cancel order');
             }
             setLoading(false);
             return;
@@ -846,25 +845,53 @@ export default function OrderHistoryClient({ initialData }: OrderHistoryClientPr
     async function executeDelete() {
         if (!orderToDelete) return;
         const order = allOrders.find(o => o.id === orderToDelete);
-        if (order && !isMoreThan14HoursAway(order.tour_date, order.pickup_time)) {
-            toast.error('Order changes or deletions are only possible at least 14 hours prior to scheduled tour pickup.');
-            setOrderToDelete(null);
-            return;
+        if (order) {
+            const hours = getHoursUntilPickup(order.tour_date, order.pickup_time);
+            if (hours < 14) {
+                toast.error('Please call or text Kim at 406-461-1024 to make changes');
+                setOrderToDelete(null);
+                return;
+            }
         }
         setLoading(true);
         const result = await createOrderChangeRequest(orderToDelete, 'delete');
         if (result.success) {
-            toast.success('Deletion request submitted to admin for approval');
-            setAllOrders(prev => prev.map(o => o.id === orderToDelete ? {
-                ...o,
-                order_change_requests: [{ type: 'delete', status: 'pending' }]
-            } : o));
+            if (result.isDirect) {
+                toast.success(result.message || 'Order deleted successfully');
+                setAllOrders(prev => prev.filter(o => o.id !== orderToDelete));
+            } else {
+                toast.success(result.message || 'Deletion request submitted to admin for approval');
+                setAllOrders(prev => prev.map(o => o.id === orderToDelete ? {
+                    ...o,
+                    order_change_requests: [{ type: 'delete', status: 'pending' }]
+                } : o));
+            }
         } else {
-            toast.error(result.error || 'Failed to submit deletion request');
+            toast.error(result.error || 'Failed to delete order');
         }
         setLoading(false);
         setOrderToDelete(null);
     }
+
+    const handleOpenEditModal = (order: any) => {
+        const hours = getHoursUntilPickup(order.tour_date, order.pickup_time);
+        const remainingStr = getFormattedRemainingTime(order.tour_date, order.pickup_time);
+        const remainingMsg = remainingStr ? ` (${remainingStr})` : '';
+        if (hours < 14) {
+            toast.error(`Orders within 14 hours of pickup are locked online${remainingMsg}. Please call or text Kim at 406-461-1024 to make changes.`, {
+                duration: 8000
+            });
+            return;
+        }
+        setEditingOrder(order);
+        setCustomerName(order.customer_name || '');
+        setGuideName(order.guide_name || '');
+        setTourDate(order.tour_date || '');
+        setPickupTime(order.pickup_time || '');
+        setNotes(order.notes || '');
+        setEditItems(JSON.parse(JSON.stringify(order.order_items || [])));
+        setIsEditDialogOpen(true);
+    };
 
     async function handleSaveEdit() {
         if (!editingOrder) return;
@@ -884,10 +911,13 @@ export default function OrderHistoryClient({ initialData }: OrderHistoryClientPr
             toast.error('The selected tour date cannot be in the past.');
             return;
         }
-        if (!isMoreThan14HoursAway(tourDate, pickupTime)) {
-            toast.error('Order changes or deletions are only possible at least 14 hours prior to scheduled tour pickup.');
+        
+        const hours = getHoursUntilPickup(editingOrder.tour_date, editingOrder.pickup_time);
+        if (hours < 14) {
+            toast.error('Please call or text Kim at 406-461-1024 to make changes');
             return;
         }
+
         setLoading(true);
         const result = await createOrderChangeRequest(editingOrder.id, 'update', {
             customer_name: customerName,
@@ -899,14 +929,27 @@ export default function OrderHistoryClient({ initialData }: OrderHistoryClientPr
         });
 
         if (result.success) {
-            toast.success('Update request submitted to admin for approval');
-            setAllOrders(prev => prev.map(o => o.id === editingOrder.id ? { 
-                ...o, 
-                order_change_requests: [{ type: 'update', status: 'pending' }]
-            } : o));
+            if (result.isDirect) {
+                toast.success(result.message || 'Order updated successfully');
+                setAllOrders(prev => prev.map(o => o.id === editingOrder.id ? { 
+                    ...o, 
+                    customer_name: customerName,
+                    guide_name: guideName || null,
+                    tour_date: tourDate,
+                    pickup_time: pickupTime || null,
+                    notes: notes || null,
+                    order_items: editItems
+                } : o));
+            } else {
+                toast.success(result.message || 'Update request submitted to admin for approval');
+                setAllOrders(prev => prev.map(o => o.id === editingOrder.id ? { 
+                    ...o, 
+                    order_change_requests: [{ type: 'update', status: 'pending' }]
+                } : o));
+            }
             setIsEditDialogOpen(false);
         } else {
-            toast.error(result.error || 'Failed to submit update request');
+            toast.error(result.error || 'Failed to update order');
         }
         setLoading(false);
     }
@@ -1002,11 +1045,7 @@ export default function OrderHistoryClient({ initialData }: OrderHistoryClientPr
                         <Button 
                             variant="outline" 
                             className="gap-1.5 h-11 px-2 md:px-4 rounded-xl border-gray-200 hover:border-violet-200 hover:bg-violet-50 transition-all font-bold no-print text-[11px] md:text-sm" 
-                            onClick={() => {
-                                document.body.classList.add('print-table-mode');
-                                window.print();
-                                document.body.classList.remove('print-table-mode');
-                            }}
+                            onClick={() => safePrint('print-table-mode')}
                         >
                             <Printer className="size-4 shrink-0" />
                             <span className="truncate">Print Table</span>
@@ -1444,16 +1483,7 @@ export default function OrderHistoryClient({ initialData }: OrderHistoryClientPr
                                                         {order.status !== 'fulfilled' && (
                                                             <DropdownMenuItem 
                                                                 className="rounded-lg gap-2 font-bold text-gray-700 focus:bg-violet-50 focus:text-violet-700 cursor-pointer"
-                                                                onClick={() => {
-                                                                    setEditingOrder(order);
-                                                                    setCustomerName(order.customer_name || '');
-                                                                    setGuideName(order.guide_name || '');
-                                                                    setTourDate(order.tour_date || '');
-                                                                    setPickupTime(order.pickup_time || '');
-                                                                    setNotes(order.notes || '');
-                                                                    setEditItems(JSON.parse(JSON.stringify(order.order_items || [])));
-                                                                    setIsEditDialogOpen(true);
-                                                                }}
+                                                                onClick={() => handleOpenEditModal(order)}
                                                             >
                                                                 <Pencil className="size-3.5" /> Edit Order
                                                             </DropdownMenuItem>
@@ -1647,6 +1677,32 @@ export default function OrderHistoryClient({ initialData }: OrderHistoryClientPr
                         </div>
                     </DialogHeader>
 
+                    {editingOrder && (() => {
+                        const hours = getHoursUntilPickup(editingOrder.tour_date, editingOrder.pickup_time);
+                        const remainingStr = getFormattedRemainingTime(editingOrder.tour_date, editingOrder.pickup_time);
+                        const timeInfo = remainingStr ? ` (${remainingStr})` : '';
+
+                        if (hours < 14) {
+                            return (
+                                <div className="mx-8 mt-4 p-3.5 bg-rose-50 border border-rose-200 rounded-2xl text-xs font-bold text-rose-700 flex items-center gap-2">
+                                    <span>🔒 Orders within 14 hours of pickup are locked online{timeInfo}. Please call or text Kim at 406-461-1024 to make changes.</span>
+                                </div>
+                            );
+                        } else if (hours < 24) {
+                            return (
+                                <div className="mx-8 mt-4 p-3.5 bg-amber-50 border border-amber-200 rounded-2xl text-xs font-bold text-amber-800 flex items-center gap-2">
+                                    <span>⚠️ Modifications between 14 and 24 hours prior to pickup will be submitted to Kim for approval{timeInfo}.</span>
+                                </div>
+                            );
+                        } else {
+                            return (
+                                <div className="mx-8 mt-4 p-3.5 bg-emerald-50 border border-emerald-200 rounded-2xl text-xs font-bold text-emerald-800 flex items-center gap-2">
+                                    <span>⚡ Direct Edit: Since your pickup is more than 24 hours away{timeInfo}, changes will take effect immediately.</span>
+                                </div>
+                            );
+                        }
+                    })()}
+
                     <form onSubmit={(e) => {
                         e.preventDefault();
                         handleSaveEdit();
@@ -1673,8 +1729,25 @@ export default function OrderHistoryClient({ initialData }: OrderHistoryClientPr
                                     })()} className="h-11 rounded-xl border-gray-200 font-semibold focus:ring-violet-500/20" />
                                 </div>
                                 <div className="space-y-2.5">
-                                    <Label htmlFor="pickup_time" className="text-[11px] font-bold uppercase tracking-[0.1em] text-gray-400 ml-1">Pickup Time</Label>
-                                    <Input id="pickup_time" name="pickup_time" placeholder="e.g. 07:30 AM" value={pickupTime} onChange={(e) => setPickupTime(e.target.value)} className="h-11 rounded-xl border-gray-200 font-semibold focus:ring-violet-500/20" />
+                                    <Label className="text-[11px] font-bold uppercase tracking-[0.1em] text-gray-400 ml-1">Pickup Time</Label>
+                                    <Select value={pickupTime || 'none'} onValueChange={(v) => setPickupTime(v === 'none' || !v ? '' : v)}>
+                                        <SelectTrigger className="!h-11 w-full rounded-xl border-gray-200 font-semibold focus:ring-violet-500/20 bg-white">
+                                            <SelectValue placeholder="Select pickup time..." />
+                                        </SelectTrigger>
+                                        <SelectContent className="bg-white border-gray-200 max-h-[200px] overflow-y-auto">
+                                            <SelectItem value="none" className="text-gray-400 font-medium">Select pickup time...</SelectItem>
+                                            {pickupTime && pickupTime !== 'none' && !PICKUP_TIME_OPTIONS.includes(pickupTime) && (
+                                                <SelectItem value={pickupTime} className="font-semibold text-gray-800">
+                                                    {pickupTime}
+                                                </SelectItem>
+                                            )}
+                                            {PICKUP_TIME_OPTIONS.map((opt) => (
+                                                <SelectItem key={opt} value={opt} className="font-semibold text-gray-800">
+                                                    {opt}
+                                                </SelectItem>
+                                            ))}
+                                        </SelectContent>
+                                    </Select>
                                 </div>
                                 <div className="col-span-2 space-y-2.5">
                                     <Label htmlFor="notes" className="text-[11px] font-bold uppercase tracking-[0.1em] text-gray-400 ml-1">General Notes</Label>
@@ -1773,7 +1846,19 @@ export default function OrderHistoryClient({ initialData }: OrderHistoryClientPr
                                                     <Label className="text-[10px] font-bold text-gray-400 uppercase tracking-wide">Bread / Style</Label>
                                                     <Select
                                                         value={item.bread_type || ''}
-                                                        onValueChange={(val) => updateEditItem(item.id, { bread_type: val })}
+                                                        onValueChange={(val) => {
+                                                            const updates: any = { bread_type: val };
+                                                            if (val && val.toLowerCase().includes('gluten')) {
+                                                                const cookieOpts = getCookieOptions(item.cookie_choice);
+                                                                const gfCookie = findGfCookieOption(cookieOpts);
+                                                                if (gfCookie) updates.cookie_choice = gfCookie;
+                                                                const currentCustom = item.customizations || '';
+                                                                if (!currentCustom.toLowerCase().includes('gluten')) {
+                                                                    updates.customizations = currentCustom ? `${currentCustom}, Gluten-Free` : 'Gluten-Free';
+                                                                }
+                                                            }
+                                                            updateEditItem(item.id, updates);
+                                                        }}
                                                     >
                                                         <SelectTrigger className="!h-9 !w-full rounded-lg border-gray-200 text-[12px] font-medium bg-white">
                                                             <SelectValue placeholder="Select bread..." />

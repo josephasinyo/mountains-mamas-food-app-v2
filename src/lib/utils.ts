@@ -101,3 +101,59 @@ export function formatDateTimeUS(date: string | Date | undefined | null): string
         minute: '2-digit'
     });
 }
+
+/**
+ * Safe print helper compatible with iOS AirPrint (iPad / iPhone) and desktop browsers.
+ * Keeps print CSS classes active while non-blocking Mobile WebKit print triggers.
+ */
+export function safePrint(modeClass?: string, delayMs = 3000) {
+    if (modeClass) {
+        document.body.classList.add(modeClass);
+    }
+
+    let cleaned = false;
+    const cleanup = () => {
+        if (cleaned) return;
+        cleaned = true;
+        if (modeClass) {
+            document.body.classList.remove(modeClass);
+        }
+        window.removeEventListener('afterprint', cleanup);
+    };
+
+    window.addEventListener('afterprint', cleanup, { once: true });
+
+    // Trigger browser native print dialog (or iOS AirPrint)
+    window.print();
+
+    // Fallback cleanup for asynchronous/non-blocking webkit engines (iPadOS Safari)
+    setTimeout(cleanup, delayMs);
+}
+
+/**
+ * Finds the best matching Gluten-Free cookie/treat option from a list of available cookie options.
+ * Prioritizes Gluten-Free Brownie, then any Gluten-Free option, then any Brownie.
+ */
+export function findGfCookieOption(cookieOptions: string[]): string | undefined {
+    if (!cookieOptions || cookieOptions.length === 0) return undefined;
+    
+    // 1. Prefer option that specifies BOTH gluten-free AND brownie
+    const gfBrownie = cookieOptions.find((c: string) => {
+        const lower = c.toLowerCase();
+        return (lower.includes('gluten') || lower.includes('gf')) && lower.includes('brownie');
+    });
+    if (gfBrownie) return gfBrownie;
+
+    // 2. Next, prefer any option that specifies gluten-free / gf
+    const gfAny = cookieOptions.find((c: string) => {
+        const lower = c.toLowerCase();
+        return lower.includes('gluten') || lower.includes('gf');
+    });
+    if (gfAny) return gfAny;
+
+    // 3. Fallback to brownie option
+    const brownieAny = cookieOptions.find((c: string) => c.toLowerCase().includes('brownie'));
+    if (brownieAny) return brownieAny;
+
+    return undefined;
+}

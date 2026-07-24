@@ -116,9 +116,9 @@ export default async function ContractDetailPage({ params }: PageProps) {
                         </div>
 
                         <div>
-                            <h3 className="font-bold text-gray-800 text-xs mb-1">3. Final Order Finalization & Cutoff Time</h3>
+                            <h3 className="font-bold text-gray-800 text-xs mb-1">3. Order Modification & Cutoff Policy</h3>
                             <p>
-                                To ensure the availability of fresh ingredients and timely preparation, all box lunch orders must be configured and locked exactly <strong>14 hours prior</strong> to the scheduled pickup time. Any orders requested inside this 14-hour cutoff window are subject to direct café management phone approval, kitchen capacity, and immediate stock availability.
+                                To ensure ingredient availability and timely preparation, order modifications submitted <strong>more than 24 hours prior</strong> to the scheduled pickup time are applied immediately. Modifications requested <strong>between 14 and 24 hours prior</strong> to pickup submit a change request requiring admin approval. <strong>Less than 14 hours prior</strong> to pickup, online modifications are no longer allowed and the Company must contact café management directly.
                             </p>
                         </div>
 
@@ -132,7 +132,7 @@ export default async function ContractDetailPage({ params }: PageProps) {
                         <div>
                             <h3 className="font-bold text-gray-800 text-xs mb-1">5. Cancellation & Adjustments Policy</h3>
                             <p>
-                                Cancellations, group size reductions, or changes in product choices must be updated in the system at least 14 hours prior to the scheduled tour. Failure to notify the café within this window will result in the initial registered quantities being billed to the monthly invoice in full.
+                                Cancellations, group size reductions, or product modifications submitted <strong>more than 24 hours prior</strong> to the scheduled tour take effect immediately. Changes requested <strong>between 14 and 24 hours prior</strong> require admin review and approval. <strong>Less than 14 hours prior</strong> to pickup, online modifications are locked and unapproved cancellations will result in the initial registered quantities being billed to the monthly invoice in full.
                             </p>
                         </div>
 

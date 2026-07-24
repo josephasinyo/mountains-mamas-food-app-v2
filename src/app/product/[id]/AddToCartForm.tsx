@@ -1,9 +1,11 @@
 'use client';
 
 import { useState, useRef, useEffect, useMemo } from 'react';
+import { useRouter } from 'next/navigation';
 
 import { FoodItem } from '@/lib/types';
 import { useCart } from '@/hooks/useCart';
+import { findGfCookieOption } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import styles from './AddToCartForm.module.css';
 
@@ -26,6 +28,7 @@ const DRESSING_OPTIONS = [
 import { useCompany } from '@/components/context/CompanyProvider';
 
 export default function AddToCartForm({ item }: Props) {
+  const router = useRouter();
   const { addToCart } = useCart();
   const { company, config, globalSettings, formFields, isLoading } = useCompany();
 
@@ -168,13 +171,9 @@ export default function AddToCartForm({ item }: Props) {
       const nextValues = { ...prev, [name]: value };
       
       // Auto-logic when Gluten-Free bread is selected
-      if (name === 'bread_type' && typeof value === 'string' && value.toLowerCase().includes('gluten-free')) {
-        // Find a cookie option that represents a gluten-free brownie
-        const gfCookie = dynamicCookieOptions.find((c: string) => 
-          c.toLowerCase().includes('gluten-free') || 
-          (c.toLowerCase().includes('gf') && c.toLowerCase().includes('brownie')) ||
-          c.toLowerCase().includes('brownie')
-        );
+      if (name === 'bread_type' && typeof value === 'string' && value.toLowerCase().includes('gluten')) {
+        // Find a cookie option that represents a gluten-free brownie / cookie
+        const gfCookie = findGfCookieOption(dynamicCookieOptions);
         if (gfCookie) {
           nextValues['cookie_choice'] = gfCookie;
         }
@@ -278,8 +277,15 @@ export default function AddToCartForm({ item }: Props) {
         setIsLeaving(true);
         setTimeout(() => {
             setShowPopup(false);
-        }, 800);
-    }, 2000);
+            if (company?.slug) {
+                router.push(`/${company.slug}`);
+            } else if (typeof window !== 'undefined' && window.history.length > 1) {
+                router.back();
+            } else {
+                router.push('/');
+            }
+        }, 300);
+    }, 600);
   };
 
   const toggleDropdown = (dropdownName: string) => {

@@ -11,7 +11,7 @@ import {
     Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from '@/components/ui/select';
 import { Printer, ShoppingCart, X, FileText, CheckSquare, ChevronDown, ChevronUp, Loader2 } from 'lucide-react';
-import { formatDateTimeUS } from '@/lib/utils';
+import { formatDateTimeUS, safePrint } from '@/lib/utils';
 import { getQuantitiesOrders } from './actions';
 import { translateCustomizations, getMealTranslations } from './translate-action';
 import { t as tLookup } from '@/lib/translations/es';
@@ -375,8 +375,8 @@ export function QuantitiesClient({ initialOrders, companies }: QuantitiesClientP
         if (activePrintMode) {
             // Use setTimeout to ensure DOM is updated with print mode classes before printing
             const timer = setTimeout(() => {
-                window.print();
-                setActivePrintMode(null);
+                safePrint(undefined, 3000);
+                setTimeout(() => setActivePrintMode(null), 3000);
             }, 100);
             return () => clearTimeout(timer);
         }

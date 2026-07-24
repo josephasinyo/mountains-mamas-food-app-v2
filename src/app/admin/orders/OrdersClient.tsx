@@ -29,7 +29,7 @@ import {
     ArrowUpDown, ArrowUp, ArrowDown, LayoutGrid, List,
     Search, Loader2, Plus
 } from 'lucide-react';
-import { cn, formatDateUS, formatDateTimeUS } from '@/lib/utils';
+import { cn, formatDateUS, formatDateTimeUS, safePrint, findGfCookieOption } from '@/lib/utils';
 import {
     DropdownMenu,
     DropdownMenuContent,
@@ -474,9 +474,7 @@ export function OrdersClient({
             setSelected(new Set([printId]));
             // Wait slightly for rendering to settle
             setTimeout(async () => {
-                document.body.classList.add('print-tickets-mode');
-                window.print();
-                document.body.classList.remove('print-tickets-mode');
+                safePrint('print-tickets-mode');
                 
                 const matchedOrder = orders.find(o => o.id === printId);
                 if (matchedOrder) {
@@ -2070,9 +2068,7 @@ export function OrdersClient({
                             variant="outline" 
                             className="gap-1.5 h-11 px-2 md:px-4 rounded-xl border-gray-200 hover:border-violet-200 hover:bg-violet-50 transition-all font-bold no-print text-[11px] md:text-sm" 
                             onClick={async () => {
-                                document.body.classList.add('print-table-mode');
-                                window.print();
-                                document.body.classList.remove('print-table-mode');
+                                safePrint('print-table-mode');
                             }}
                         >
                             <Printer className="size-4 shrink-0" />
@@ -2088,9 +2084,7 @@ export function OrdersClient({
                                     toast.error('Please select at least one order to print tickets.');
                                     return;
                                 }
-                                document.body.classList.add('print-tickets-mode');
-                                window.print();
-                                document.body.classList.remove('print-tickets-mode');
+                                safePrint('print-tickets-mode');
                                 
                                 const printed = await niceConfirm(
                                     'Confirm Fulfillment',
@@ -3019,7 +3013,19 @@ export function OrdersClient({
                                                     <Label className="text-[10px] font-bold text-gray-400 uppercase tracking-wide">Bread / Style</Label>
                                                     <Select
                                                         value={item.bread_type || ''}
-                                                        onValueChange={(val) => updateEditItem(item.id, { bread_type: val })}
+                                                        onValueChange={(val) => {
+                                                            const updates: any = { bread_type: val };
+                                                            if (val && val.toLowerCase().includes('gluten')) {
+                                                                const cookieOpts = getCookieOptions(item.cookie_choice || '');
+                                                                const gfCookie = findGfCookieOption(cookieOpts);
+                                                                if (gfCookie) updates.cookie_choice = gfCookie;
+                                                                const currentCustom = item.customizations || '';
+                                                                if (!currentCustom.toLowerCase().includes('gluten')) {
+                                                                    updates.customizations = currentCustom ? `${currentCustom}, Gluten-Free` : 'Gluten-Free';
+                                                                }
+                                                            }
+                                                            updateEditItem(item.id, updates);
+                                                        }}
                                                     >
                                                         <SelectTrigger className="!h-9 !w-full rounded-lg border-gray-200 text-[12px] font-medium bg-white">
                                                             <SelectValue placeholder="Select bread..." />
@@ -3303,7 +3309,19 @@ export function OrdersClient({
                                                         <Label className="text-[10px] font-bold text-gray-400 uppercase tracking-wide">Bread / Style</Label>
                                                         <Select
                                                             value={item.bread_type || ''}
-                                                            onValueChange={(val) => updateAddItem(item.id, { bread_type: val })}
+                                                            onValueChange={(val) => {
+                                                                const updates: any = { bread_type: val };
+                                                                if (val && val.toLowerCase().includes('gluten')) {
+                                                                    const cookieOpts = getAddCookieOptions(item.cookie_choice || '');
+                                                                    const gfCookie = findGfCookieOption(cookieOpts);
+                                                                    if (gfCookie) updates.cookie_choice = gfCookie;
+                                                                    const currentCustom = item.customizations || '';
+                                                                    if (!currentCustom.toLowerCase().includes('gluten')) {
+                                                                        updates.customizations = currentCustom ? `${currentCustom}, Gluten-Free` : 'Gluten-Free';
+                                                                    }
+                                                                }
+                                                                updateAddItem(item.id, updates);
+                                                            }}
                                                         >
                                                             <SelectTrigger className="!h-9 !w-full rounded-lg border-gray-200 text-[12px] font-medium bg-white">
                                                                 <SelectValue placeholder="Select bread..." />
