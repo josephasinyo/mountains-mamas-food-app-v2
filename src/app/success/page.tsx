@@ -132,21 +132,38 @@ function SuccessPageContent() {
     };
   }, []);
 
+  const isLastMinute = searchParams.get('last_minute') === 'true';
+
   return (
     <div className={styles.container}>
       <canvas ref={canvasRef} className={styles.canvas} />
       
       <div className={styles.card}>
-        <div className={styles.successIcon}>
+        <div className={styles.successIcon} style={isLastMinute ? { backgroundColor: '#f59e0b' } : undefined}>
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
             <polyline points="20 6 9 17 4 12" />
           </svg>
         </div>
         
-        <h1 className={styles.title}>Order Placed!</h1>
-        <p className={styles.message}>
-          Your order has been received successfully and is being processed by Mountain Mama&apos;s Café.
-        </p>
+        <h1 className={styles.title}>
+          {isLastMinute ? 'Order Request Submitted!' : 'Order Placed!'}
+        </h1>
+
+        {isLastMinute ? (
+          <div style={{ backgroundColor: '#fffbeb', border: '1px solid #fde68a', borderRadius: '12px', padding: '16px', margin: '16px 0 20px 0', textAlign: 'left' }}>
+            <p style={{ margin: '0 0 6px 0', fontSize: '15px', fontWeight: 'bold', color: '#b45309' }}>
+              ⚠️ Action Required: Last-Minute Request (&lt;14 Hours)
+            </p>
+            <p style={{ margin: 0, fontSize: '14px', color: '#92400e', lineHeight: 1.5 }}>
+              Your order has been submitted as a pending request. Because your pickup time is less than 14 hours away, 
+              <strong> please text or call Kim directly at (406) 461-1024</strong> to accept and confirm your request.
+            </p>
+          </div>
+        ) : (
+          <p className={styles.message}>
+            Your order has been received successfully and is being processed by Mountain Mama&apos;s Café.
+          </p>
+        )}
         
         <Link href={slug ? `/${slug}` : '/'} className={styles.homeLink}>
           Order More Food

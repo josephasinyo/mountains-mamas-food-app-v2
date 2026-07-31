@@ -13,6 +13,7 @@ import {
 import { Printer, ShoppingCart, X, FileText, CheckSquare, ChevronDown, ChevronUp, Loader2 } from 'lucide-react';
 import { formatDateTimeUS, safePrint } from '@/lib/utils';
 import { getQuantitiesOrders } from './actions';
+import { getHoursUntilPickup } from '@/app/company/orders/date-utils';
 import { translateCustomizations, getMealTranslations } from './translate-action';
 import { t as tLookup } from '@/lib/translations/es';
 import { toast } from 'sonner';
@@ -431,7 +432,13 @@ export function QuantitiesClient({ initialOrders, companies }: QuantitiesClientP
         });
     };
 
-    const filteredOrders = orders;
+    const filteredOrders = orders.filter(order => {
+        if (order.status === 'cancelled') return false;
+        const isUnapprovedRequest = order.status === 'pending' && 
+            ((order as any).custom_fields?.is_last_minute === true || getHoursUntilPickup(order.tour_date, (order as any).pickup_time) < 14) && 
+            !(order as any).custom_fields?.is_approved;
+        return !isUnapprovedRequest;
+    });
 
     // 1. Standard Aggregation (Original Logic)
     const itemsAggregation: Record<string, { type: 'meal' | 'cookie', name: string; standard: number; junior: number; sandwich: number }> = {};

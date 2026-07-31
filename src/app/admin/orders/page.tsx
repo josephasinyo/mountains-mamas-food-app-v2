@@ -2,6 +2,7 @@ export const dynamic = 'force-dynamic';
 
 import { createAdminClient } from '@/lib/supabase/server';
 import { OrdersClient } from './OrdersClient';
+import { getHoursUntilPickup } from '@/app/company/orders/date-utils';
 
 export default async function OrdersPage() {
     const supabase = createAdminClient();
@@ -23,6 +24,11 @@ export default async function OrdersPage() {
         .eq('status', 'pending');
 
     const initialTotalLunches = (statsOrders || []).reduce((sum: number, o: any) => {
+        if (o.status === 'cancelled') return sum;
+        const isUnapprovedRequest = o.status === 'pending' && 
+            (o.custom_fields?.is_last_minute === true || getHoursUntilPickup(o.tour_date, o.pickup_time) < 14) && 
+            !o.custom_fields?.is_approved;
+        if (isUnapprovedRequest) return sum;
         return sum + (o.order_items?.reduce((s: number, item: any) => s + (item.quantity || 1), 0) || 0);
     }, 0);
 

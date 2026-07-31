@@ -1,4 +1,5 @@
 import { createAdminClient, createClient } from '@/lib/supabase/server';
+import { getHoursUntilPickup } from '@/app/company/orders/date-utils';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -28,12 +29,12 @@ export default async function AdminDashboard() {
         { data: recentOrders },
         { data: { user } },
     ] = await Promise.all([
-        supabaseAdmin.from('orders').select('order_items(quantity)'),
-        supabaseAdmin.from('orders').select('order_items(quantity)').eq('tour_date', today),
-        supabaseAdmin.from('orders').select('order_items(quantity)').eq('status', 'pending'),
+        supabaseAdmin.from('orders').select('status, custom_fields, tour_date, pickup_time, order_items(quantity)'),
+        supabaseAdmin.from('orders').select('status, custom_fields, tour_date, pickup_time, order_items(quantity)').eq('tour_date', today),
+        supabaseAdmin.from('orders').select('status, custom_fields, tour_date, pickup_time, order_items(quantity)').eq('status', 'pending'),
         supabaseAdmin.from('tour_companies').select('*', { count: 'exact', head: true }).eq('status', 'active'),
         supabaseAdmin.from('meals').select('*', { count: 'exact', head: true }).eq('is_active', true),
-        supabaseAdmin.from('orders').select('order_items(quantity)').gte('created_at', monthStart),
+        supabaseAdmin.from('orders').select('status, custom_fields, tour_date, pickup_time, order_items(quantity)').gte('created_at', monthStart),
         supabaseAdmin.from('orders').select('*, tour_companies(name), order_items(*)').order('created_at', { ascending: false }).limit(8),
         supabaseClient.auth.getUser()
     ]);
@@ -41,6 +42,11 @@ export default async function AdminDashboard() {
     const sumLunches = (orders: any[] | null) => {
         if (!orders) return 0;
         return orders.reduce((sum, order) => {
+            if (order.status === 'cancelled') return sum;
+            const isUnapprovedRequest = order.status === 'pending' && 
+                (order.custom_fields?.is_last_minute === true || getHoursUntilPickup(order.tour_date, order.pickup_time) < 14) && 
+                !order.custom_fields?.is_approved;
+            if (isUnapprovedRequest) return sum;
             const items = order.order_items || [];
             const orderSum = Array.isArray(items) 
                 ? items.reduce((acc: number, item: any) => acc + (item.quantity || 1), 0)

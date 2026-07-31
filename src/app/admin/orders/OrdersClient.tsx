@@ -1,8 +1,9 @@
 'use client';
 
 import React, { useState, useEffect, useRef } from 'react';
-import { updateOrderStatus, bulkUpdateStatus, exportOrdersCSV, updateOrderDetails, deleteOrder, bulkDeleteOrders, getPaginatedOrders } from './actions';
+import { updateOrderStatus, bulkUpdateStatus, exportOrdersCSV, updateOrderDetails, deleteOrder, bulkDeleteOrders, getPaginatedOrders, approveOrderRequest, declineOrderRequest } from './actions';
 import { handleOrderChangeRequest } from '@/app/company/orders/change-actions';
+import { getHoursUntilPickup } from '@/app/company/orders/date-utils';
 import { createClient } from '@/lib/supabase/client';
 import { getGlobalSettings, submitSupabaseOrder } from '@/lib/supabase/public-actions';
 import { Button, buttonVariants } from '@/components/ui/button';
@@ -227,6 +228,7 @@ interface OrdersClientProps {
 
 const STATUS_LABELS: Record<string, string> = {
     pending: 'Pending',
+    pending_request: 'Pending Order Request',
     fulfilled: 'Fulfilled',
     cancelled: 'Cancelled',
 };
@@ -276,6 +278,33 @@ export function OrdersClient({
     const [editingOrder, setEditingOrder] = useState<Order | null>(null);
     const [editItems, setEditItems] = useState<OrderItem[]>([]);
     const [loading, setLoading] = useState(false);
+
+    // ── Order Request Decline Dialog State ──
+    const [orderDeclineDialogOpen, setOrderDeclineDialogOpen] = useState(false);
+    const [decliningOrderId, setDecliningOrderId] = useState<string | null>(null);
+    const [orderDeclineReason, setOrderDeclineReason] = useState('');
+    const [isDecliningOrder, setIsDecliningOrder] = useState(false);
+
+    async function handleConfirmDecline(e: React.FormEvent) {
+        e.preventDefault();
+        if (!decliningOrderId) return;
+        setIsDecliningOrder(true);
+        const res = await declineOrderRequest(decliningOrderId, orderDeclineReason);
+        setIsDecliningOrder(false);
+        if (res.success) {
+            toast.success('Order request declined and email sent.');
+            setOrderDeclineDialogOpen(false);
+            const updateFn = (o: any) => o.id === decliningOrderId ? {
+                ...o,
+                status: 'cancelled',
+                custom_fields: res.custom_fields || { ...(o.custom_fields || {}), is_declined: true, decline_reason: orderDeclineReason }
+            } : o;
+            setOrders(prev => prev.map(updateFn));
+            setStatsOrders(prev => prev.map(updateFn));
+        } else {
+            toast.error(res.error || 'Failed to decline request.');
+        }
+    }
     const [isMounted, setIsMounted] = useState(false);
 
     // Change Requests State
@@ -1120,7 +1149,17 @@ export function OrdersClient({
     async function handleStatus(id: string, status: string) {
         const result = await updateOrderStatus(id, status);
         if (result.success) {
-            setOrders(prev => prev.map(o => o.id === id ? { ...o, status } : o));
+            const newStatus = result.status || status;
+            const updateFn = (o: any) => o.id === id ? { 
+                ...o, 
+                status: newStatus, 
+                custom_fields: result.custom_fields || (o.custom_fields || {})
+            } : o;
+            setOrders(prev => prev.map(updateFn));
+            setStatsOrders(prev => prev.map(updateFn));
+            toast.success(`Updated order status to ${STATUS_LABELS[status] || status}`);
+        } else {
+            toast.error(result.error || 'Failed to update order status');
         }
     }
 
@@ -1246,6 +1285,10 @@ export function OrdersClient({
 
         statsOrders.forEach((order: any) => {
             if (order.status === 'cancelled') return;
+            const isUnapprovedRequest = order.status === 'pending' && 
+                (order.custom_fields?.is_last_minute === true || getHoursUntilPickup(order.tour_date, order.pickup_time) < 14) && 
+                !order.custom_fields?.is_approved;
+            if (isUnapprovedRequest) return;
             ordersCount++;
 
             let orderLunches = 0;
@@ -1291,17 +1334,21 @@ export function OrdersClient({
     }, [statsOrders]);
 
     const renderOrderRow = (order: any, isExpanded: boolean, onToggleExpand: () => void) => {
+        const isUnapprovedReq = order.status === 'pending' && 
+            ((order as any).custom_fields?.is_last_minute || getHoursUntilPickup(order.tour_date, order.pickup_time) < 14) && 
+            !(order as any).custom_fields?.is_approved;
+
         const rows = [
             <TableRow
                 key={order.id}
-                className={`cursor-pointer transition-all duration-200 border-b border-gray-100 group relative ${
-                    isExpanded 
-                        ? 'bg-violet-50/50' 
-                        : 'hover:bg-gray-50/80'
+                className={`cursor-pointer transition-all duration-200 group relative ${
+                    isUnapprovedReq
+                        ? (isExpanded ? 'bg-orange-50/80 border-l-4 border-l-orange-500 border-b border-b-orange-200' : 'bg-orange-50/30 border-l-4 border-l-orange-500 border-b border-b-orange-200 hover:bg-orange-50/60')
+                        : (isExpanded ? 'bg-violet-50/50 border-b border-gray-100' : 'hover:bg-gray-50/80 border-b border-gray-100')
                 }`}
                 onClick={onToggleExpand}
             >
-                <TableCell className={`pl-6 py-4 relative ${isExpanded ? 'after:absolute after:left-0 after:top-0 after:bottom-0 after:w-1 after:bg-violet-600' : ''}`} onClick={e => e.stopPropagation()}>
+                <TableCell className={`pl-6 py-4 relative ${isExpanded ? (isUnapprovedReq ? 'after:absolute after:left-0 after:top-0 after:bottom-0 after:w-1 after:bg-orange-500' : 'after:absolute after:left-0 after:top-0 after:bottom-0 after:w-1 after:bg-violet-600') : ''}`} onClick={e => e.stopPropagation()}>
                     <Checkbox
                         checked={selected.has(order.id)}
                         onCheckedChange={() => toggleSelect(order.id)}
@@ -1376,13 +1423,61 @@ export function OrdersClient({
                 <TableCell className="py-3">
                     <div className="flex items-center gap-1.5 flex-wrap">
                         <Badge variant="outline" className={`
-                            ${order.status === 'pending' ? 'bg-amber-50 text-amber-700 border-amber-200' : ''}
+                            ${isUnapprovedReq ? 'bg-orange-100 text-orange-900 border-orange-300 font-bold' : ''}
+                            ${(order.status === 'pending' && !isUnapprovedReq) ? 'bg-amber-50 text-amber-700 border-amber-200' : ''}
                             ${order.status === 'ticket_created' ? 'bg-blue-50 text-blue-700 border-blue-200' : ''}
                             ${order.status === 'fulfilled' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : ''}
                             ${order.status === 'cancelled' ? 'bg-rose-50 text-rose-700 border-rose-200' : ''}
                         `}>
-                            {STATUS_LABELS[order.status] || order.status}
+                            {isUnapprovedReq
+                                ? 'Pending Order Request'
+                                : (STATUS_LABELS[order.status] || order.status)}
                         </Badge>
+                        {(() => {
+                            const isUnapprovedReq = order.status === 'pending' && 
+                                ((order as any).custom_fields?.is_last_minute || getHoursUntilPickup(order.tour_date, order.pickup_time) < 14) && 
+                                !(order as any).custom_fields?.is_approved;
+                            if (isUnapprovedReq) {
+                                return (
+                                    <div className="flex items-center gap-1">
+                                        <Button
+                                            size="sm"
+                                            onClick={async (e) => {
+                                                e.stopPropagation();
+                                                const res = await approveOrderRequest(order.id);
+                                                if (res.success) {
+                                                    toast.success('Order request approved!');
+                                                    const updateFn = (o: any) => o.id === order.id ? {
+                                                        ...o,
+                                                        custom_fields: { ...(o.custom_fields || {}), is_approved: true, is_last_minute: false }
+                                                    } : o;
+                                                    setOrders(prev => prev.map(updateFn));
+                                                    setStatsOrders(prev => prev.map(updateFn));
+                                                } else {
+                                                    toast.error(res.error || 'Failed to approve request.');
+                                                }
+                                            }}
+                                            className="h-6 px-2 text-[10px] font-bold bg-emerald-600 hover:bg-emerald-700 text-white rounded-md gap-1 shadow-sm"
+                                        >
+                                            <Check className="size-3" /> Approve
+                                        </Button>
+                                        <Button
+                                            size="sm"
+                                            onClick={(e) => {
+                                                e.stopPropagation();
+                                                setDecliningOrderId(order.id);
+                                                setOrderDeclineReason('');
+                                                setOrderDeclineDialogOpen(true);
+                                            }}
+                                            className="h-6 px-2 text-[10px] font-bold bg-rose-600 hover:bg-rose-700 text-white rounded-md gap-1 shadow-sm"
+                                        >
+                                            <X className="size-3" /> Decline
+                                        </Button>
+                                    </div>
+                                );
+                            }
+                            return null;
+                        })()}
                         {(() => {
                             const pendingReq = (order as any).order_change_requests?.find((r: any) => r.status === 'pending');
                             if (pendingReq) {
@@ -1467,7 +1562,9 @@ export function OrdersClient({
                     <TableCell colSpan={9} className="p-0 border-b border-gray-100">
                         <div className="bg-gray-50/50 px-6 py-8 border-t border-gray-100">
                             <div className="max-w-3xl mx-auto">
-                                <div className="bg-white rounded-[24px] border border-gray-200 shadow-sm overflow-hidden divide-y divide-gray-100">
+                                <div className={`rounded-[24px] shadow-sm overflow-hidden divide-y divide-gray-100 bg-white ${
+                                    isUnapprovedReq ? 'border-2 border-orange-500 ring-4 ring-orange-100' : 'border border-gray-200'
+                                }`}>
                                     <div className="divide-y divide-gray-100/70">
                                         {order.order_items?.map((item: any, i: number) => (
                                             <div key={i} className="flex items-center justify-between p-4 hover:bg-gray-50/50 transition-colors">
@@ -2601,6 +2698,9 @@ export function OrdersClient({
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 no-print">
                     {filtered.map((order) => {
                         const isExpanded = expanded === order.id;
+                        const isUnapprovedReq = order.status === 'pending' && 
+                            ((order as any).custom_fields?.is_last_minute || getHoursUntilPickup(order.tour_date, order.pickup_time) < 14) && 
+                            !(order as any).custom_fields?.is_approved;
                         const totalItems = order.order_items?.reduce((acc: number, item: any) => acc + item.quantity, 0) || 0;
                         const totalPrice = order.order_items?.reduce((acc: number, item: any) => acc + (Number(item.is_comped ? 0 : item.unit_price) * item.quantity), 0) || 0;
 
@@ -2608,8 +2708,9 @@ export function OrdersClient({
                             <Card 
                                 key={order.id} 
                                 className={cn(
-                                    "rounded-[24px] border border-gray-100 bg-white shadow-sm transition-all duration-300 overflow-hidden cursor-pointer hover:shadow-md relative",
-                                    isExpanded ? "ring-2 ring-violet-500 shadow-md animate-in fade-in zoom-in-95 duration-200" : ""
+                                    "rounded-[24px] bg-white shadow-sm transition-all duration-300 overflow-hidden cursor-pointer hover:shadow-md relative",
+                                    isUnapprovedReq ? "border-2 border-orange-500 bg-orange-50/20" : "border border-gray-100",
+                                    isExpanded ? (isUnapprovedReq ? "ring-4 ring-orange-300 shadow-md" : "ring-2 ring-violet-500 shadow-md animate-in fade-in zoom-in-95 duration-200") : ""
                                 )}
                                 onClick={() => setExpanded(isExpanded ? null : order.id)}
                             >
@@ -2722,13 +2823,58 @@ export function OrdersClient({
                                         <div className="flex items-center gap-1.5 flex-wrap">
                                             <Badge variant="outline" className={cn(
                                                 "rounded-lg px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wider",
-                                                order.status === 'pending' ? 'bg-amber-50 text-amber-700 border-amber-200' : '',
+                                                isUnapprovedReq ? 'bg-orange-100 text-orange-900 border-orange-300 font-bold' : '',
+                                                (order.status === 'pending' && !isUnapprovedReq) ? 'bg-amber-50 text-amber-700 border-amber-200' : '',
                                                 order.status === 'ticket_created' ? 'bg-blue-50 text-blue-700 border-blue-200' : '',
                                                 order.status === 'fulfilled' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : '',
                                                 order.status === 'cancelled' ? 'bg-rose-50 text-rose-700 border-rose-200' : ''
                                             )}>
-                                                {STATUS_LABELS[order.status] || order.status.replace('_', ' ')}
+                                                {isUnapprovedReq
+                                                    ? 'Pending Order Request'
+                                                    : (STATUS_LABELS[order.status] || order.status.replace('_', ' '))}
                                             </Badge>
+                                            {(() => {
+                                                if (isUnapprovedReq) {
+                                                    return (
+                                                        <div className="flex items-center gap-1">
+                                                            <Button
+                                                                size="sm"
+                                                                onClick={async (e) => {
+                                                                    e.stopPropagation();
+                                                                    const res = await approveOrderRequest(order.id);
+                                                                    if (res.success) {
+                                                                        toast.success('Order request approved!');
+                                                                        const updateFn = (o: any) => o.id === order.id ? {
+                                                                            ...o,
+                                                                            custom_fields: { ...(o.custom_fields || {}), is_approved: true, is_last_minute: false }
+                                                                        } : o;
+                                                                        setOrders(prev => prev.map(updateFn));
+                                                                        setStatsOrders(prev => prev.map(updateFn));
+                                                                    } else {
+                                                                        toast.error(res.error || 'Failed to approve request.');
+                                                                    }
+                                                                }}
+                                                                className="h-6 px-2 text-[10px] font-bold bg-emerald-600 hover:bg-emerald-700 text-white rounded-md gap-1 shadow-sm"
+                                                            >
+                                                                <Check className="size-3" /> Approve
+                                                            </Button>
+                                                            <Button
+                                                                size="sm"
+                                                                onClick={(e) => {
+                                                                    e.stopPropagation();
+                                                                    setDecliningOrderId(order.id);
+                                                                    setOrderDeclineReason('');
+                                                                    setOrderDeclineDialogOpen(true);
+                                                                }}
+                                                                className="h-6 px-2 text-[10px] font-bold bg-rose-600 hover:bg-rose-700 text-white rounded-md gap-1 shadow-sm"
+                                                            >
+                                                                <X className="size-3" /> Decline
+                                                            </Button>
+                                                        </div>
+                                                    );
+                                                }
+                                                return null;
+                                            })()}
                                             {(() => {
                                                 const pendingReq = (order as any).order_change_requests?.find((r: any) => r.status === 'pending');
                                                 if (pendingReq) {
@@ -4158,6 +4304,44 @@ export function OrdersClient({
                     }}
                 />
             )}
+
+            {/* Decline Order Request Dialog */}
+            <Dialog open={orderDeclineDialogOpen} onOpenChange={setOrderDeclineDialogOpen}>
+                <DialogContent className="sm:max-w-[425px] rounded-2xl p-6 bg-white border border-gray-100 shadow-2xl">
+                    <DialogHeader className="space-y-1.5 text-left">
+                        <div className="size-10 rounded-xl bg-rose-50 text-rose-600 flex items-center justify-center font-bold mb-1">
+                            <X className="size-5" />
+                        </div>
+                        <DialogTitle className="text-lg font-bold text-gray-900">Decline Order Request</DialogTitle>
+                        <DialogDescription className="text-xs text-gray-500 font-medium">
+                            Please provide a reason for declining this last-minute order request. This reason will be included in the email sent to the tour company.
+                        </DialogDescription>
+                    </DialogHeader>
+
+                    <form onSubmit={handleConfirmDecline} className="space-y-4 py-2">
+                        <div className="space-y-1.5">
+                            <Label className="text-[11px] font-bold text-gray-500 uppercase tracking-wider">Reason for Declining (Optional)</Label>
+                            <Textarea
+                                placeholder="e.g. Kitchen capacity reached for this morning / ingredients unavailable for short notice..."
+                                value={orderDeclineReason}
+                                onChange={(e) => setOrderDeclineReason(e.target.value)}
+                                rows={3}
+                                className="rounded-xl border-gray-200 text-xs font-medium focus:ring-rose-500 focus:border-rose-500 placeholder:text-gray-400 placeholder:font-normal"
+                            />
+                        </div>
+
+                        <DialogFooter className="gap-2 pt-2">
+                            <Button type="button" variant="ghost" className="rounded-xl font-bold text-gray-500" onClick={() => setOrderDeclineDialogOpen(false)}>
+                                Cancel
+                            </Button>
+                            <Button type="submit" disabled={isDecliningOrder} className="rounded-xl bg-rose-600 hover:bg-rose-700 font-bold px-6 text-white shadow-md shadow-rose-100 gap-1.5">
+                                {isDecliningOrder ? <Loader2 className="size-4 animate-spin" /> : <X className="size-4" />}
+                                Decline Request
+                            </Button>
+                        </DialogFooter>
+                    </form>
+                </DialogContent>
+            </Dialog>
 
             <Dialog open={declineDialogOpen} onOpenChange={setDeclineDialogOpen}>
                 <DialogContent className="sm:max-w-[425px] rounded-2xl">

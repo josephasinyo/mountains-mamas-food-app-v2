@@ -3,6 +3,7 @@
 import { createClient, createAdminClient } from './server';
 import { FoodItem, CompanyConfig, TourCompany } from '../types';
 import { sendOrderNotificationEmail } from '../brevo';
+import { getHoursUntilPickup } from '@/app/company/orders/date-utils';
 
 export async function getCompanyBySlug(slug: string) {
     try {
@@ -117,6 +118,10 @@ export async function submitSupabaseOrder(orderData: any, items: any[]) {
             }
         }
 
+        // Check if this is a last-minute order submission (< 14 hours before pickup)
+        const hoursUntilPickup = getHoursUntilPickup(orderData.tourDate, orderData.pickUpTime || null);
+        const isLastMinute = hoursUntilPickup < 14;
+
         const supabase = createAdminClient(); // Use admin to bypass RLS for public orders
 
         // 1. Create the order
@@ -132,7 +137,10 @@ export async function submitSupabaseOrder(orderData: any, items: any[]) {
                 status: 'pending',
                 payment_status: 'unpaid',
                 payment_method: orderData.paymentMethod || 'monthly_invoice',
-                custom_fields: orderData.dynamic_fields || {}
+                custom_fields: {
+                    ...(orderData.dynamic_fields || {}),
+                    is_last_minute: isLastMinute
+                }
             })
             .select()
             .single();
@@ -177,14 +185,14 @@ export async function submitSupabaseOrder(orderData: any, items: any[]) {
                     .single();
 
                 if (company?.email) {
-                    await sendOrderNotificationEmail(company.email, company.name, orderData, items);
+                    await sendOrderNotificationEmail(company.email, company.name, orderData, items, isLastMinute);
                 }
             } catch (emailError) {
                 console.error('Failed to send order notification email:', emailError);
             }
         }
 
-        return { success: true, orderId: order.id };
+        return { success: true, orderId: order.id, isLastMinute, status: 'pending' };
     } catch (error: any) {
         console.error('Error submitting order to Supabase:', error);
         return { success: false, error: error.message };

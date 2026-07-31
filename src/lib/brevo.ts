@@ -195,7 +195,7 @@ function formatBoxType(box: string | null | undefined): string {
 /**
  * Sends a notification email to the company when a new order is placed.
  */
-export async function sendOrderNotificationEmail(companyEmail: string, companyName: string, order: any, items: any[]) {
+export async function sendOrderNotificationEmail(companyEmail: string, companyName: string, order: any, items: any[], isLastMinute: boolean = false) {
     const dashboardUrl = `${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/company/orders`;
 
     const paymentMethod = order.paymentMethod || order.payment_method || 'monthly_invoice';
@@ -256,14 +256,28 @@ export async function sendOrderNotificationEmail(companyEmail: string, companyNa
         `;
     }).join('');
 
+    const headerBg = isLastMinute ? '#d97706' : '#10b981';
+    const headerTitle = isLastMinute ? 'Last-Minute Order Request Received!' : 'New Order Received!';
+    const subjectPrefix = isLastMinute ? '⚠️ Urgent Order Request (<14h)' : '🧺 New Order';
+
     const htmlContent = `
         <div style="font-family: sans-serif; max-width: 600px; margin: 0 auto; color: #111827;">
-            <div style="background-color: #10b981; padding: 32px; text-align: center; border-radius: 16px 16px 0 0;">
-                <h1 style="color: white; margin: 0; font-size: 24px;">New Order Received!</h1>
+            <div style="background-color: ${headerBg}; padding: 32px; text-align: center; border-radius: 16px 16px 0 0;">
+                <h1 style="color: white; margin: 0; font-size: 24px;">${headerTitle}</h1>
             </div>
             <div style="padding: 32px; border: 1px solid #e5e7eb; border-top: none; border-radius: 0 0 16px 16px;">
+                ${isLastMinute ? `
+                    <div style="background-color: #fffbeb; border: 1px solid #fde68a; border-radius: 12px; padding: 20px; margin-bottom: 24px;">
+                        <p style="margin: 0 0 6px 0; font-size: 15px; font-weight: bold; color: #b45309;">⚠️ LAST-MINUTE ORDER REQUEST (&lt;14 HOURS)</p>
+                        <p style="margin: 0; font-size: 14px; color: #92400e; line-height: 1.5;">
+                            This order was placed less than 14 hours prior to pickup time. It has been submitted as a <strong>pending request</strong> requiring café management approval. 
+                            <strong>Please text or call Kim directly at (406) 461-1024</strong> to accept/confirm this request.
+                        </p>
+                    </div>
+                ` : ''}
+
                 <p style="font-size: 16px; line-height: 24px;">Hello <strong>${companyName}</strong>,</p>
-                <p style="font-size: 16px; line-height: 24px;">A new order has been placed for your tour on <strong>${order.tourDate}</strong>.</p>
+                <p style="font-size: 16px; line-height: 24px;">${isLastMinute ? 'An order request' : 'A new order'} has been placed for your tour on <strong>${order.tourDate}</strong>.</p>
                 
                 <div style="background-color: #f9fafb; padding: 24px; border-radius: 12px; margin: 24px 0;">
                     <div style="margin-bottom: 16px;">
@@ -304,13 +318,14 @@ export async function sendOrderNotificationEmail(companyEmail: string, companyNa
     `;
 
     const recipients: EmailRecipient[] = [{ email: companyEmail, name: companyName }];
-    if (process.env.ADMIN_EMAIL) {
-        recipients.push({ email: process.env.ADMIN_EMAIL, name: "Mountain Mama's Café Admin" });
+    const adminEmail = process.env.ADMIN_EMAIL || 'mountainmamascafe@gmail.com';
+    if (adminEmail && !recipients.some(r => r.email === adminEmail)) {
+        recipients.push({ email: adminEmail, name: "Mountain Mama's Café Admin" });
     }
 
     return sendEmail({
         to: recipients,
-        subject: `🧺 New Order — ${companyName} | ${order.tourDate}`,
+        subject: `${subjectPrefix} — ${companyName} | ${order.tourDate}`,
         htmlContent
     });
 }

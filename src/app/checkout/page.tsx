@@ -12,6 +12,7 @@ import { useCompany } from '@/components/context/CompanyProvider';
 import { ChevronDown } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
+import { getHoursUntilPickup } from '@/app/company/orders/date-utils';
 
 export default function CheckoutPage() {
   const router = useRouter();
@@ -42,6 +43,11 @@ export default function CheckoutPage() {
   const formRef = useRef<HTMLFormElement>(null);
   
   const isSubmitted = useRef(false);
+
+  const selectedTourDate = formData.tour_date || formData.tourDate || '';
+  const selectedPickupTime = formData.pickup_time || formData.pickUpTime || '';
+  const hoursUntilPickup = (selectedTourDate && selectedPickupTime) ? getHoursUntilPickup(selectedTourDate, selectedPickupTime) : null;
+  const isLastMinuteOrder = hoursUntilPickup !== null && hoursUntilPickup < 14;
 
   useEffect(() => {
     // Redirect if cart is empty, but only if we haven't just submitted
@@ -197,8 +203,6 @@ export default function CheckoutPage() {
             return;
           } else {
             console.error('Stripe session creation failed:', stripeResult.error);
-            // Fallback: still redirect to success but with warning? 
-            // Or stay here and show error. 
             toast.error('Failed to initialize payment. Please contact the cafe.');
             setIsLoading(false);
             return;
@@ -207,7 +211,7 @@ export default function CheckoutPage() {
 
         isSubmitted.current = true;
         clearCart();
-        router.push(`/success?slug=${company?.slug || ''}`);
+        router.push(`/success?slug=${company?.slug || ''}&last_minute=${result.isLastMinute ? 'true' : 'false'}`);
       } else {
         toast.error('There was an error placing your order: ' + result.error);
         setIsLoading(false);
@@ -299,6 +303,18 @@ export default function CheckoutPage() {
               </div>
             );
           })}
+
+        {isLastMinuteOrder && (
+          <div className="p-3.5 bg-amber-50 border border-amber-200 text-amber-900 rounded-xl text-xs md:text-sm font-medium my-4 flex items-start gap-2.5 shadow-sm">
+            <span className="text-lg leading-none mt-0.5 select-none">⚠️</span>
+            <div>
+              <strong className="font-bold text-amber-950 block mb-0.5">Last-Minute Request Notice:</strong>
+              <p className="text-amber-800 leading-snug">
+                Because this pickup time is less than 14 hours away, this order will be submitted as a <strong>request</strong> requiring café approval.
+              </p>
+            </div>
+          </div>
+        )}
 
         <div className={styles.footer}>
           <Button 

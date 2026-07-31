@@ -116,9 +116,9 @@ export default async function ContractDetailPage({ params }: PageProps) {
                         </div>
 
                         <div>
-                            <h3 className="font-bold text-gray-800 text-xs mb-1">3. Order Modification & Cutoff Policy</h3>
+                            <h3 className="font-bold text-gray-800 text-xs mb-1">3. Order Submission, Modification & Cutoff Policy</h3>
                             <p>
-                                To ensure ingredient availability and timely preparation, order modifications submitted <strong>more than 24 hours prior</strong> to the scheduled pickup time are applied immediately. Modifications requested <strong>between 14 and 24 hours prior</strong> to pickup submit a change request requiring admin approval. <strong>Less than 14 hours prior</strong> to pickup, online modifications are no longer allowed and the Company must contact café management directly.
+                                New orders submitted <strong>more than 14 hours prior</strong> to pickup take effect immediately. New orders placed <strong>less than 14 hours prior</strong> to pickup are logged as pending requests requiring café management approval (with direct text/call notification). Existing order modifications requested <strong>between 14 and 24 hours prior</strong> submit a change request requiring admin approval. <strong>Less than 14 hours prior</strong> to pickup, online modifications to existing orders are locked.
                             </p>
                         </div>
 

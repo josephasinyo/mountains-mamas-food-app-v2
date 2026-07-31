@@ -2,18 +2,205 @@
 
 import { createAdminClient, createClient } from '@/lib/supabase/server';
 import { logActivity } from '@/lib/supabase/activity-log';
+import { getHoursUntilPickup } from '@/app/company/orders/date-utils';
 
 export async function updateOrderStatus(orderId: string, status: string) {
     try {
         const supabase = createAdminClient();
-        const updates: Record<string, string> = { status };
-        if (status === 'fulfilled') updates.fulfilled_at = new Date().toISOString();
+        const { data: order } = await supabase.from('orders').select('custom_fields').eq('id', orderId).single();
+        
+        let dbStatus = status;
+        const updatedCustomFields = { ...(order?.custom_fields || {}) };
+
+        if (status === 'pending_request') {
+            dbStatus = 'pending';
+            updatedCustomFields.is_last_minute = true;
+            updatedCustomFields.is_approved = false;
+        } else {
+            updatedCustomFields.is_approved = true;
+            updatedCustomFields.is_last_minute = false;
+        }
+
+        const updates: Record<string, any> = { 
+            status: dbStatus,
+            custom_fields: updatedCustomFields
+        };
+        if (dbStatus === 'fulfilled') updates.fulfilled_at = new Date().toISOString();
 
         const { error } = await supabase.from('orders').update(updates).eq('id', orderId);
         if (error) return { success: false, error: error.message };
 
         await logActivity({ userRole: 'admin', action: `order_${status}`, entityType: 'order', entityId: orderId });
-        return { success: true };
+        return { success: true, custom_fields: updatedCustomFields, status: dbStatus };
+    } catch (e) {
+        return { success: false, error: String(e) };
+    }
+}
+
+export async function approveOrderRequest(orderId: string) {
+    try {
+        const supabase = createAdminClient();
+        const { data: order, error: fetchError } = await supabase
+            .from('orders')
+            .select('*, tour_companies(name, email, slug), order_items(*)')
+            .eq('id', orderId)
+            .single();
+
+        if (fetchError || !order) return { success: false, error: fetchError?.message || 'Order not found' };
+
+        const updatedFields = {
+            ...(order?.custom_fields || {}),
+            is_last_minute: false,
+            is_approved: true,
+            is_declined: false
+        };
+
+        const { error } = await supabase.from('orders').update({
+            status: 'pending',
+            custom_fields: updatedFields
+        }).eq('id', orderId);
+
+        if (error) return { success: false, error: error.message };
+
+        try {
+            const { sendEmail } = await import('@/lib/brevo');
+            const companyEmail = order.tour_companies?.email;
+            const companyName = order.tour_companies?.name || 'Valued Client';
+            const adminEmail = process.env.EMAIL_FROM_ADDRESS || 'mountainmamascafe@gmail.com';
+
+            const recipients: { email: string; name?: string }[] = [{ email: adminEmail }];
+            if (companyEmail) recipients.push({ email: companyEmail, name: companyName });
+
+            const itemsHtml = (order.order_items || []).map((item: any) => `
+                <tr style="border-bottom: 1px solid #f3f4f6;">
+                    <td style="padding: 12px 0; font-size: 14px; font-weight: bold; color: #111827;">${item.quantity}x ${item.meal_name}</td>
+                    <td style="padding: 12px 0; font-size: 13px; color: #6b7280; text-align: right;">${item.guest_name ? `Guest: ${item.guest_name}` : ''}</td>
+                </tr>
+            `).join('');
+
+            const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://mountainmamascafe.com';
+            const companySlug = order.tour_companies?.slug;
+            const dashboardUrl = companySlug ? `${appUrl}/${companySlug}` : appUrl;
+
+            await sendEmail({
+                to: recipients,
+                subject: `✅ Order Request Approved - ${order.customer_name || 'Tour Order'} (${order.tour_date})`,
+                htmlContent: `
+                    <div style="font-family: sans-serif; max-width: 600px; margin: 0 auto; color: #111827;">
+                        <div style="background-color: #10b981; padding: 28px; text-align: center; border-radius: 12px 12px 0 0;">
+                            <h2 style="color: white; margin: 0; font-size: 22px;">Last-Minute Order Request Approved!</h2>
+                        </div>
+                        <div style="padding: 24px; border: 1px solid #e5e7eb; border-top: none; border-radius: 0 0 12px 12px;">
+                            <p style="font-size: 15px;">Hello <strong>${companyName}</strong>,</p>
+                            <p style="font-size: 14px; line-height: 1.5; color: #374151;">
+                                Great news! Your last-minute order request for tour date <strong>${order.tour_date}</strong> (pickup: <strong>${order.pickup_time || 'N/A'}</strong>) placed by <strong>${order.customer_name}</strong> has been <strong style="color: #059669;">APPROVED</strong> by Mountain Mama's Café management and is scheduled for kitchen preparation.
+                            </p>
+                            
+                            <div style="background-color: #f9fafb; padding: 16px; border-radius: 8px; margin: 20px 0;">
+                                <div style="margin-bottom: 8px;">
+                                    <span style="font-size: 12px; color: #6b7280; font-weight: bold; text-transform: uppercase;">Tour Date:</span>
+                                    <span style="font-size: 14px; font-weight: bold; color: #111827; margin-left: 8px;">${order.tour_date}</span>
+                                </div>
+                                <div style="margin-bottom: 8px;">
+                                    <span style="font-size: 12px; color: #6b7280; font-weight: bold; text-transform: uppercase;">Pick-up Time:</span>
+                                    <span style="font-size: 14px; font-weight: bold; color: #111827; margin-left: 8px;">${order.pickup_time || 'N/A'}</span>
+                                </div>
+                                <div>
+                                    <span style="font-size: 12px; color: #6b7280; font-weight: bold; text-transform: uppercase;">Guide Name:</span>
+                                    <span style="font-size: 14px; font-weight: bold; color: #111827; margin-left: 8px;">${order.guide_name || 'N/A'}</span>
+                                </div>
+                            </div>
+
+                            <h3 style="font-size: 15px; font-weight: bold; margin: 20px 0 8px 0; border-bottom: 2px solid #f3f4f6; padding-bottom: 6px;">Order Summary</h3>
+                            <table style="width: 100%; border-collapse: collapse;">
+                                ${itemsHtml}
+                            </table>
+
+                            <div style="margin-top: 24px; text-align: center;">
+                                <a href="${dashboardUrl}" style="display: inline-block; background-color: #059669; color: white; padding: 12px 24px; border-radius: 8px; text-decoration: none; font-weight: bold; font-size: 14px;">View in Portal</a>
+                            </div>
+                        </div>
+                    </div>
+                `
+            });
+        } catch (emailErr) {
+            console.error('Error sending approval email:', emailErr);
+        }
+
+        await logActivity({ userRole: 'admin', action: 'approve_order_request', entityType: 'order', entityId: orderId });
+        return { success: true, custom_fields: updatedFields };
+    } catch (e) {
+        return { success: false, error: String(e) };
+    }
+}
+
+export async function declineOrderRequest(orderId: string, reason?: string) {
+    try {
+        const supabase = createAdminClient();
+        const { data: order, error: fetchError } = await supabase
+            .from('orders')
+            .select('*, tour_companies(name, email)')
+            .eq('id', orderId)
+            .single();
+
+        if (fetchError || !order) return { success: false, error: fetchError?.message || 'Order not found' };
+
+        const updatedFields = {
+            ...(order.custom_fields || {}),
+            is_last_minute: true,
+            is_approved: false,
+            is_declined: true,
+            decline_reason: reason || null
+        };
+
+        const { error } = await supabase.from('orders').update({
+            status: 'cancelled',
+            custom_fields: updatedFields
+        }).eq('id', orderId);
+
+        if (error) return { success: false, error: error.message };
+
+        try {
+            const { sendEmail } = await import('@/lib/brevo');
+            const companyEmail = order.tour_companies?.email;
+            const companyName = order.tour_companies?.name || 'Valued Client';
+            const adminEmail = process.env.EMAIL_FROM_ADDRESS || 'mountainmamascafe@gmail.com';
+
+            const recipients: { email: string; name?: string }[] = [{ email: adminEmail }];
+            if (companyEmail) recipients.push({ email: companyEmail, name: companyName });
+
+            await sendEmail({
+                to: recipients,
+                subject: `❌ Order Request Declined - ${order.customer_name || 'Tour Order'} (${order.tour_date})`,
+                htmlContent: `
+                    <div style="font-family: sans-serif; max-width: 600px; margin: 0 auto; color: #111827;">
+                        <div style="background-color: #ef4444; padding: 24px; text-align: center; border-radius: 12px 12px 0 0;">
+                            <h2 style="color: white; margin: 0; font-size: 20px;">Last-Minute Order Request Declined</h2>
+                        </div>
+                        <div style="padding: 24px; border: 1px solid #e5e7eb; border-top: none; border-radius: 0 0 12px 12px;">
+                            <p style="font-size: 15px;">Hello <strong>${companyName}</strong>,</p>
+                            <p style="font-size: 14px; line-height: 1.5; color: #374151;">
+                                We regret to inform you that your last-minute order request for tour date <strong>${order.tour_date}</strong> (pickup: ${order.pickup_time || 'N/A'}) could not be accepted due to kitchen capacity / preparation constraints inside the 14-hour cutoff window.
+                            </p>
+                            ${reason ? `
+                                <div style="background-color: #fef2f2; border: 1px solid #fecaca; border-radius: 8px; padding: 12px; margin: 16px 0;">
+                                    <p style="margin: 0; font-size: 13px; font-weight: bold; color: #991b1b;">Reason provided by Café Management:</p>
+                                    <p style="margin: 4px 0 0 0; font-size: 14px; color: #7f1d1d;">${reason}</p>
+                                </div>
+                            ` : ''}
+                            <p style="font-size: 14px; color: #6b7280; margin-top: 16px;">
+                                If you have any questions, please contact café management directly at (406) 461-1024.
+                            </p>
+                        </div>
+                    </div>
+                `
+            });
+        } catch (emailErr) {
+            console.error('Error sending decline email:', emailErr);
+        }
+
+        await logActivity({ userRole: 'admin', action: 'decline_order_request', entityType: 'order', entityId: orderId });
+        return { success: true, custom_fields: updatedFields };
     } catch (e) {
         return { success: false, error: String(e) };
     }
@@ -681,6 +868,11 @@ export async function getPaginatedOrders(filters: {
         const statsOrders = statsData || [];
         const pendingCount = statsOrders.filter((o: any) => o.status === 'pending').length;
         const totalLunches = statsOrders.reduce((sum: number, o: any) => {
+            if (o.status === 'cancelled') return sum;
+            const isUnapprovedRequest = o.status === 'pending' && 
+                (o.custom_fields?.is_last_minute === true || getHoursUntilPickup(o.tour_date, o.pickup_time) < 14) && 
+                !o.custom_fields?.is_approved;
+            if (isUnapprovedRequest) return sum;
             return sum + (o.order_items?.reduce((s: number, item: any) => s + (item.quantity || 1), 0) || 0);
         }, 0);
 

@@ -689,8 +689,8 @@ export default function RegisterCompanyPage() {
                                         </div>
 
                                         <div>
-                                            <p className="font-bold text-gray-800">3. Order Modification & Cutoff Policy</p>
-                                            <p className="mt-1">Orders modified or submitted <strong>more than 24 hours prior</strong> to the scheduled pickup time are applied immediately without requiring approval. Order modifications requested <strong>between 14 and 24 hours prior</strong> to pickup will submit a change request requiring admin approval. <strong>Less than 14 hours prior</strong> to pickup, online changes are no longer allowed and the Company must contact café management directly for approval.</p>
+                                            <p className="font-bold text-gray-800">3. Order Submission, Modification & Cutoff Policy</p>
+                                            <p className="mt-1">New orders submitted <strong>more than 14 hours prior</strong> to pickup take effect immediately. New orders submitted <strong>less than 14 hours prior</strong> to pickup are submitted as pending requests requiring café management approval, and the Company must text or call café management directly at (406) 461-1024 to confirm. Existing order modifications requested <strong>between 14 and 24 hours prior</strong> require admin approval. <strong>Less than 14 hours prior</strong> to pickup, online modifications to existing orders are locked and require direct contact.</p>
                                         </div>
 
                                         <div>
