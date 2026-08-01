@@ -44,7 +44,7 @@ export default async function AdminDashboard() {
         return orders.reduce((sum, order) => {
             if (order.status === 'cancelled') return sum;
             const isUnapprovedRequest = order.status === 'pending' && 
-                (order.custom_fields?.is_last_minute === true || getHoursUntilPickup(order.tour_date, order.pickup_time) < 14) && 
+                getHoursUntilPickup(order.tour_date, order.pickup_time) < 14 && 
                 !order.custom_fields?.is_approved;
             if (isUnapprovedRequest) return sum;
             const items = order.order_items || [];

@@ -1286,7 +1286,7 @@ export function OrdersClient({
         statsOrders.forEach((order: any) => {
             if (order.status === 'cancelled') return;
             const isUnapprovedRequest = order.status === 'pending' && 
-                (order.custom_fields?.is_last_minute === true || getHoursUntilPickup(order.tour_date, order.pickup_time) < 14) && 
+                getHoursUntilPickup(order.tour_date, order.pickup_time) < 14 && 
                 !order.custom_fields?.is_approved;
             if (isUnapprovedRequest) return;
             ordersCount++;
@@ -1335,7 +1335,7 @@ export function OrdersClient({
 
     const renderOrderRow = (order: any, isExpanded: boolean, onToggleExpand: () => void) => {
         const isUnapprovedReq = order.status === 'pending' && 
-            ((order as any).custom_fields?.is_last_minute || getHoursUntilPickup(order.tour_date, order.pickup_time) < 14) && 
+            getHoursUntilPickup(order.tour_date, order.pickup_time) < 14 && 
             !(order as any).custom_fields?.is_approved;
 
         const rows = [
@@ -1435,7 +1435,7 @@ export function OrdersClient({
                         </Badge>
                         {(() => {
                             const isUnapprovedReq = order.status === 'pending' && 
-                                ((order as any).custom_fields?.is_last_minute || getHoursUntilPickup(order.tour_date, order.pickup_time) < 14) && 
+                                getHoursUntilPickup(order.tour_date, order.pickup_time) < 14 && 
                                 !(order as any).custom_fields?.is_approved;
                             if (isUnapprovedReq) {
                                 return (
@@ -2699,7 +2699,7 @@ export function OrdersClient({
                     {filtered.map((order) => {
                         const isExpanded = expanded === order.id;
                         const isUnapprovedReq = order.status === 'pending' && 
-                            ((order as any).custom_fields?.is_last_minute || getHoursUntilPickup(order.tour_date, order.pickup_time) < 14) && 
+                            getHoursUntilPickup(order.tour_date, order.pickup_time) < 14 && 
                             !(order as any).custom_fields?.is_approved;
                         const totalItems = order.order_items?.reduce((acc: number, item: any) => acc + item.quantity, 0) || 0;
                         const totalPrice = order.order_items?.reduce((acc: number, item: any) => acc + (Number(item.is_comped ? 0 : item.unit_price) * item.quantity), 0) || 0;

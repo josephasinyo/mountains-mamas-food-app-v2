@@ -435,7 +435,7 @@ export function QuantitiesClient({ initialOrders, companies }: QuantitiesClientP
     const filteredOrders = orders.filter(order => {
         if (order.status === 'cancelled') return false;
         const isUnapprovedRequest = order.status === 'pending' && 
-            ((order as any).custom_fields?.is_last_minute === true || getHoursUntilPickup(order.tour_date, (order as any).pickup_time) < 14) && 
+            getHoursUntilPickup(order.tour_date, (order as any).pickup_time) < 14 && 
             !(order as any).custom_fields?.is_approved;
         return !isUnapprovedRequest;
     });
