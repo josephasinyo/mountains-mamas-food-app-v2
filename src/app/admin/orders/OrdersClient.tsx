@@ -2158,17 +2158,6 @@ export function OrdersClient({
                                         >
                                             <X className="size-4" /> Decline
                                         </Button>
-                                        <Button
-                                            size="sm"
-                                            onClick={() => {
-                                                setEditingOrder(order);
-                                                setEditItems(order.order_items || []);
-                                                setIsEditDialogOpen(true);
-                                            }}
-                                            className="rounded-xl border border-gray-200 bg-white hover:bg-gray-50 text-gray-700 font-bold px-3 py-2 text-xs flex items-center gap-1.5 cursor-pointer"
-                                        >
-                                            <Pencil className="size-3.5" /> Edit
-                                        </Button>
                                     </div>
                                 </CardHeader>
                                 <CardContent className="p-6">
