@@ -1448,14 +1448,24 @@ export function InvoicesClient({ companies, initialInvoices }: InvoicesClientPro
                                                 const isLoadingOrders = loadingExpandedId === invoice.id;
 
                                                 // Compute financial breakdown from stored invoice fields
-                                                const subtotal = invoice.total_amount
-                                                    + (invoice.discount_amount ?? 0)
+                                                const totalDiscounts = (invoice.discount_amount ?? 0)
                                                     + (invoice.per_lunch_discount_rate ?? 0) * (invoice.per_lunch_discount_count ?? 0);
-                                                const discountedSubtotalBeforeTax = subtotal
-                                                    - (invoice.discount_amount ?? 0)
-                                                    - ((invoice.per_lunch_discount_rate ?? 0) * (invoice.per_lunch_discount_count ?? 0));
+                                                
+                                                // If orders are loaded, sum their pre-tax order subtotals; otherwise reverse calculate from total_amount (which includes 4% resort tax)
+                                                const ordersPreTaxSubtotal = invoiceOrders.length > 0
+                                                    ? invoiceOrders.reduce((sum: number, order: any) => {
+                                                        const paidItems = (order.order_items || []).filter((i: any) => !i.is_comped);
+                                                        return sum + paidItems.reduce((s: number, i: any) => s + i.quantity * i.unit_price, 0);
+                                                    }, 0)
+                                                    : null;
+
+                                                const discountedSubtotalBeforeTax = ordersPreTaxSubtotal !== null
+                                                    ? ordersPreTaxSubtotal - totalDiscounts
+                                                    : invoice.total_amount / 1.04;
+
+                                                const subtotal = discountedSubtotalBeforeTax + totalDiscounts;
                                                 const resortTaxLine = discountedSubtotalBeforeTax * 0.04;
-                                                const processingFeeEst = (invoice.total_amount + resortTaxLine) * 0.029 + 0.30;
+                                                const processingFeeEst = invoice.total_amount * 0.029 + 0.30;
 
                                                 return (
                                                     <TableRow className="bg-violet-50/10 border-b border-violet-100/60">
