@@ -157,3 +157,28 @@ export function findGfCookieOption(cookieOptions: string[]): string | undefined 
 
     return undefined;
 }
+
+/**
+ * Formats a number with comma thousand separators (e.g. 1,234,567)
+ */
+export function formatNumber(value: number | string | undefined | null): string {
+    if (value === undefined || value === null || value === '') return '0';
+    const num = typeof value === 'string' ? parseFloat(value) : value;
+    if (isNaN(num)) return '0';
+    return num.toLocaleString('en-US');
+}
+
+/**
+ * Formats a currency amount with comma thousand separators and 2 decimal places (e.g. $1,234.56)
+ */
+export function formatCurrency(value: number | string | undefined | null): string {
+    if (value === undefined || value === null || value === '') return '$0.00';
+    const num = typeof value === 'string' ? parseFloat(value) : value;
+    if (isNaN(num)) return '$0.00';
+    return new Intl.NumberFormat('en-US', {
+        style: 'currency',
+        currency: 'USD',
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2,
+    }).format(num);
+}

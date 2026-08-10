@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { updateOrderStatus, bulkUpdateStatus, exportOrdersCSV, updateOrderDetails, deleteOrder, bulkDeleteOrders, getPaginatedOrders, approveOrderRequest, declineOrderRequest } from './actions';
 import { handleOrderChangeRequest } from '@/app/company/orders/change-actions';
 import { getHoursUntilPickup } from '@/app/company/orders/date-utils';
@@ -30,7 +30,7 @@ import {
     ArrowUpDown, ArrowUp, ArrowDown, LayoutGrid, List,
     Search, Loader2, Plus
 } from 'lucide-react';
-import { cn, formatDateUS, formatDateTimeUS, safePrint, findGfCookieOption } from '@/lib/utils';
+import { cn, formatDateUS, formatDateTimeUS, safePrint, findGfCookieOption, formatNumber, formatCurrency } from '@/lib/utils';
 import {
     DropdownMenu,
     DropdownMenuContent,
@@ -307,9 +307,19 @@ export function OrdersClient({
     }
     const [isMounted, setIsMounted] = useState(false);
 
-    // Change Requests State
+    // Change Requests & Order Requests State
     const [changeRequests, setChangeRequests] = useState<any[]>(initialChangeRequests);
-    const [activeTab, setActiveTab] = useState<'orders' | 'requests'>('orders');
+    const [activeTab, setActiveTab] = useState<'orders' | 'requests' | 'order_requests'>('orders');
+
+    const pendingOrderRequests = useMemo(() => {
+        const source = statsOrders.length > 0 ? statsOrders : orders;
+        return source.filter((o: any) => {
+            if (o.status === 'cancelled') return false;
+            if (o.custom_fields?.is_approved) return false;
+            const isLastMinute = o.custom_fields?.is_last_minute || getHoursUntilPickup(o.tour_date, o.pickup_time) < 14;
+            return o.status === 'pending' && isLastMinute;
+        });
+    }, [statsOrders, orders]);
     const [declineDialogOpen, setDeclineDialogOpen] = useState(false);
     const [selectedRequest, setSelectedRequest] = useState<any>(null);
     const [declineReason, setDeclineReason] = useState('');
@@ -2054,6 +2064,179 @@ export function OrdersClient({
         );
     };
 
+    const renderOrderRequests = () => {
+        if (pendingOrderRequests.length === 0) {
+            return (
+                <Card className="rounded-3xl border-gray-100 shadow-sm overflow-hidden bg-white">
+                    <CardContent className="flex flex-col items-center justify-center py-24 text-gray-400">
+                        <div className="size-20 rounded-full bg-amber-50 flex items-center justify-center mb-6">
+                            <CheckCircle className="size-10 text-amber-500 opacity-60" />
+                        </div>
+                        <p className="font-bold text-gray-900 text-lg">No pending last-minute order requests</p>
+                        <p className="text-sm mt-1 max-w-[360px] text-center text-gray-500">
+                            There are currently no last-minute order requests (&lt;14h remaining) pending approval. Orders placed &ge;14h in advance are processed as direct orders.
+                        </p>
+                    </CardContent>
+                </Card>
+            );
+        }
+
+        return (
+            <div className="space-y-6">
+                <div className="flex items-center justify-between bg-amber-50/70 border border-amber-100 rounded-2xl p-4">
+                    <div className="flex items-center gap-3">
+                        <div className="size-10 rounded-xl bg-amber-500 text-white flex items-center justify-center font-black text-sm shadow-sm">
+                            {pendingOrderRequests.length}
+                        </div>
+                        <div>
+                            <p className="font-extrabold text-gray-900 text-sm">
+                                {pendingOrderRequests.length} Last-Minute Order Request{pendingOrderRequests.length !== 1 ? 's' : ''} (&lt;14h) Awaiting Approval
+                            </p>
+                            <p className="text-xs text-gray-600 font-medium">
+                                These order requests were placed inside the 14-hour cutoff window and require management approval before kitchen scheduling.
+                            </p>
+                        </div>
+                    </div>
+                </div>
+
+                <div className="grid grid-cols-1 gap-6">
+                    {pendingOrderRequests.map((order: any) => {
+                        const totalItems = order.order_items?.reduce((acc: number, item: any) => acc + item.quantity, 0) || 0;
+                        const totalPrice = order.order_items?.reduce((acc: number, item: any) => acc + (Number(item.is_comped ? 0 : item.unit_price) * item.quantity), 0) || 0;
+                        const isUnapprovedReq = getHoursUntilPickup(order.tour_date, order.pickup_time) < 14 && !order.custom_fields?.is_approved;
+
+                        return (
+                            <Card key={order.id} className="rounded-3xl border-gray-100 shadow-md overflow-hidden bg-white transition-all duration-300">
+                                <CardHeader className="bg-amber-50/30 px-6 py-5 border-b border-amber-100/60 flex flex-row items-center justify-between flex-wrap gap-4">
+                                    <div className="space-y-1">
+                                        <div className="flex items-center gap-2.5 flex-wrap">
+                                            <Badge className="bg-amber-50 text-amber-700 border border-amber-200 font-extrabold text-[11px] px-2.5 py-0.5 rounded-lg">
+                                                Pending Order Request
+                                            </Badge>
+                                            {isUnapprovedReq && (
+                                                <Badge className="bg-rose-50 text-rose-700 border border-rose-200 font-extrabold text-[10px] px-2.5 py-0.5 rounded-lg">
+                                                    Last-Minute Request (&lt;14h)
+                                                </Badge>
+                                            )}
+                                            <span className="text-sm font-bold text-gray-900">
+                                                {order.customer_name || 'Guest / Lead Unspecified'}
+                                            </span>
+                                        </div>
+                                        <p className="text-xs text-gray-500 font-medium">
+                                            Company: <span className="font-bold text-gray-800">{order.tour_companies?.name || 'N/A'}</span> · Placed {formatDateTimeUS(order.created_at)}
+                                        </p>
+                                    </div>
+                                    <div className="flex items-center gap-2">
+                                        <Button
+                                            size="sm"
+                                            onClick={async () => {
+                                                const res = await approveOrderRequest(order.id);
+                                                if (res.success) {
+                                                    toast.success('Order request approved!');
+                                                    const updateFn = (o: any) => o.id === order.id ? {
+                                                        ...o,
+                                                        custom_fields: { ...(o.custom_fields || {}), is_approved: true, is_last_minute: false }
+                                                    } : o;
+                                                    setOrders(prev => prev.map(updateFn));
+                                                    setStatsOrders(prev => prev.map(updateFn));
+                                                } else {
+                                                    toast.error(res.error || 'Failed to approve request.');
+                                                }
+                                            }}
+                                            className="rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold px-4 py-2 text-xs flex items-center gap-1.5 shadow-sm cursor-pointer border-none"
+                                        >
+                                            <Check className="size-4" /> Approve Request
+                                        </Button>
+                                        <Button
+                                            size="sm"
+                                            onClick={() => {
+                                                setDecliningOrderId(order.id);
+                                                setOrderDeclineReason('');
+                                                setOrderDeclineDialogOpen(true);
+                                            }}
+                                            className="rounded-xl border border-rose-200 bg-rose-50 hover:bg-rose-100 text-rose-700 font-bold px-4 py-2 text-xs flex items-center gap-1.5 cursor-pointer"
+                                        >
+                                            <X className="size-4" /> Decline
+                                        </Button>
+                                        <Button
+                                            size="sm"
+                                            onClick={() => {
+                                                setEditingOrder(order);
+                                                setEditItems(order.order_items || []);
+                                                setIsEditDialogOpen(true);
+                                            }}
+                                            className="rounded-xl border border-gray-200 bg-white hover:bg-gray-50 text-gray-700 font-bold px-3 py-2 text-xs flex items-center gap-1.5 cursor-pointer"
+                                        >
+                                            <Pencil className="size-3.5" /> Edit
+                                        </Button>
+                                    </div>
+                                </CardHeader>
+                                <CardContent className="p-6">
+                                    <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6 p-4 rounded-2xl bg-gray-50/70 border border-gray-100 text-xs">
+                                        <div>
+                                            <span className="text-gray-400 font-bold uppercase text-[10px] block mb-0.5">Tour Date</span>
+                                            <span className="font-extrabold text-gray-900 text-sm">{formatDateUS(order.tour_date)}</span>
+                                        </div>
+                                        <div>
+                                            <span className="text-gray-400 font-bold uppercase text-[10px] block mb-0.5">Pickup Time</span>
+                                            <span className="font-extrabold text-gray-900 text-sm">{order.pickup_time || 'N/A'}</span>
+                                        </div>
+                                        <div>
+                                            <span className="text-gray-400 font-bold uppercase text-[10px] block mb-0.5">Guide Name</span>
+                                            <span className="font-extrabold text-gray-900 text-sm">{order.guide_name || 'N/A'}</span>
+                                        </div>
+                                        <div>
+                                            <span className="text-gray-400 font-bold uppercase text-[10px] block mb-0.5">Total Value</span>
+                                            <span className="font-black text-violet-700 text-sm">${totalPrice.toFixed(2)} ({totalItems} lunches)</span>
+                                        </div>
+                                    </div>
+
+                                    {order.notes && (
+                                        <div className="mb-4 p-3 rounded-xl bg-amber-50/40 border border-amber-100/60 text-xs">
+                                            <span className="font-bold text-amber-900 block mb-0.5">Notes:</span>
+                                            <p className="text-gray-700 font-medium whitespace-pre-wrap">{order.notes}</p>
+                                        </div>
+                                    )}
+
+                                    {/* Order Items Table */}
+                                    <div className="rounded-2xl border border-gray-100 overflow-hidden">
+                                        <table className="w-full text-xs">
+                                            <thead className="bg-gray-50/80">
+                                                <tr>
+                                                    <th className="text-left px-4 py-2.5 font-bold text-gray-500 uppercase tracking-wider text-[10px]">Meal</th>
+                                                    <th className="text-center px-4 py-2.5 font-bold text-gray-500 uppercase tracking-wider text-[10px]">Box Type</th>
+                                                    <th className="text-center px-4 py-2.5 font-bold text-gray-500 uppercase tracking-wider text-[10px]">Qty</th>
+                                                    <th className="text-left px-4 py-2.5 font-bold text-gray-500 uppercase tracking-wider text-[10px]">Guest / Options</th>
+                                                    <th className="text-right px-4 py-2.5 font-bold text-gray-500 uppercase tracking-wider text-[10px]">Price</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody className="divide-y divide-gray-100">
+                                                {order.order_items?.map((item: any) => (
+                                                    <tr key={item.id} className="hover:bg-gray-50/40">
+                                                        <td className="px-4 py-2.5 font-bold text-gray-900">{item.meal_name}</td>
+                                                        <td className="px-4 py-2.5 text-center font-medium text-gray-600">{item.box_type || '—'}</td>
+                                                        <td className="px-4 py-2.5 text-center font-black text-gray-900">{item.quantity}</td>
+                                                        <td className="px-4 py-2.5 text-gray-600">
+                                                            {item.guest_name && <span className="font-bold text-gray-800 block">Guest: {item.guest_name}</span>}
+                                                            {item.customizations && <span className="text-[11px] text-gray-500 block">{item.customizations}</span>}
+                                                        </td>
+                                                        <td className="px-4 py-2.5 text-right font-black text-gray-900">
+                                                            {item.is_comped ? <span className="text-emerald-600 font-extrabold">COMPED</span> : `$${(item.unit_price * item.quantity).toFixed(2)}`}
+                                                        </td>
+                                                    </tr>
+                                                ))}
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                </CardContent>
+                            </Card>
+                        );
+                    })}
+                </div>
+            </div>
+        );
+    };
+
     const hasFilters = !!(dateRange || companyFilter || statusFilter || startDate || endDate || searchTerm);
     const allSelected = filtered.length > 0 && selected.size === filtered.length;
 
@@ -2067,9 +2250,9 @@ export function OrdersClient({
                     <div>
                         <h1 className="text-3xl font-extrabold tracking-tight text-gray-900">Orders</h1>
                         <p className="hidden md:block text-sm font-medium text-gray-500 mt-1">
-                            <span className="text-violet-600 font-bold">{totalCount}</span> order{totalCount !== 1 ? 's' : ''} total ·{' '}
-                            <span className="text-violet-600 font-bold">{totalLunches}</span> total lunch{totalLunches !== 1 ? 'es' : ''} ·{' '}
-                            <span className="text-amber-500 font-bold">{pendingCount}</span> pending order{pendingCount !== 1 ? 's' : ''}
+                            <span className="text-violet-600 font-bold">{formatNumber(totalCount)}</span> order{totalCount !== 1 ? 's' : ''} total ·{' '}
+                            <span className="text-violet-600 font-bold">{formatNumber(totalLunches)}</span> total lunch{totalLunches !== 1 ? 'es' : ''} ·{' '}
+                            <span className="text-amber-500 font-bold">{formatNumber(pendingCount)}</span> pending order{pendingCount !== 1 ? 's' : ''}
                         </p>
                     </div>
                     {/* Mobile View Mode Toggle */}
@@ -2099,9 +2282,9 @@ export function OrdersClient({
 
                 {/* Mobile-only Stats */}
                 <p className="block md:hidden text-xs font-semibold text-gray-500 bg-gray-50 border border-gray-100/70 rounded-xl p-3 text-center">
-                    <span className="text-violet-600 font-black">{totalCount}</span> orders ·{' '}
-                    <span className="text-violet-600 font-black">{totalLunches}</span> lunches ·{' '}
-                    <span className="text-amber-500 font-black">{pendingCount}</span> pending order{pendingCount !== 1 ? 's' : ''}
+                    <span className="text-violet-600 font-black">{formatNumber(totalCount)}</span> orders ·{' '}
+                    <span className="text-violet-600 font-black">{formatNumber(totalLunches)}</span> lunches ·{' '}
+                    <span className="text-amber-500 font-black">{formatNumber(pendingCount)}</span> pending order{pendingCount !== 1 ? 's' : ''}
                 </p>
 
                 {/* Actions Grid */}
@@ -2238,6 +2421,22 @@ export function OrdersClient({
                     {changeRequests.length > 0 && (
                         <Badge className="bg-violet-600 hover:bg-violet-700 text-white border-none text-[10px] px-1.5 py-0.5 min-w-[18px] h-[18px] flex items-center justify-center rounded-full font-bold">
                             {changeRequests.length}
+                        </Badge>
+                    )}
+                </button>
+                <button
+                    onClick={() => setActiveTab('order_requests')}
+                    className={cn(
+                        "pb-3 px-4 text-sm font-bold border-b-2 transition-all relative flex items-center gap-1.5 outline-none",
+                        activeTab === 'order_requests'
+                            ? "border-violet-600 text-violet-600"
+                            : "border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300"
+                    )}
+                >
+                    Order Requests
+                    {pendingOrderRequests.length > 0 && (
+                        <Badge className="bg-amber-500 hover:bg-amber-600 text-white border-none text-[10px] px-1.5 py-0.5 min-w-[18px] h-[18px] flex items-center justify-center rounded-full font-bold">
+                            {pendingOrderRequests.length}
                         </Badge>
                     )}
                 </button>
@@ -2402,21 +2601,21 @@ export function OrdersClient({
                                 <div>
                                     <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1.5">Search Results Value</p>
                                     <p className="text-3xl font-black text-violet-600 tracking-tight">
-                                        ${searchStats.totalPrice.toFixed(2)}
+                                        {formatCurrency(searchStats.totalPrice)}
                                     </p>
                                 </div>
                                 <div className="h-10 w-px bg-gray-200" />
                                 <div>
                                     <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1.5">Lunches Count</p>
                                     <p className="text-3xl font-black text-gray-900 tracking-tight">
-                                        {searchStats.totalLunchesCount}
+                                        {formatNumber(searchStats.totalLunchesCount)}
                                     </p>
                                 </div>
                                 <div className="h-10 w-px bg-gray-200" />
                                 <div>
                                     <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1.5">Orders Found</p>
                                     <p className="text-3xl font-black text-gray-900 tracking-tight">
-                                        {searchStats.ordersCount}
+                                        {formatNumber(searchStats.ordersCount)}
                                     </p>
                                 </div>
                             </div>
@@ -2433,11 +2632,11 @@ export function OrdersClient({
                                             <div className="min-w-0">
                                                 <p className="text-[11px] font-bold text-gray-800 truncate">{type.name}</p>
                                                 <p className="text-[10px] font-semibold text-gray-400 mt-0.5">
-                                                    {type.count} lunch{type.count !== 1 ? 'es' : ''}
+                                                    {formatNumber(type.count)} lunch{type.count !== 1 ? 'es' : ''}
                                                 </p>
                                             </div>
                                             <div className="text-right shrink-0">
-                                                <p className="text-xs font-black text-violet-600">${type.cost.toFixed(2)}</p>
+                                                <p className="text-xs font-black text-violet-600">{formatCurrency(type.cost)}</p>
                                             </div>
                                         </div>
                                     ))}
@@ -2543,9 +2742,9 @@ export function OrdersClient({
             {totalCount > 100 && (
                 <div className="flex flex-col sm:flex-row items-center justify-between gap-4 p-4 bg-white rounded-2xl border border-gray-150 shadow-sm no-print mb-6">
                     <div className="text-sm font-semibold text-gray-500">
-                        Showing <span className="font-bold text-gray-800">{Math.min(totalCount, (page - 1) * 100 + 1)}</span> to{' '}
-                        <span className="font-bold text-gray-800">{Math.min(totalCount, page * 100)}</span> of{' '}
-                        <span className="font-bold text-gray-800">{totalCount}</span> orders
+                        Showing <span className="font-bold text-gray-800">{formatNumber(Math.min(totalCount, (page - 1) * 100 + 1))}</span> to{' '}
+                        <span className="font-bold text-gray-800">{formatNumber(Math.min(totalCount, page * 100))}</span> of{' '}
+                        <span className="font-bold text-gray-800">{formatNumber(totalCount)}</span> orders
                     </div>
                     <div className="flex items-center gap-3">
                         <Button
@@ -3550,8 +3749,10 @@ export function OrdersClient({
                 </DialogContent>
             </Dialog>
                 </>
-            ) : (
+            ) : activeTab === 'requests' ? (
                 renderChangeRequests()
+            ) : (
+                renderOrderRequests()
             )}
         </div>
             {/* Print Tickets Layout */}

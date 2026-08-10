@@ -18,7 +18,7 @@ import {
     Building2, Calendar, ClipboardList, CreditCard, ExternalLink, 
     FileText, Loader2, RefreshCw, ScrollText, CheckCircle2, ChevronRight, ChevronDown, Trash2, Search, Mail, Copy
 } from 'lucide-react';
-import { cn, formatDateUS } from '@/lib/utils';
+import { cn, formatDateUS, formatCurrency, formatNumber } from '@/lib/utils';
 import { fetchOrdersForInvoicing, fetchInvoicesHistory, sendInvoiceToCompany, fetchInvoiceOrders, payInvoiceManually } from './actions';
 import { generateCompanyInvoice } from '../orders/actions';
 import { deleteInvoice } from '../companies/actions';
@@ -833,7 +833,7 @@ export function InvoicesClient({ companies, initialInvoices }: InvoicesClientPro
                                                                 {itemsSummary}
                                                             </TableCell>
                                                             <TableCell className="font-black text-gray-900 text-xs text-right">
-                                                                ${orderTotal.toFixed(2)}
+                                                                {formatCurrency(orderTotal)}
                                                             </TableCell>
                                                         </TableRow>
                                                     );
@@ -879,8 +879,8 @@ export function InvoicesClient({ companies, initialInvoices }: InvoicesClientPro
                                                             <p className="text-[10px] text-gray-400 font-bold uppercase tracking-wider">{agg.box_type}</p>
                                                         </div>
                                                         <div className="text-right">
-                                                            <p className="text-xs font-bold text-gray-900">{agg.quantity} lunches</p>
-                                                            <p className="text-[10px] text-violet-600 font-black">${agg.total_price.toFixed(2)}</p>
+                                                            <p className="text-xs font-bold text-gray-900">{formatNumber(agg.quantity)} lunches</p>
+                                                            <p className="text-[10px] text-violet-600 font-black">{formatCurrency(agg.total_price)}</p>
                                                         </div>
                                                     </div>
                                                 ))}
@@ -1001,7 +1001,7 @@ export function InvoicesClient({ companies, initialInvoices }: InvoicesClientPro
                                          
                                          <div className="flex justify-between text-xs text-gray-500 font-medium pt-2 mt-2 border-t border-violet-50/50">
                                              <span>Subtotal</span>
-                                             <span className="font-bold text-gray-700">${pricing.subtotal.toFixed(2)}</span>
+                                             <span className="font-bold text-gray-700">{formatCurrency(pricing.subtotal)}</span>
                                          </div>
  
                                          {/* Per-lunch discount selector */}
@@ -1071,7 +1071,7 @@ export function InvoicesClient({ companies, initialInvoices }: InvoicesClientPro
                                                  {applyPerLunchDiscount && pricing.perLunchDiscount > 0 && (
                                                      <div className="flex justify-between text-xs text-emerald-600 font-bold bg-emerald-50/50 -mx-2 px-2 py-1.5 rounded-lg">
                                                          <span>Per-Lunch Discount</span>
-                                                         <span>-${pricing.perLunchDiscount.toFixed(2)}</span>
+                                                         <span>-{formatCurrency(pricing.perLunchDiscount)}</span>
                                                      </div>
                                                  )}
                                              </>
@@ -1080,22 +1080,22 @@ export function InvoicesClient({ companies, initialInvoices }: InvoicesClientPro
                                          {pricing.discountPct > 0 && (
                                              <div className="flex justify-between text-xs text-emerald-600 font-bold bg-emerald-50/50 -mx-2 px-2 py-1.5 rounded-lg">
                                                  <span className="flex items-center gap-1">Company Discount ({pricing.discountPct}%)</span>
-                                                 <span>-${pricing.discountAmount.toFixed(2)}</span>
+                                                 <span>-{formatCurrency(pricing.discountAmount)}</span>
                                              </div>
                                          )}
                                          <div className="flex justify-between text-xs text-gray-500 font-medium">
                                              <span>Resort Tax (4%)</span>
-                                             <span className="font-bold text-gray-700">${pricing.resortTax.toFixed(2)}</span>
+                                             <span className="font-bold text-gray-700">{formatCurrency(pricing.resortTax)}</span>
                                          </div>
                                          <div className="flex justify-between text-xs text-gray-400 font-medium italic">
                                              <span>Credit Card Fee (est. if paid by card)</span>
-                                             <span className="font-semibold">${pricing.processingFee.toFixed(2)}</span>
+                                             <span className="font-semibold">{formatCurrency(pricing.processingFee)}</span>
                                          </div>
  
                                          <div className="flex justify-between items-baseline pt-3 border-t border-dashed border-violet-200">
                                              <span className="text-sm font-black text-gray-900">Invoice Total (Base)</span>
                                              <span className="text-2xl font-black text-violet-700">
-                                                 ${pricing.total.toFixed(2)}
+                                                 {formatCurrency(pricing.total)}
                                              </span>
                                          </div>
                                      </div>
@@ -1143,7 +1143,7 @@ export function InvoicesClient({ companies, initialInvoices }: InvoicesClientPro
                                             {invoice.status}
                                         </div>
                                         <div className="text-left">
-                                            <p className="text-sm font-black text-gray-900">${invoice.total_amount.toFixed(2)}</p>
+                                            <p className="text-sm font-black text-gray-900">{formatCurrency(invoice.total_amount)}</p>
                                             <p className="text-[10px] text-gray-400 font-bold">
                                                 Period: {formatDateUS(invoice.period_start)} - {formatDateUS(invoice.period_end)}
                                             </p>
@@ -1530,7 +1530,7 @@ export function InvoicesClient({ companies, initialInvoices }: InvoicesClientPro
                                                                                                         <span className="text-gray-300">—</span>
                                                                                                     )}
                                                                                                 </td>
-                                                                                                <td className="px-4 py-2.5 text-right font-black text-gray-900">${orderSubtotal.toFixed(2)}</td>
+                                                                                                <td className="px-4 py-2.5 text-right font-black text-gray-900">{formatCurrency(orderSubtotal)}</td>
                                                                                             </tr>
                                                                                         );
                                                                                     })}
@@ -1592,36 +1592,36 @@ export function InvoicesClient({ companies, initialInvoices }: InvoicesClientPro
                                                                             </p>
                                                                             <div className="flex justify-between text-xs text-gray-600 font-medium">
                                                                                 <span>Subtotal (before discounts)</span>
-                                                                                <span className="font-bold text-gray-900">${subtotal.toFixed(2)}</span>
+                                                                                <span className="font-bold text-gray-900">{formatCurrency(subtotal)}</span>
                                                                             </div>
                                                                             {(invoice.discount_amount ?? 0) > 0 && (
                                                                                 <div className="flex justify-between text-xs text-emerald-600 font-bold">
                                                                                     <span>Company Discount ({invoice.discount_percentage}%)</span>
-                                                                                    <span>-${(invoice.discount_amount ?? 0).toFixed(2)}</span>
+                                                                                    <span>-{formatCurrency(invoice.discount_amount)}</span>
                                                                                 </div>
                                                                             )}
                                                                             {((invoice.per_lunch_discount_rate ?? 0) * (invoice.per_lunch_discount_count ?? 0)) > 0 && (
                                                                                 <div className="flex justify-between text-xs text-emerald-600 font-bold">
-                                                                                    <span>Per-Lunch Discount (${(invoice.per_lunch_discount_rate ?? 0).toFixed(2)} × {invoice.per_lunch_discount_count})</span>
-                                                                                    <span>-${((invoice.per_lunch_discount_rate ?? 0) * (invoice.per_lunch_discount_count ?? 0)).toFixed(2)}</span>
+                                                                                    <span>Per-Lunch Discount ({formatCurrency(invoice.per_lunch_discount_rate)} × {formatNumber(invoice.per_lunch_discount_count)})</span>
+                                                                                    <span>-{formatCurrency((invoice.per_lunch_discount_rate ?? 0) * (invoice.per_lunch_discount_count ?? 0))}</span>
                                                                                 </div>
                                                                             )}
                                                                             <div className="flex justify-between text-xs text-gray-600 font-medium">
                                                                                 <span>Resort Tax (4%)</span>
-                                                                                <span className="font-bold text-gray-900">${resortTaxLine.toFixed(2)}</span>
+                                                                                <span className="font-bold text-gray-900">{formatCurrency(resortTaxLine)}</span>
                                                                             </div>
                                                                             <div className="flex justify-between text-xs text-gray-400 italic font-medium">
                                                                                 <span>Credit Card Fee (est.)</span>
-                                                                                <span>${processingFeeEst.toFixed(2)}</span>
+                                                                                <span>{formatCurrency(processingFeeEst)}</span>
                                                                             </div>
                                                                             <div className="flex justify-between text-sm font-black text-gray-900 pt-2 border-t border-violet-200 mt-1">
                                                                                 <span>Invoice Total</span>
-                                                                                <span className="text-violet-700">${invoice.total_amount.toFixed(2)}</span>
+                                                                                <span className="text-violet-700">{formatCurrency(invoice.total_amount)}</span>
                                                                             </div>
                                                                             {(invoice.tip_amount ?? 0) > 0 && (
                                                                                 <div className="flex justify-between text-xs text-emerald-700 font-bold pt-1">
                                                                                     <span>Tip Received 🎉</span>
-                                                                                    <span>+${(invoice.tip_amount ?? 0).toFixed(2)}</span>
+                                                                                    <span>+{formatCurrency(invoice.tip_amount)}</span>
                                                                                 </div>
                                                                             )}
                                                                         </div>

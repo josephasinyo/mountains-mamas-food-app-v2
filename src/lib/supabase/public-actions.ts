@@ -139,7 +139,8 @@ export async function submitSupabaseOrder(orderData: any, items: any[]) {
                 payment_method: orderData.paymentMethod || 'monthly_invoice',
                 custom_fields: {
                     ...(orderData.dynamic_fields || {}),
-                    is_last_minute: isLastMinute
+                    is_last_minute: isLastMinute,
+                    is_approved: !isLastMinute
                 }
             })
             .select()
