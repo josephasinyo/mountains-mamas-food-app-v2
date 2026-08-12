@@ -860,22 +860,65 @@ export default function AppSettingsClient({ initialSettings, initialFields }: Ap
                                     </div>
 
                                     {fieldFormData.default_options && fieldFormData.default_options.length > 0 ? (
-                                        <div className="flex flex-wrap gap-2 pt-2">
-                                            {fieldFormData.default_options.map((opt: string, idx: number) => (
-                                                <div 
-                                                    key={idx}
-                                                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-white border border-gray-100 text-xs font-semibold text-gray-700 shadow-sm"
-                                                >
-                                                    <span>{opt}</span>
-                                                    <button 
-                                                        type="button"
-                                                        onClick={() => removeFieldOption(idx)}
-                                                        className="text-gray-400 hover:text-red-500 rounded-full transition-colors"
+                                        <div className="space-y-3 pt-2">
+                                            <div className="flex flex-wrap gap-2">
+                                                {fieldFormData.default_options.map((opt: string, idx: number) => (
+                                                    <div 
+                                                        key={idx}
+                                                        className={cn(
+                                                            "flex items-center gap-1.5 px-3 py-1.5 rounded-xl border text-xs font-semibold shadow-sm transition-colors",
+                                                            idx === 0 
+                                                                ? "bg-violet-50 border-violet-200 text-violet-800" 
+                                                                : "bg-white border-gray-100 text-gray-700"
+                                                        )}
                                                     >
-                                                        <Trash2 className="size-3.5" />
-                                                    </button>
-                                                </div>
-                                            ))}
+                                                        <span>{opt}</span>
+                                                        {idx === 0 && (
+                                                            <span className="text-[9px] bg-violet-600 text-white px-1.5 py-0.5 rounded font-bold uppercase tracking-wider">
+                                                                Default
+                                                            </span>
+                                                        )}
+                                                        <button 
+                                                            type="button"
+                                                            onClick={() => removeFieldOption(idx)}
+                                                            className="text-gray-400 hover:text-red-500 rounded-full transition-colors ml-0.5"
+                                                        >
+                                                            <Trash2 className="size-3.5" />
+                                                        </button>
+                                                    </div>
+                                                ))}
+                                            </div>
+
+                                            <div className="pt-2 border-t border-gray-100">
+                                                <Label htmlFor="default_option_select" className="text-xs font-bold text-gray-700 mb-1.5 block">
+                                                    Default Selected Option
+                                                </Label>
+                                                <Select
+                                                    value={fieldFormData.default_options[0] || ''}
+                                                    onValueChange={(selectedOpt) => {
+                                                        if (!selectedOpt) return;
+                                                        const remaining = fieldFormData.default_options.filter((o: string) => o !== selectedOpt);
+                                                        setFieldFormData({
+                                                            ...fieldFormData,
+                                                            default_options: [selectedOpt, ...remaining]
+                                                        });
+                                                    }}
+                                                >
+                                                    <SelectTrigger id="default_option_select" className="bg-white rounded-xl border-gray-200 h-9 text-xs">
+                                                        <SelectValue placeholder="Select default option" />
+                                                    </SelectTrigger>
+                                                    <SelectContent>
+                                                        {fieldFormData.default_options.map((opt: string, idx: number) => (
+                                                            <SelectItem key={idx} value={opt} className="text-xs">
+                                                                {opt} {idx === 0 ? '(Default)' : ''}
+                                                            </SelectItem>
+                                                        ))}
+                                                    </SelectContent>
+                                                </Select>
+                                                <p className="text-[11px] text-gray-400 mt-1 font-normal">
+                                                    This option will be selected by default when customers view the ordering form.
+                                                </p>
+                                            </div>
                                         </div>
                                     ) : (
                                         <p className="text-xs text-gray-400 font-medium italic">No options added yet. Add options for users to select.</p>

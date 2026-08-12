@@ -107,7 +107,8 @@ export default function CheckoutPage() {
         const next = { ...prev };
         formFields.forEach(f => {
           if (f.location === 'tour_details' && !(f.name in next)) {
-            next[f.name] = '';
+            const opts = f.default_options || f.options || [];
+            next[f.name] = (f.type === 'select' && opts.length > 0) ? opts[0] : '';
           }
         });
         return next;

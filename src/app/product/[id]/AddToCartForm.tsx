@@ -159,7 +159,10 @@ export default function AddToCartForm({ item }: Props) {
           else if (field.name === 'cookie_choice') initialValues[field.name] = dynamicCookieOptions[0];
           else if (field.name === 'sandwich_options') initialValues[field.name] = SANDWICH_OPTIONS[0];
           else if (field.name === 'dressing_options') initialValues[field.name] = DRESSING_OPTIONS[0];
-          else initialValues[field.name] = '';
+          else if (field.type === 'select') {
+            const opts = field.default_options || field.options || [];
+            initialValues[field.name] = opts.length > 0 ? opts[0] : '';
+          } else initialValues[field.name] = '';
         }
       });
       setFieldValues(initialValues);
