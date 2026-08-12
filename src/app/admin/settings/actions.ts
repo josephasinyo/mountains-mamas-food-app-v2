@@ -10,15 +10,15 @@ const GLOBAL_SETTINGS_ID = '00000000-0000-0000-0000-000000000001';
 export async function getGlobalSettings() {
     try {
         const supabase = createAdminClient();
-
+        
         const { data: settings, error } = await supabase
             .from('app_settings')
             .select('*')
             .eq('id', GLOBAL_SETTINGS_ID)
             .single();
-
+            
         if (error) throw error;
-
+        
         return { success: true, settings };
     } catch (error: any) {
         console.error('Error fetching global settings:', error);
@@ -29,7 +29,7 @@ export async function getGlobalSettings() {
 export async function updateGlobalSettings(updates: { bread_options?: string[], cookie_options?: string[] }) {
     try {
         const supabase = createAdminClient();
-
+        
         const { error } = await supabase
             .from('app_settings')
             .update({
@@ -37,9 +37,9 @@ export async function updateGlobalSettings(updates: { bread_options?: string[], 
                 updated_at: new Date().toISOString()
             })
             .eq('id', GLOBAL_SETTINGS_ID);
-
+            
         if (error) throw error;
-
+        
         await logActivity({
             userRole: 'admin',
             action: 'global_settings_updated',
@@ -47,7 +47,7 @@ export async function updateGlobalSettings(updates: { bread_options?: string[], 
             entityId: GLOBAL_SETTINGS_ID,
             details: updates
         });
-
+        
         revalidatePath('/admin/settings');
         return { success: true };
     } catch (error: any) {
@@ -80,7 +80,7 @@ export async function saveAllSettings(payload: {
 }) {
     try {
         const supabase = createAdminClient();
-
+        
         // 1. Update app settings
         const { error: settingsError } = await supabase
             .from('app_settings')
@@ -90,7 +90,7 @@ export async function saveAllSettings(payload: {
                 updated_at: new Date().toISOString()
             })
             .eq('id', GLOBAL_SETTINGS_ID);
-
+            
         if (settingsError) throw settingsError;
 
         // 2. Delete fields
@@ -130,7 +130,7 @@ export async function saveAllSettings(payload: {
             const { error: upsertError } = await supabase
                 .from('form_field_definitions')
                 .upsert(fieldsToUpsert);
-
+                
             if (upsertError) throw upsertError;
         }
 

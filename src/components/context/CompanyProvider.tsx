@@ -68,11 +68,11 @@ const CompanyContext = createContext<CompanyContextType>({
 export const useCompany = () => useContext(CompanyContext);
 
 // ── Provider ──────────────────────────────────────────────────────────
-export default function CompanyProvider({
+export default function CompanyProvider({ 
     children,
     company: initialCompany,
     config: initialConfig
-}: {
+}: { 
     children: React.ReactNode;
     company?: TourCompany;
     config?: CompanyConfig | null;
@@ -108,21 +108,23 @@ export default function CompanyProvider({
         }
     }, [globalSettings]);
 
+    // Purge any legacy or stale form_fields cache from localStorage on client load
     useEffect(() => {
-        if (company?.id && formFields && formFields.length > 0) {
-            saveToStorage(`${STORAGE_KEYS.FORM_FIELDS}_${company.id}`, formFields);
-        }
-    }, [company?.id, formFields]);
+        try {
+            Object.keys(localStorage).forEach(key => {
+                if (key.startsWith('form_fields')) {
+                    localStorage.removeItem(key);
+                }
+            });
+        } catch {}
+    }, []);
 
     // Main data-fetch effect (runs only on the client)
     useEffect(() => {
         let cancelled = false;
 
         const fetchContext = async () => {
-            // ── Step 0: Hydrate from localStorage once (client-only) ──
-            // Clean up any stale unscoped form_fields cache
-            try { localStorage.removeItem(STORAGE_KEYS.FORM_FIELDS); } catch { }
-
+            // ── Step 0: Hydrate company & config from localStorage once (client-only) ──
             let currentCompany = company;
             let currentConfig = config;
 
@@ -148,13 +150,6 @@ export default function CompanyProvider({
                         setConfig(stored);
                     }
                 }
-
-                if (currentCompany?.id) {
-                    const storedFields = loadFromStorage<any[]>(`${STORAGE_KEYS.FORM_FIELDS}_${currentCompany.id}`);
-                    if (storedFields) {
-                        setFormFields(storedFields);
-                    }
-                }
             }
 
             // ── Step 1: Fetch global settings (once per session) ──
@@ -169,7 +164,7 @@ export default function CompanyProvider({
             // ── Step 2: Determine which company slug to load ──
             const segments = pathname.split('/').filter(Boolean);
             const firstSegment = segments[0];
-            const isExcluded = !firstSegment ||
+            const isExcluded = !firstSegment || 
                 ['admin', 'company', 'cart', 'checkout', 'success', 'product'].includes(firstSegment);
 
             const targetSlug = isExcluded
@@ -183,8 +178,6 @@ export default function CompanyProvider({
             }
 
             // ── Step 3: Fetch company + config from server ──
-            // We always fetch to ensure we have the latest form fields and config,
-            // even if we hydrated from storage (stale-while-revalidate).
             if (!cancelled) setIsLoading(!currentCompany); // Only show loading if we have nothing at all
             const res = await getCompanyBySlug(targetSlug);
 
@@ -196,7 +189,6 @@ export default function CompanyProvider({
                 setConfig(extractConfig(res.company));
                 if (res.formFields) {
                     setFormFields(res.formFields);
-                    saveToStorage(`${STORAGE_KEYS.FORM_FIELDS}_${res.company.id}`, res.formFields);
                 }
             } else {
                 if (res.error === 'Company not found') {
@@ -211,8 +203,7 @@ export default function CompanyProvider({
                 try {
                     localStorage.removeItem(STORAGE_KEYS.COMPANY);
                     localStorage.removeItem(STORAGE_KEYS.CONFIG);
-                    localStorage.removeItem(STORAGE_KEYS.FORM_FIELDS);
-                } catch { }
+                } catch {}
             }
             setIsLoading(false);
         };
@@ -220,7 +211,7 @@ export default function CompanyProvider({
         fetchContext();
 
         return () => { cancelled = true; };
-        // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [pathname]);
 
     return (
