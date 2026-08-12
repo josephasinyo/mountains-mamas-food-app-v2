@@ -43,7 +43,7 @@ export default function AppSettingsClient({ initialData, globalSettings, formFie
             const override = companyFields.find(cf => cf.field_id === gf.id);
             return {
                 ...gf,
-                is_enabled: override ? override.is_enabled : !!gf.is_system_core,
+                is_enabled: override ? override.is_enabled : (!!gf.is_system_core || !!gf.auto_add),
                 sort_order: override ? override.sort_order : 0
             };
         }).sort((a, b) => {

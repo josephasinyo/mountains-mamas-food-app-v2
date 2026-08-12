@@ -109,10 +109,10 @@ export default function CompanyProvider({
     }, [globalSettings]);
 
     useEffect(() => {
-        if (formFields && formFields.length > 0) {
-            saveToStorage(STORAGE_KEYS.FORM_FIELDS, formFields);
+        if (company?.id && formFields && formFields.length > 0) {
+            saveToStorage(`${STORAGE_KEYS.FORM_FIELDS}_${company.id}`, formFields);
         }
-    }, [formFields]);
+    }, [company?.id, formFields]);
 
     // Main data-fetch effect (runs only on the client)
     useEffect(() => {
@@ -120,8 +120,9 @@ export default function CompanyProvider({
 
         const fetchContext = async () => {
             // ── Step 0: Hydrate from localStorage once (client-only) ──
-            // This gives us immediate data on excluded pages (product/cart/checkout)
-            // without waiting for the async server-action round-trip.
+            // Clean up any stale unscoped form_fields cache
+            try { localStorage.removeItem(STORAGE_KEYS.FORM_FIELDS); } catch {}
+
             let currentCompany = company;
             let currentConfig = config;
 
@@ -148,9 +149,11 @@ export default function CompanyProvider({
                     }
                 }
                 
-                const storedFields = loadFromStorage<any[]>(STORAGE_KEYS.FORM_FIELDS);
-                if (storedFields) {
-                    setFormFields(storedFields);
+                if (currentCompany?.id) {
+                    const storedFields = loadFromStorage<any[]>(`${STORAGE_KEYS.FORM_FIELDS}_${currentCompany.id}`);
+                    if (storedFields) {
+                        setFormFields(storedFields);
+                    }
                 }
             }
 
@@ -193,6 +196,7 @@ export default function CompanyProvider({
                 setConfig(extractConfig(res.company));
                 if (res.formFields) {
                     setFormFields(res.formFields);
+                    saveToStorage(`${STORAGE_KEYS.FORM_FIELDS}_${res.company.id}`, res.formFields);
                 }
             } else {
                 if (res.error === 'Company not found') {

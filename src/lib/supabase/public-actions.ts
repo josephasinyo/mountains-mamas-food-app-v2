@@ -32,12 +32,12 @@ export async function getCompanyBySlug(slug: string) {
         const globalFields = globalRes.data || [];
         const companyOverrides = companyFieldsRes.data || [];
 
-        // Merge: Use override if exists, otherwise default to disabled for custom fields, enabled for core
+        // Merge: Use override if exists, otherwise default to disabled for custom fields, enabled for core or auto_add
         const formFields = globalFields.map(gf => {
             const override = companyOverrides.find(co => co.field_id === gf.id);
             return {
                 ...gf,
-                is_enabled: override ? override.is_enabled : !!gf.is_system_core,
+                is_enabled: override ? override.is_enabled : (!!gf.is_system_core || !!gf.auto_add),
                 sort_order: override ? override.sort_order : 0
             };
         }).sort((a, b) => {
