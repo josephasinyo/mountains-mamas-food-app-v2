@@ -8,7 +8,7 @@ import { getHoursUntilPickup } from '@/app/company/orders/date-utils';
 export async function getCompanyBySlug(slug: string) {
     try {
         const supabase = await createClient();
-        
+
         const { data: company, error } = await supabase
             .from('tour_companies')
             .select('*, company_app_config(*)')
@@ -44,7 +44,7 @@ export async function getCompanyBySlug(slug: string) {
             if (a.location !== b.location) return a.location.localeCompare(b.location);
             return (a.sort_order || 0) - (b.sort_order || 0);
         });
-        
+
         console.log(`[getCompanyBySlug] slug: ${slug}, fields: ${formFields.length}`);
         return { success: true, company, formFields };
     } catch (error: any) {
@@ -157,8 +157,8 @@ export async function submitSupabaseOrder(orderData: any, items: any[]) {
             box_type: (item.selectedOption && (
                 ['Box Lunch', 'Junior Box Lunch', 'Bag Lunch', 'Junior Bag Lunch', 'Sandwich only'].includes(item.selectedOption) ||
                 item.selectedOption.toLowerCase().startsWith('this is a')
-            )) 
-                ? item.selectedOption 
+            ))
+                ? item.selectedOption
                 : 'Box Lunch',
             bread_type: item.bread_type || null,
             cookie_choice: item.cookie_choice || null,

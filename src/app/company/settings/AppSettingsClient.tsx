@@ -7,8 +7,8 @@ import { Switch } from '@/components/ui/switch';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Input } from '@/components/ui/input';
-import { 
-    Settings, Layout, 
+import {
+    Settings, Layout,
     Save, Loader2, Smartphone, CheckCircle2,
     Cookie, Utensils, FileText, ArrowUp, ArrowDown,
     Copy, ExternalLink
@@ -35,7 +35,7 @@ export default function AppSettingsClient({ initialData, globalSettings, formFie
     const company = savedConfig?.tour_companies || config?.tour_companies;
     const defaultSlug = company?.default_slug || company?.slug || '';
     const genericSlug = company?.generic_slug || company?.slug || '';
-    
+
     // Baseline/initial list of form fields
     const [initialFormFields, setInitialFormFields] = useState(() => {
         const { globalFields, companyFields } = formFieldsData;
@@ -51,10 +51,10 @@ export default function AppSettingsClient({ initialData, globalSettings, formFie
             return (a.sort_order || 0) - (b.sort_order || 0);
         });
     });
-    
+
     // Active draft state of form fields
     const [companyFormFields, setCompanyFormFields] = useState(initialFormFields);
-    
+
     const initialFormData = {
         show_box_lunch_category: savedConfig?.show_box_lunch_category ?? true,
         show_junior_box_lunch_category: savedConfig?.show_junior_box_lunch_category ?? true,
@@ -93,7 +93,7 @@ export default function AppSettingsClient({ initialData, globalSettings, formFie
             toast.error('At least one meal option must be enabled');
             return;
         }
-        
+
         startTransition(async () => {
             try {
                 let configSuccess = true;
@@ -114,10 +114,10 @@ export default function AppSettingsClient({ initialData, globalSettings, formFie
                     });
 
                     const results = await Promise.all(
-                        fieldsToUpdate.map(field => 
-                            updateCompanyFormField(field.id, { 
-                                is_enabled: field.is_enabled, 
-                                sort_order: field.sort_order 
+                        fieldsToUpdate.map(field =>
+                            updateCompanyFormField(field.id, {
+                                is_enabled: field.is_enabled,
+                                sort_order: field.sort_order
                             })
                         )
                     );
@@ -165,7 +165,7 @@ export default function AppSettingsClient({ initialData, globalSettings, formFie
         const newBreads = currentBreads.includes(bread)
             ? currentBreads.filter((b: string) => b !== bread)
             : [...currentBreads, bread];
-        
+
         setFormData({
             ...formData,
             meal_page_options: {
@@ -180,7 +180,7 @@ export default function AppSettingsClient({ initialData, globalSettings, formFie
         const newCookies = currentCookies.includes(cookie)
             ? currentCookies.filter((c: string) => c !== cookie)
             : [...currentCookies, cookie];
-        
+
         setFormData({
             ...formData,
             meal_page_options: {
@@ -240,28 +240,28 @@ export default function AppSettingsClient({ initialData, globalSettings, formFie
     const moveField = (fieldId: string, direction: 'up' | 'down') => {
         const fieldIndex = companyFormFields.findIndex(f => f.id === fieldId);
         if (fieldIndex === -1) return;
-        
+
         const currentLocation = companyFormFields[fieldIndex].location;
         const locationFields = companyFormFields.filter(f => f.location === currentLocation);
         const idxInLocation = locationFields.findIndex(f => f.id === fieldId);
-        
+
         if (direction === 'up' && idxInLocation === 0) return;
         if (direction === 'down' && idxInLocation === locationFields.length - 1) return;
-        
+
         const targetIdxInLocation = direction === 'up' ? idxInLocation - 1 : idxInLocation + 1;
-        
+
         // Swap their positions in the locationFields array
         const updatedLocationFields = [...locationFields];
         const temp = updatedLocationFields[idxInLocation];
         updatedLocationFields[idxInLocation] = updatedLocationFields[targetIdxInLocation];
         updatedLocationFields[targetIdxInLocation] = temp;
-        
+
         // Assign clean distinct sequential sort_orders (0, 1, 2...) based on their new positions
         const updatedFieldsWithNewOrders = updatedLocationFields.map((field, index) => ({
             ...field,
             sort_order: index
         }));
-        
+
         // Merge the updated location fields back into the main list and sort
         const sortedFields = companyFormFields.map(f => {
             if (f.location === currentLocation) {
@@ -272,7 +272,7 @@ export default function AppSettingsClient({ initialData, globalSettings, formFie
             if (a.location !== b.location) return a.location.localeCompare(b.location);
             return (a.sort_order || 0) - (b.sort_order || 0);
         });
-        
+
         setCompanyFormFields(sortedFields);
     };
 
@@ -303,9 +303,9 @@ export default function AppSettingsClient({ initialData, globalSettings, formFie
                                 <Label className="text-sm font-bold text-violet-900">Enable sandwich only</Label>
                                 <p className="text-xs text-violet-600/70 font-medium">When enabled, customers can choose standalone sandwiches</p>
                             </div>
-                            <Switch 
-                                checked={formData.use_sandwich_only} 
-                                onCheckedChange={(val) => setFormData({...formData, use_sandwich_only: val})}
+                            <Switch
+                                checked={formData.use_sandwich_only}
+                                onCheckedChange={(val) => setFormData({ ...formData, use_sandwich_only: val })}
                                 className="data-[state=checked]:bg-violet-600"
                             />
                         </div>
@@ -315,9 +315,9 @@ export default function AppSettingsClient({ initialData, globalSettings, formFie
                                 <Label className="text-sm font-bold text-violet-900">Enable box lunch</Label>
                                 <p className="text-xs text-violet-600/70 font-medium">When enabled, customers can choose the box lunch</p>
                             </div>
-                            <Switch 
-                                checked={formData.show_box_lunch_category} 
-                                onCheckedChange={(val) => setFormData({...formData, show_box_lunch_category: val})}
+                            <Switch
+                                checked={formData.show_box_lunch_category}
+                                onCheckedChange={(val) => setFormData({ ...formData, show_box_lunch_category: val })}
                                 className="data-[state=checked]:bg-violet-600"
                             />
                         </div>
@@ -327,9 +327,9 @@ export default function AppSettingsClient({ initialData, globalSettings, formFie
                                 <Label className="text-sm font-bold text-violet-900">Enable junior box lunch</Label>
                                 <p className="text-xs text-violet-600/70 font-medium">When enabled, customers can choose the junior box lunch</p>
                             </div>
-                            <Switch 
-                                checked={formData.show_junior_box_lunch_category} 
-                                onCheckedChange={(val) => setFormData({...formData, show_junior_box_lunch_category: val})}
+                            <Switch
+                                checked={formData.show_junior_box_lunch_category}
+                                onCheckedChange={(val) => setFormData({ ...formData, show_junior_box_lunch_category: val })}
                                 className="data-[state=checked]:bg-violet-600"
                             />
                         </div>
@@ -357,9 +357,9 @@ export default function AppSettingsClient({ initialData, globalSettings, formFie
                                     When enabled, your guests will see "Mountain Mama's Café" in the header instead of your company name
                                 </p>
                             </div>
-                            <Switch 
-                                checked={formData.use_mountain_mamas_branding} 
-                                onCheckedChange={(val) => setFormData({...formData, use_mountain_mamas_branding: val})}
+                            <Switch
+                                checked={formData.use_mountain_mamas_branding}
+                                onCheckedChange={(val) => setFormData({ ...formData, use_mountain_mamas_branding: val })}
                                 className="data-[state=checked]:bg-violet-600"
                             />
                         </div>
@@ -446,11 +446,11 @@ export default function AppSettingsClient({ initialData, globalSettings, formFie
 
                         <div className="space-y-2">
                             <Label htmlFor="custom_welcome_message" className="text-sm font-bold text-gray-700">Custom Welcome Instructions</Label>
-                            <Textarea 
+                            <Textarea
                                 id="custom_welcome_message"
                                 placeholder="e.g. Please place your family’s order for your tour in Yellowstone below by selecting the meals of your choice."
                                 value={formData.custom_welcome_message}
-                                onChange={(e) => setFormData({...formData, custom_welcome_message: e.target.value})}
+                                onChange={(e) => setFormData({ ...formData, custom_welcome_message: e.target.value })}
                                 rows={3}
                                 className="resize-none rounded-xl"
                             />
@@ -483,7 +483,7 @@ export default function AppSettingsClient({ initialData, globalSettings, formFie
                                         const currentSelectedBreads = formData.meal_page_options.breads || [];
                                         const idxInSelected = currentSelectedBreads.indexOf(bread);
                                         return (
-                                            <div 
+                                            <div
                                                 key={bread}
                                                 className={cn(
                                                     "flex items-center justify-between p-4 rounded-2xl border-2 transition-all",
@@ -495,7 +495,7 @@ export default function AppSettingsClient({ initialData, globalSettings, formFie
                                                 <div className="flex items-center gap-3">
                                                     {isSelected && currentSelectedBreads.length > 1 && (
                                                         <div className="flex flex-col gap-0.5">
-                                                            <button 
+                                                            <button
                                                                 onClick={(e) => { e.stopPropagation(); moveBread(bread, 'up'); }}
                                                                 disabled={idxInSelected === 0}
                                                                 className="p-1 hover:bg-orange-100 rounded disabled:opacity-30"
@@ -503,7 +503,7 @@ export default function AppSettingsClient({ initialData, globalSettings, formFie
                                                             >
                                                                 <ArrowUp className="size-3 text-orange-800" />
                                                             </button>
-                                                            <button 
+                                                            <button
                                                                 onClick={(e) => { e.stopPropagation(); moveBread(bread, 'down'); }}
                                                                 disabled={idxInSelected === currentSelectedBreads.length - 1}
                                                                 className="p-1 hover:bg-orange-100 rounded disabled:opacity-30"
@@ -520,8 +520,8 @@ export default function AppSettingsClient({ initialData, globalSettings, formFie
                                                         {isSelected ? `#${idxInSelected + 1}: ` : ''}{bread}
                                                     </span>
                                                 </div>
-                                                <Switch 
-                                                    checked={isSelected} 
+                                                <Switch
+                                                    checked={isSelected}
                                                     onCheckedChange={() => toggleBread(bread)}
                                                     className="data-[state=checked]:bg-orange-600"
                                                 />
@@ -537,7 +537,7 @@ export default function AppSettingsClient({ initialData, globalSettings, formFie
                                         const currentSelectedBreads = formData.meal_page_options.breads || [];
                                         const idxInSelected = currentSelectedBreads.indexOf(bread);
                                         return (
-                                            <div 
+                                            <div
                                                 key={bread}
                                                 className={cn(
                                                     "flex items-center justify-between p-4 rounded-2xl border-2 transition-all",
@@ -549,7 +549,7 @@ export default function AppSettingsClient({ initialData, globalSettings, formFie
                                                 <div className="flex items-center gap-3">
                                                     {isSelected && currentSelectedBreads.length > 1 && (
                                                         <div className="flex flex-col gap-0.5">
-                                                            <button 
+                                                            <button
                                                                 onClick={(e) => { e.stopPropagation(); moveBread(bread, 'up'); }}
                                                                 disabled={idxInSelected === 0}
                                                                 className="p-1 hover:bg-orange-100 rounded disabled:opacity-30"
@@ -557,7 +557,7 @@ export default function AppSettingsClient({ initialData, globalSettings, formFie
                                                             >
                                                                 <ArrowUp className="size-3 text-orange-800" />
                                                             </button>
-                                                            <button 
+                                                            <button
                                                                 onClick={(e) => { e.stopPropagation(); moveBread(bread, 'down'); }}
                                                                 disabled={idxInSelected === currentSelectedBreads.length - 1}
                                                                 className="p-1 hover:bg-orange-100 rounded disabled:opacity-30"
@@ -574,8 +574,8 @@ export default function AppSettingsClient({ initialData, globalSettings, formFie
                                                         {isSelected ? `#${idxInSelected + 1}: ` : ''}{bread}
                                                     </span>
                                                 </div>
-                                                <Switch 
-                                                    checked={isSelected} 
+                                                <Switch
+                                                    checked={isSelected}
                                                     onCheckedChange={() => toggleBread(bread)}
                                                     className="data-[state=checked]:bg-orange-600"
                                                 />
@@ -613,7 +613,7 @@ export default function AppSettingsClient({ initialData, globalSettings, formFie
                                         const currentSelectedCookies = formData.meal_page_options.cookies || [];
                                         const idxInSelected = currentSelectedCookies.indexOf(cookie);
                                         return (
-                                            <div 
+                                            <div
                                                 key={cookie}
                                                 className={cn(
                                                     "flex items-center justify-between p-4 rounded-2xl border-2 transition-all",
@@ -625,7 +625,7 @@ export default function AppSettingsClient({ initialData, globalSettings, formFie
                                                 <div className="flex items-center gap-3">
                                                     {isSelected && currentSelectedCookies.length > 1 && (
                                                         <div className="flex flex-col gap-0.5">
-                                                            <button 
+                                                            <button
                                                                 onClick={(e) => { e.stopPropagation(); moveCookie(cookie, 'up'); }}
                                                                 disabled={idxInSelected === 0}
                                                                 className="p-1 hover:bg-amber-100 rounded disabled:opacity-30"
@@ -633,7 +633,7 @@ export default function AppSettingsClient({ initialData, globalSettings, formFie
                                                             >
                                                                 <ArrowUp className="size-3 text-amber-800" />
                                                             </button>
-                                                            <button 
+                                                            <button
                                                                 onClick={(e) => { e.stopPropagation(); moveCookie(cookie, 'down'); }}
                                                                 disabled={idxInSelected === currentSelectedCookies.length - 1}
                                                                 className="p-1 hover:bg-amber-100 rounded disabled:opacity-30"
@@ -650,8 +650,8 @@ export default function AppSettingsClient({ initialData, globalSettings, formFie
                                                         {isSelected ? `#${idxInSelected + 1}: ` : ''}{cookie}
                                                     </span>
                                                 </div>
-                                                <Switch 
-                                                    checked={isSelected} 
+                                                <Switch
+                                                    checked={isSelected}
                                                     onCheckedChange={() => toggleCookie(cookie)}
                                                     className="data-[state=checked]:bg-amber-600"
                                                 />
@@ -667,7 +667,7 @@ export default function AppSettingsClient({ initialData, globalSettings, formFie
                                         const currentSelectedCookies = formData.meal_page_options.cookies || [];
                                         const idxInSelected = currentSelectedCookies.indexOf(cookie);
                                         return (
-                                            <div 
+                                            <div
                                                 key={cookie}
                                                 className={cn(
                                                     "flex items-center justify-between p-4 rounded-2xl border-2 transition-all",
@@ -679,7 +679,7 @@ export default function AppSettingsClient({ initialData, globalSettings, formFie
                                                 <div className="flex items-center gap-3">
                                                     {isSelected && currentSelectedCookies.length > 1 && (
                                                         <div className="flex flex-col gap-0.5">
-                                                            <button 
+                                                            <button
                                                                 onClick={(e) => { e.stopPropagation(); moveCookie(cookie, 'up'); }}
                                                                 disabled={idxInSelected === 0}
                                                                 className="p-1 hover:bg-amber-100 rounded disabled:opacity-30"
@@ -687,7 +687,7 @@ export default function AppSettingsClient({ initialData, globalSettings, formFie
                                                             >
                                                                 <ArrowUp className="size-3 text-amber-800" />
                                                             </button>
-                                                            <button 
+                                                            <button
                                                                 onClick={(e) => { e.stopPropagation(); moveCookie(cookie, 'down'); }}
                                                                 disabled={idxInSelected === currentSelectedCookies.length - 1}
                                                                 className="p-1 hover:bg-amber-100 rounded disabled:opacity-30"
@@ -704,8 +704,8 @@ export default function AppSettingsClient({ initialData, globalSettings, formFie
                                                         {isSelected ? `#${idxInSelected + 1}: ` : ''}{cookie}
                                                     </span>
                                                 </div>
-                                                <Switch 
-                                                    checked={isSelected} 
+                                                <Switch
+                                                    checked={isSelected}
                                                     onCheckedChange={() => toggleCookie(cookie)}
                                                     className="data-[state=checked]:bg-amber-600"
                                                 />
@@ -747,14 +747,14 @@ export default function AppSettingsClient({ initialData, globalSettings, formFie
                                     )}>
                                         <div className="flex items-center gap-4">
                                             <div className="flex flex-col gap-1">
-                                                <button 
+                                                <button
                                                     onClick={() => moveField(field.id, 'up')}
                                                     disabled={idx === 0}
                                                     className="p-1 hover:bg-violet-100 rounded disabled:opacity-30"
                                                 >
                                                     <ArrowUp className="size-3" />
                                                 </button>
-                                                <button 
+                                                <button
                                                     onClick={() => moveField(field.id, 'down')}
                                                     disabled={idx === arr.length - 1}
                                                     className="p-1 hover:bg-violet-100 rounded disabled:opacity-30"
@@ -767,8 +767,8 @@ export default function AppSettingsClient({ initialData, globalSettings, formFie
                                                 <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-tight">{field.type} • {field.is_required ? 'Required' : 'Optional'}</p>
                                             </div>
                                         </div>
-                                        <Switch 
-                                            checked={field.is_enabled} 
+                                        <Switch
+                                            checked={field.is_enabled}
                                             onCheckedChange={() => toggleFormField(field.id, field.is_enabled)}
                                             className="data-[state=checked]:bg-violet-600"
                                         />
@@ -790,14 +790,14 @@ export default function AppSettingsClient({ initialData, globalSettings, formFie
                                     )}>
                                         <div className="flex items-center gap-4">
                                             <div className="flex flex-col gap-1">
-                                                <button 
+                                                <button
                                                     onClick={() => moveField(field.id, 'up')}
                                                     disabled={idx === 0}
                                                     className="p-1 hover:bg-emerald-100 rounded disabled:opacity-30"
                                                 >
                                                     <ArrowUp className="size-3" />
                                                 </button>
-                                                <button 
+                                                <button
                                                     onClick={() => moveField(field.id, 'down')}
                                                     disabled={idx === arr.length - 1}
                                                     className="p-1 hover:bg-emerald-100 rounded disabled:opacity-30"
@@ -810,8 +810,8 @@ export default function AppSettingsClient({ initialData, globalSettings, formFie
                                                 <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-tight">{field.type} • {field.is_required ? 'Required' : 'Optional'}</p>
                                             </div>
                                         </div>
-                                        <Switch 
-                                            checked={field.is_enabled} 
+                                        <Switch
+                                            checked={field.is_enabled}
                                             onCheckedChange={() => toggleFormField(field.id, field.is_enabled)}
                                             className="data-[state=checked]:bg-emerald-600"
                                         />
@@ -833,13 +833,13 @@ export default function AppSettingsClient({ initialData, globalSettings, formFie
                             <p className="text-xs text-gray-500 font-medium">Changes take effect immediately upon saving.</p>
                         </div>
                     </div>
-                    <Button 
-                        onClick={handleSave} 
+                    <Button
+                        onClick={handleSave}
                         disabled={isPending || !hasChanges}
                         className={cn(
                             "h-12 px-10 rounded-xl font-bold shadow-lg gap-2 group transition-all duration-300",
-                            hasChanges 
-                                ? "bg-violet-600 hover:bg-violet-700 text-white shadow-violet-200" 
+                            hasChanges
+                                ? "bg-violet-600 hover:bg-violet-700 text-white shadow-violet-200"
                                 : "bg-gray-100 text-gray-400 cursor-not-allowed shadow-none"
                         )}
                     >

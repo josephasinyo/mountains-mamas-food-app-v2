@@ -68,11 +68,11 @@ const CompanyContext = createContext<CompanyContextType>({
 export const useCompany = () => useContext(CompanyContext);
 
 // ── Provider ──────────────────────────────────────────────────────────
-export default function CompanyProvider({ 
+export default function CompanyProvider({
     children,
     company: initialCompany,
     config: initialConfig
-}: { 
+}: {
     children: React.ReactNode;
     company?: TourCompany;
     config?: CompanyConfig | null;
@@ -121,7 +121,7 @@ export default function CompanyProvider({
         const fetchContext = async () => {
             // ── Step 0: Hydrate from localStorage once (client-only) ──
             // Clean up any stale unscoped form_fields cache
-            try { localStorage.removeItem(STORAGE_KEYS.FORM_FIELDS); } catch {}
+            try { localStorage.removeItem(STORAGE_KEYS.FORM_FIELDS); } catch { }
 
             let currentCompany = company;
             let currentConfig = config;
@@ -148,7 +148,7 @@ export default function CompanyProvider({
                         setConfig(stored);
                     }
                 }
-                
+
                 if (currentCompany?.id) {
                     const storedFields = loadFromStorage<any[]>(`${STORAGE_KEYS.FORM_FIELDS}_${currentCompany.id}`);
                     if (storedFields) {
@@ -169,7 +169,7 @@ export default function CompanyProvider({
             // ── Step 2: Determine which company slug to load ──
             const segments = pathname.split('/').filter(Boolean);
             const firstSegment = segments[0];
-            const isExcluded = !firstSegment || 
+            const isExcluded = !firstSegment ||
                 ['admin', 'company', 'cart', 'checkout', 'success', 'product'].includes(firstSegment);
 
             const targetSlug = isExcluded
@@ -212,7 +212,7 @@ export default function CompanyProvider({
                     localStorage.removeItem(STORAGE_KEYS.COMPANY);
                     localStorage.removeItem(STORAGE_KEYS.CONFIG);
                     localStorage.removeItem(STORAGE_KEYS.FORM_FIELDS);
-                } catch {}
+                } catch { }
             }
             setIsLoading(false);
         };
@@ -220,7 +220,7 @@ export default function CompanyProvider({
         fetchContext();
 
         return () => { cancelled = true; };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [pathname]);
 
     return (

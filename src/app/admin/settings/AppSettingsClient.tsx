@@ -106,6 +106,9 @@ export default function AppSettingsClient({ initialSettings, initialFields }: Ap
             });
             if (result.success) {
                 toast.success('All settings and form fields saved successfully');
+                if (typeof window !== 'undefined') {
+                    window.dispatchEvent(new CustomEvent('company-settings-updated'));
+                }
                 // Perform a reload to get fresh database IDs for any newly created fields
                 window.location.reload();
             } else {
