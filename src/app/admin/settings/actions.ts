@@ -3,6 +3,7 @@
 import { createAdminClient } from '@/lib/supabase/server';
 import { logActivity } from '@/lib/supabase/activity-log';
 import { revalidatePath } from 'next/cache';
+import { randomUUID } from 'crypto';
 
 const GLOBAL_SETTINGS_ID = '00000000-0000-0000-0000-000000000001';
 
@@ -94,19 +95,24 @@ export async function saveAllSettings(payload: {
 
         // 2. Delete fields
         if (payload.deletedFieldIds.length > 0) {
-            const { error: deleteError } = await supabase
-                .from('form_field_definitions')
-                .delete()
-                .in('id', payload.deletedFieldIds);
-            if (deleteError) throw deleteError;
+            const realIdsToDelete = payload.deletedFieldIds.filter(
+                id => id && !String(id).startsWith('temp_') && !String(id).startsWith('new_')
+            );
+            if (realIdsToDelete.length > 0) {
+                const { error: deleteError } = await supabase
+                    .from('form_field_definitions')
+                    .delete()
+                    .in('id', realIdsToDelete);
+                if (deleteError) throw deleteError;
+            }
         }
 
         // 3. Upsert fields
         if (payload.fields.length > 0) {
             const fieldsToUpsert = payload.fields.map(f => {
-                const isTempId = f.id && (String(f.id).startsWith('temp_') || String(f.id).startsWith('new_'));
+                const isTempId = !f.id || String(f.id).startsWith('temp_') || String(f.id).startsWith('new_');
                 return {
-                    ...(isTempId ? {} : { id: f.id }),
+                    id: isTempId ? randomUUID() : f.id,
                     name: f.name,
                     label: f.label,
                     placeholder: f.placeholder || null,
@@ -152,9 +158,14 @@ export async function saveAllSettings(payload: {
 export async function upsertFormField(field: any) {
     try {
         const supabase = createAdminClient();
+        const isTempId = !field.id || String(field.id).startsWith('temp_') || String(field.id).startsWith('new_');
+        const cleanField = {
+            ...field,
+            id: isTempId ? randomUUID() : field.id
+        };
         const { data, error } = await supabase
             .from('form_field_definitions')
-            .upsert(field)
+            .upsert(cleanField)
             .select()
             .single();
         if (error) throw error;
