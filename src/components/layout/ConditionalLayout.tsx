@@ -2,7 +2,7 @@
 
 import { usePathname } from 'next/navigation';
 import { useEffect } from 'react';
-import { createBrowserClient } from '@supabase/ssr';
+import { createClient } from '@/lib/supabase/client';
 import { CartProvider } from '@/hooks/useCart';
 import Header from '@/components/layout/Header';
 import CompanyProvider from '@/components/context/CompanyProvider';
@@ -20,10 +20,7 @@ export default function ConditionalLayout({ children }: { children: React.ReactN
         if (typeof window !== 'undefined' && window.location.hash) {
             const hash = window.location.hash;
             if (hash.includes('access_token=') && hash.includes('type=recovery')) {
-                const supabase = createBrowserClient(
-                    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-                    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-                );
+                const supabase = createClient();
                 
                 // Parse hash, establish session and fetch user role
                 supabase.auth.getSession().then(({ data: { session } }) => {
