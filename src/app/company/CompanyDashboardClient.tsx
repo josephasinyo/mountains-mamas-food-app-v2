@@ -5,13 +5,13 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/com
 import { 
     ShoppingCart, Clock, CheckCircle2, TrendingUp, 
     ArrowRight, Package, Calendar, ChevronRight,
-    ArrowUpDown, ArrowUp, ArrowDown
+    ArrowUpDown, ArrowUp, ArrowDown, AlertCircle, CreditCard, FileText
 } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import Link from 'next/link';
 import { motion, AnimatePresence } from 'framer-motion';
-import { formatDateUS } from '@/lib/utils';
+import { formatDateUS, formatCurrency } from '@/lib/utils';
 import { OrderItemDetails } from '@/components/ui/OrderItemCustomFields';
 
 
@@ -20,7 +20,7 @@ interface CompanyDashboardClientProps {
 }
 
 export default function CompanyDashboardClient({ initialData }: CompanyDashboardClientProps) {
-    const { stats, recentOrders } = initialData;
+    const { stats, recentOrders, pendingInvoices = [] } = initialData;
     const [expanded, setExpanded] = React.useState<string | null>(null);
     const [sortConfig, setSortConfig] = React.useState<{ key: 'created_at' | 'tour_date', direction: 'asc' | 'desc' }>({ 
         key: 'created_at', 
@@ -47,6 +47,9 @@ export default function CompanyDashboardClient({ initialData }: CompanyDashboard
         }
     });
 
+    const unpaidCount = pendingInvoices.length;
+    const unpaidTotal = pendingInvoices.reduce((sum: number, inv: any) => sum + (Number(inv.total_amount) || 0), 0);
+
     const statCards = [
         {
             title: 'Total Lunches',
@@ -54,7 +57,8 @@ export default function CompanyDashboardClient({ initialData }: CompanyDashboard
             icon: ShoppingCart,
             color: 'text-violet-600',
             bg: 'bg-violet-50',
-            description: 'All-time lunch orders'
+            description: 'All-time lunch orders',
+            href: '/company/orders'
         },
         {
             title: 'Today\'s Lunches',
@@ -62,7 +66,8 @@ export default function CompanyDashboardClient({ initialData }: CompanyDashboard
             icon: Calendar,
             color: 'text-emerald-600',
             bg: 'bg-emerald-50',
-            description: 'For today\'s tours'
+            description: 'For today\'s tours',
+            href: '/company/orders'
         },
         {
             title: 'Pending Lunches',
@@ -70,7 +75,18 @@ export default function CompanyDashboardClient({ initialData }: CompanyDashboard
             icon: Clock,
             color: 'text-amber-600',
             bg: 'bg-amber-50',
-            description: 'Awaiting fulfillment'
+            description: 'Awaiting fulfillment',
+            href: '/company/orders'
+        },
+        {
+            title: 'Unpaid Invoices',
+            value: unpaidCount > 0 ? formatCurrency(unpaidTotal) : '$0.00',
+            icon: FileText,
+            color: unpaidCount > 0 ? 'text-rose-600' : 'text-slate-600',
+            bg: unpaidCount > 0 ? 'bg-rose-50' : 'bg-slate-50',
+            badge: unpaidCount > 0 ? `${unpaidCount} Pending` : null,
+            description: unpaidCount > 0 ? `${unpaidCount} invoice(s) awaiting payment` : 'All invoices paid',
+            href: '/company/invoices'
         }
     ];
 
@@ -97,32 +113,100 @@ export default function CompanyDashboardClient({ initialData }: CompanyDashboard
                 <p className="text-gray-500 font-medium mt-1">Welcome back! Here&apos;s what&apos;s happening with your tours today.</p>
             </div>
 
+            {/* Pending Invoices Alert Banner */}
+            {pendingInvoices && pendingInvoices.length > 0 && (
+                <motion.div
+                    initial={{ opacity: 0, y: -10 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    className="rounded-[24px] bg-gradient-to-r from-amber-50 via-orange-50 to-amber-50 border border-amber-200/80 p-6 shadow-sm shadow-amber-100/50"
+                >
+                    <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
+                        <div className="flex items-start gap-3.5">
+                            <div className="size-10 rounded-2xl bg-amber-500/10 border border-amber-300/40 flex items-center justify-center shrink-0 mt-0.5">
+                                <AlertCircle className="size-5 text-amber-600" />
+                            </div>
+                            <div>
+                                <div className="flex items-center gap-2">
+                                    <h3 className="font-extrabold text-amber-950 text-base">
+                                        Payment Reminder: {pendingInvoices.length} Outstanding Invoice{pendingInvoices.length > 1 ? 's' : ''}
+                                    </h3>
+                                    <Badge variant="outline" className="bg-amber-100/80 text-amber-800 border-amber-300 text-[10px] font-black uppercase tracking-wider">
+                                        Action Required
+                                    </Badge>
+                                </div>
+                                <p className="text-xs text-amber-800/90 font-medium mt-1">
+                                    You have {pendingInvoices.length} unpaid billing statement{pendingInvoices.length > 1 ? 's' : ''} ready for online payment.
+                                </p>
+                            </div>
+                        </div>
+
+                        <Link href="/company/invoices">
+                            <Button className="rounded-xl font-bold bg-amber-600 hover:bg-amber-700 text-white shadow-md shadow-amber-200 border-none gap-2 text-xs">
+                                View & Pay Invoices <ArrowRight className="size-4" />
+                            </Button>
+                        </Link>
+                    </div>
+
+                    {/* Breakdown of individual pending invoices */}
+                    <div className="mt-4 pt-4 border-t border-amber-200/60 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+                        {pendingInvoices.map((inv: any) => (
+                            <div key={inv.id} className="bg-white/90 backdrop-blur-sm rounded-xl p-3.5 border border-amber-200/50 flex items-center justify-between shadow-2xs">
+                                <div>
+                                    <p className="text-xs font-bold text-gray-900">
+                                        Invoice #{inv.id.slice(0, 8).toUpperCase()}
+                                    </p>
+                                    <p className="text-[11px] font-medium text-gray-500 mt-0.5">
+                                        {formatDateUS(inv.period_start)} — {formatDateUS(inv.period_end)}
+                                    </p>
+                                    <p className="text-xs font-black text-amber-700 mt-1">
+                                        {formatCurrency(inv.total_amount)}
+                                    </p>
+                                </div>
+                                <Link href={`/invoice/${inv.id}/pay`} target="_blank">
+                                    <Button size="sm" className="rounded-lg text-[11px] font-extrabold bg-violet-600 hover:bg-violet-700 text-white gap-1 py-1 px-2.5 h-8">
+                                        <CreditCard className="size-3" /> Pay
+                                    </Button>
+                                </Link>
+                            </div>
+                        ))}
+                    </div>
+                </motion.div>
+            )}
+
             {/* Stats Grid */}
             <motion.div 
                 variants={container}
                 initial="hidden"
                 animate="show"
-                className="grid grid-cols-1 md:grid-cols-3 gap-6"
+                className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6"
             >
                 {statCards.map((card, i) => (
                     <motion.div key={i} variants={item}>
-                        <Card className="border-none shadow-sm shadow-gray-200/50 rounded-[24px] overflow-hidden hover:shadow-md transition-all group">
-                            <CardContent className="p-6">
-                                <div className="flex items-start justify-between">
-                                    <div className={`size-12 rounded-2xl ${card.bg} flex items-center justify-center transition-transform group-hover:scale-110`}>
-                                        <card.icon className={`size-6 ${card.color}`} />
+                        <Link href={card.href || '/company'}>
+                            <Card className="border-none shadow-sm shadow-gray-200/50 rounded-[24px] overflow-hidden hover:shadow-md transition-all group cursor-pointer">
+                                <CardContent className="p-6">
+                                    <div className="flex items-start justify-between">
+                                        <div className={`size-12 rounded-2xl ${card.bg} flex items-center justify-center transition-transform group-hover:scale-110`}>
+                                            <card.icon className={`size-6 ${card.color}`} />
+                                        </div>
+                                        <div className="flex flex-col items-end">
+                                            <span className="text-2xl font-black text-gray-900 tracking-tighter">{card.value}</span>
+                                            <span className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mt-1">{card.title}</span>
+                                        </div>
                                     </div>
-                                    <div className="flex flex-col items-end">
-                                        <span className="text-3xl font-black text-gray-900 tracking-tighter">{card.value}</span>
-                                        <span className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mt-1">{card.title}</span>
+                                    <div className="mt-4 pt-4 border-t border-gray-50 flex items-center justify-between">
+                                        <span className="text-xs font-semibold text-gray-400">{card.description}</span>
+                                        {card.badge ? (
+                                            <span className="text-[10px] font-extrabold px-2 py-0.5 rounded-full bg-rose-100 text-rose-700">
+                                                {card.badge}
+                                            </span>
+                                        ) : (
+                                            <TrendingUp className="size-3 text-emerald-500" />
+                                        )}
                                     </div>
-                                </div>
-                                <div className="mt-4 pt-4 border-t border-gray-50 flex items-center justify-between">
-                                    <span className="text-xs font-semibold text-gray-400">{card.description}</span>
-                                    <TrendingUp className="size-3 text-emerald-500" />
-                                </div>
-                            </CardContent>
-                        </Card>
+                                </CardContent>
+                            </Card>
+                        </Link>
                     </motion.div>
                 ))}
             </motion.div>

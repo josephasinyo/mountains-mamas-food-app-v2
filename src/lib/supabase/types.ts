@@ -126,6 +126,8 @@ export interface Invoice {
     pdf_url: string | null;
     stripe_payment_link: string | null;
     stripe_invoice_id?: string | null;
+    payment_method_type?: string | null;
+    payment_method_details?: any;
     sent_at: string | null;
     paid_at: string | null;
     created_at: string;

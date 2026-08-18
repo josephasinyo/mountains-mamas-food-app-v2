@@ -127,6 +127,8 @@ CREATE TABLE invoices (
     status TEXT NOT NULL DEFAULT 'draft' CHECK (status IN ('draft', 'sent', 'paid', 'overdue')),
     pdf_url TEXT,
     stripe_payment_link TEXT,
+    payment_method_type TEXT,
+    payment_method_details JSONB DEFAULT '{}'::jsonb,
     sent_at TIMESTAMPTZ,
     paid_at TIMESTAMPTZ,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),

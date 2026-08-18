@@ -37,7 +37,26 @@ export async function fetchInvoicesHistory() {
 
         if (error) throw error;
 
-        return { success: true, invoices: invoices || [] };
+        const rawInvoices = invoices || [];
+        const { stripe } = await import('@/lib/stripe');
+
+        const list = await Promise.all(
+            rawInvoices.map(async (inv: any) => {
+                if (inv.stripe_invoice_id) {
+                    try {
+                        const stripeInv = await stripe.invoices.retrieve(inv.stripe_invoice_id);
+                        if (stripeInv.invoice_pdf) {
+                            return { ...inv, pdf_url: stripeInv.invoice_pdf };
+                        }
+                    } catch (err) {
+                        console.warn(`[fetchInvoicesHistory] Could not refresh Stripe PDF for ${inv.id}:`, err);
+                    }
+                }
+                return inv;
+            })
+        );
+
+        return { success: true, invoices: list };
     } catch (e: any) {
         console.error('[fetchInvoicesHistory] Error:', e);
         return { success: false, error: e.message || String(e), invoices: [] };
@@ -104,10 +123,14 @@ export async function payInvoiceManually(invoiceId: string, paymentMethod: strin
         const now = new Date().toISOString();
 
         // 3. Update database record to 'paid'
+        const pmType = paymentMethod || 'check';
+        const pmDisplay = pmType === 'check' ? 'Paid via Check / Manual Payment' : `Paid via ${pmType.toUpperCase()}`;
         const { error: updateError } = await supabase
             .from('invoices')
             .update({
                 status: 'paid',
+                payment_method_type: pmType,
+                payment_method_details: { display: pmDisplay, note: 'Manually processed' },
                 paid_at: now,
                 updated_at: now,
             })

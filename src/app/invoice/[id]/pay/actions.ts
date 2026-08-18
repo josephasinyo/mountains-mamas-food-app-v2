@@ -24,8 +24,14 @@ export async function fetchInvoiceForPayment(invoiceId: string) {
         const { stripe } = await import('@/lib/stripe');
         let lineItems: { description: string; amount: number; metadata?: any }[] = [];
 
+        let freshPdfUrl = invoice.pdf_url;
         if (invoice.stripe_invoice_id) {
             try {
+                const stripeInv = await stripe.invoices.retrieve(invoice.stripe_invoice_id);
+                if (stripeInv.invoice_pdf) {
+                    freshPdfUrl = stripeInv.invoice_pdf;
+                }
+
                 // Fetch all line items using Stripe listLineItems endpoint to support more than 10 items
                 for await (const line of stripe.invoices.listLineItems(invoice.stripe_invoice_id, { limit: 100 })) {
                     lineItems.push({
@@ -81,9 +87,13 @@ export async function fetchInvoiceForPayment(invoiceId: string) {
                 discount_amount: invoice.discount_amount,
                 tip_amount: invoice.tip_amount || 0,
                 status: invoice.status,
-                pdf_url: invoice.pdf_url,
+                pdf_url: freshPdfUrl,
                 stripe_invoice_id: invoice.stripe_invoice_id,
                 stripe_payment_link: invoice.stripe_payment_link,
+                payment_method_type: invoice.payment_method_type || null,
+                payment_method_details: invoice.payment_method_details || null,
+                paid_at: invoice.paid_at || null,
+                created_at: invoice.created_at || null,
                 line_items: lineItems,
             },
         };

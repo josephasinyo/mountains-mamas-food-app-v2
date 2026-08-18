@@ -120,6 +120,7 @@ export function InvoicesClient({ companies, initialInvoices }: InvoicesClientPro
     
     // Invoices Ledger State
     const [invoices, setInvoices] = useState<any[]>(initialInvoices);
+    const [statusFilter, setStatusFilter] = useState<string>('all');
     const [invoiceToDelete, setInvoiceToDelete] = useState<{ id: string; amount: number; companyId: string } | null>(null);
     const [selectedInvoiceIds, setSelectedInvoiceIds] = useState<Set<string>>(new Set());
     const [expandedInvoiceId, setExpandedInvoiceId] = useState<string | null>(null);
@@ -543,10 +544,16 @@ export function InvoicesClient({ companies, initialInvoices }: InvoicesClientPro
     const aggregatedMeals = getAggregatedMeals();
     const pricing = getEstimatedTotal();
 
-    // Filter invoices in the history ledger
-    const filteredInvoices = (activeCompanyId && activeCompanyId !== 'all')
-        ? invoices.filter(inv => inv.company_id === activeCompanyId)
-        : invoices;
+    // Filter invoices in the history ledger by company and status
+    const filteredInvoices = invoices.filter(inv => {
+        if (activeCompanyId && activeCompanyId !== 'all' && inv.company_id !== activeCompanyId) {
+            return false;
+        }
+        if (statusFilter && statusFilter !== 'all' && inv.status !== statusFilter) {
+            return false;
+        }
+        return true;
+    });
 
     // Check if an unpaid invoice covers the selected range and company
     const unpaidInvoicesInRange = (activeCompanyId && activeCompanyId !== 'all')
@@ -1264,6 +1271,31 @@ export function InvoicesClient({ companies, initialInvoices }: InvoicesClientPro
                                         )}
                                     </Button>
                                 )}
+                                <Select value={statusFilter} onValueChange={(val) => setStatusFilter(val || 'all')}>
+                                    <SelectTrigger className="bg-white border-gray-200 focus:ring-2 focus:ring-violet-500 focus:border-violet-500 !rounded-xl !h-10 font-bold text-gray-900 shadow-sm w-[160px] transition-all duration-200 hover:border-gray-300">
+                                        <SelectValue placeholder="All Statuses">
+                                            {statusFilter === 'all' ? 'All Statuses' : statusFilter.toUpperCase()}
+                                        </SelectValue>
+                                    </SelectTrigger>
+                                    <SelectContent className="rounded-xl border-gray-100 shadow-xl w-full">
+                                        <SelectItem value="all" className="font-bold text-violet-600">
+                                            All Statuses
+                                        </SelectItem>
+                                        <SelectItem value="draft" className="font-semibold text-gray-700">
+                                            Draft
+                                        </SelectItem>
+                                        <SelectItem value="sent" className="font-semibold text-amber-700">
+                                            Sent
+                                        </SelectItem>
+                                        <SelectItem value="paid" className="font-semibold text-emerald-700">
+                                            Paid
+                                        </SelectItem>
+                                        <SelectItem value="overdue" className="font-semibold text-rose-700">
+                                            Overdue
+                                        </SelectItem>
+                                    </SelectContent>
+                                </Select>
+
                                 <Select value={selectedCompanyId} onValueChange={(val) => {
                                     setSelectedCompanyId(val || 'all');
                                     setActiveCompanyId(val || 'all');

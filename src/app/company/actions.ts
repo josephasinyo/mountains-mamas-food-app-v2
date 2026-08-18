@@ -62,7 +62,7 @@ export async function getImpersonationStatus() {
 export async function getCompanyDashboardData() {
     try {
         const companyId = await getCompanyId();
-        const supabase = await createClient();
+        const supabase = createAdminClient();
 
         // Get orders for this company
         const { data: orders, error } = await supabase
@@ -77,12 +77,20 @@ export async function getCompanyDashboardData() {
         const now = new Date();
         const todayStr = now.toISOString().split('T')[0];
         
-        const todayOrders = orders.filter(o => o.tour_date === todayStr);
-        const pendingOrders = orders.filter(o => o.status === 'pending');
+        const todayOrders = (orders || []).filter((o: any) => o.tour_date === todayStr);
+        const pendingOrders = (orders || []).filter((o: any) => o.status === 'pending');
         
-        const totalLunches = orders.reduce((sum, o) => sum + (o.order_items?.reduce((s: number, item: any) => s + (item.quantity || 1), 0) || 0), 0);
-        const todayLunches = todayOrders.reduce((sum, o) => sum + (o.order_items?.reduce((s: number, item: any) => s + (item.quantity || 1), 0) || 0), 0);
-        const pendingLunches = pendingOrders.reduce((sum, o) => sum + (o.order_items?.reduce((s: number, item: any) => s + (item.quantity || 1), 0) || 0), 0);
+        const totalLunches = (orders || []).reduce((sum: number, o: any) => sum + (o.order_items?.reduce((s: number, item: any) => s + (item.quantity || 1), 0) || 0), 0);
+        const todayLunches = todayOrders.reduce((sum: number, o: any) => sum + (o.order_items?.reduce((s: number, item: any) => s + (item.quantity || 1), 0) || 0), 0);
+        const pendingLunches = pendingOrders.reduce((sum: number, o: any) => sum + (o.order_items?.reduce((s: number, item: any) => s + (item.quantity || 1), 0) || 0), 0);
+
+        // Get pending/unpaid invoices for this company
+        const { data: pendingInvoices } = await supabase
+            .from('invoices')
+            .select('*')
+            .eq('company_id', companyId)
+            .in('status', ['sent', 'overdue'])
+            .order('created_at', { ascending: false });
 
         return {
             success: true,
@@ -91,11 +99,12 @@ export async function getCompanyDashboardData() {
                 todayLunches,
                 pendingLunches
             },
-            recentOrders: orders.slice(0, 5)
+            recentOrders: orders.slice(0, 5),
+            pendingInvoices: pendingInvoices || []
         };
     } catch (error: any) {
         console.error('Error fetching dashboard data:', error);
-        return { success: false, error: error.message };
+        return { success: false, error: error.message, pendingInvoices: [] };
     }
 }
 

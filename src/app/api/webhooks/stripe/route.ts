@@ -39,12 +39,49 @@ export async function POST(req: Request) {
                 if (invoiceId) {
                     console.log(`[Stripe Webhook] Invoice payment completed: ${invoiceId}, tip: $${tipAmount}`);
 
+                    // Fetch payment method details from Stripe if payment_intent exists
+                    let pmType = session.metadata?.payment_method || 'card';
+                    let pmDetails: any = { display: pmType === 'ach' ? 'Bank Account (ACH)' : 'Credit / Debit Card' };
+
+                    if (session.payment_intent) {
+                        try {
+                            const piId = typeof session.payment_intent === 'string' ? session.payment_intent : session.payment_intent.id;
+                            const paymentIntent = await stripe.paymentIntents.retrieve(piId, {
+                                expand: ['payment_method']
+                            });
+                            const pm = paymentIntent.payment_method as any;
+                            if (pm) {
+                                if (pm.type === 'card' && pm.card) {
+                                    pmType = 'card';
+                                    pmDetails = {
+                                        brand: pm.card.brand,
+                                        last4: pm.card.last4,
+                                        exp_month: pm.card.exp_month,
+                                        exp_year: pm.card.exp_year,
+                                        display: `${pm.card.brand ? pm.card.brand.toUpperCase() : 'Card'} ending in ${pm.card.last4}`
+                                    };
+                                } else if (pm.type === 'us_bank_account' && pm.us_bank_account) {
+                                    pmType = 'ach';
+                                    pmDetails = {
+                                        bank_name: pm.us_bank_account.bank_name,
+                                        last4: pm.us_bank_account.last4,
+                                        display: `${pm.us_bank_account.bank_name || 'Bank Account (ACH)'} ending in ${pm.us_bank_account.last4}`
+                                    };
+                                }
+                            }
+                        } catch (pmErr) {
+                            console.warn('[Stripe Webhook] Error retrieving payment method:', pmErr);
+                        }
+                    }
+
                     // Update invoice to paid
                     const { error: invError } = await supabase
                         .from('invoices')
                         .update({
                             status: 'paid',
                             tip_amount: tipAmount,
+                            payment_method_type: pmType,
+                            payment_method_details: pmDetails,
                             paid_at: new Date().toISOString(),
                             updated_at: new Date().toISOString(),
                         })
@@ -189,10 +226,40 @@ export async function POST(req: Request) {
             if (invoiceId) {
                 console.log(`[Stripe Webhook] Invoice paid: ${invoiceId}`);
                 
+                let pmType = 'card';
+                let pmDetails: any = { display: 'Stripe Payment' };
+                if (invoice.charge) {
+                    try {
+                        const charge = await stripe.charges.retrieve(invoice.charge, { expand: ['payment_method'] });
+                        const pm = charge.payment_method as any;
+                        if (pm) {
+                            if (pm.type === 'card' && pm.card) {
+                                pmType = 'card';
+                                pmDetails = {
+                                    brand: pm.card.brand,
+                                    last4: pm.card.last4,
+                                    display: `${pm.card.brand ? pm.card.brand.toUpperCase() : 'Card'} ending in ${pm.card.last4}`
+                                };
+                            } else if (pm.type === 'us_bank_account' && pm.us_bank_account) {
+                                pmType = 'ach';
+                                pmDetails = {
+                                    bank_name: pm.us_bank_account.bank_name,
+                                    last4: pm.us_bank_account.last4,
+                                    display: `${pm.us_bank_account.bank_name || 'Bank Account (ACH)'} ending in ${pm.us_bank_account.last4}`
+                                };
+                            }
+                        }
+                    } catch (chargeErr) {
+                        console.warn('[Stripe Webhook] Error retrieving charge payment method:', chargeErr);
+                    }
+                }
+
                 const { error } = await supabase
                     .from('invoices')
                     .update({ 
                         status: 'paid',
+                        payment_method_type: pmType,
+                        payment_method_details: pmDetails,
                         paid_at: new Date().toISOString(),
                         updated_at: new Date().toISOString()
                     })

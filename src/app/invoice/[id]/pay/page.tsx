@@ -48,6 +48,10 @@ interface InvoiceData {
     pdf_url: string | null;
     stripe_invoice_id: string | null;
     stripe_payment_link: string | null;
+    payment_method_type?: string | null;
+    payment_method_details?: any;
+    paid_at?: string | null;
+    created_at?: string | null;
     line_items: InvoiceLineItem[];
 }
 
@@ -150,32 +154,217 @@ export default function InvoicePayPage() {
         );
     }
 
-    // --- Already Paid State ---
+    // --- Already Paid State (Official Paid Receipt View) ---
     if (invoice.status === 'paid') {
+        const pmInfo = (function() {
+            const details = invoice.payment_method_details;
+            const type = invoice.payment_method_type;
+            if (details?.display) {
+                let icon = '💳';
+                if (type === 'ach' || details.display.toLowerCase().includes('bank') || details.display.toLowerCase().includes('ach')) icon = '🏦';
+                else if (type === 'check' || details.display.toLowerCase().includes('check')) icon = '📝';
+                return { label: details.display, icon };
+            }
+            if (type === 'card') return { label: 'Credit / Debit Card', icon: '💳' };
+            if (type === 'ach') return { label: 'Bank Account (ACH)', icon: '🏦' };
+            if (type === 'check') return { label: 'Paid via Check / Manual Payment', icon: '📝' };
+            return { label: 'Paid Online', icon: '💳' };
+        })();
+
+        const paidTimestamp = invoice.paid_at 
+            ? new Date(invoice.paid_at).toLocaleString('en-US', {
+                month: 'long',
+                day: 'numeric',
+                year: 'numeric',
+                hour: 'numeric',
+                minute: '2-digit',
+                hour12: true
+            })
+            : 'Payment Confirmed';
+
+        const totalPaidAmount = (invoice.total_amount || 0) + (invoice.tip_amount || 0);
+
         return (
-            <div style={styles.pageWrapper}>
-                <div style={styles.card}>
-                    <div style={styles.headerBar}>
-                        <h1 style={styles.headerTitle}>Invoice Paid</h1>
+            <div style={styles.pageWrapper} className="printable-receipt-wrapper">
+                <div style={styles.card} className="printable-receipt-card">
+                    {/* Header */}
+                    <div style={{ ...styles.headerBar, backgroundColor: '#059669' }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '12px' }}>
+                            <div>
+                                <h1 style={styles.headerTitle}>Mountain Mama&apos;s Café</h1>
+                                <p style={styles.headerSub}>Official Paid Receipt</p>
+                            </div>
+                            <div style={{ display: 'flex', gap: '8px' }} className="no-print">
+                                <button
+                                    onClick={() => window.print()}
+                                    style={{
+                                        display: 'inline-flex',
+                                        alignItems: 'center',
+                                        gap: '6px',
+                                        padding: '8px 16px',
+                                        backgroundColor: 'white',
+                                        color: '#059669',
+                                        border: 'none',
+                                        borderRadius: '8px',
+                                        fontSize: '13px',
+                                        fontWeight: 800,
+                                        cursor: 'pointer',
+                                        boxShadow: '0 2px 4px rgba(0,0,0,0.1)',
+                                    }}
+                                    className="no-print"
+                                >
+                                    🖨️ Print Receipt
+                                </button>
+                                {invoice.pdf_url && (
+                                    <a
+                                        href={invoice.pdf_url}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        style={{
+                                            ...styles.downloadPdfHeaderBtn,
+                                            backgroundColor: 'rgba(255, 255, 255, 0.2)',
+                                            borderColor: 'rgba(255, 255, 255, 0.4)',
+                                        }}
+                                        className="no-print"
+                                    >
+                                        📄 Download PDF
+                                    </a>
+                                )}
+                            </div>
+                        </div>
                     </div>
-                    <div style={{ padding: '48px 32px', textAlign: 'center' as const }}>
-                        <div style={styles.paidCheckmark}>✓</div>
-                        <h2 style={{ fontSize: '24px', fontWeight: 900, color: '#111827', margin: '16px 0 8px' }}>
-                            Payment Received
-                        </h2>
-                        <p style={{ fontSize: '14px', color: '#6b7280' }}>
-                            This invoice for <strong>{invoice.company_name}</strong> has already been paid.
-                            {invoice.tip_amount > 0 && (
-                                <span> Including a {formatCurrency(invoice.tip_amount)} tip for the sandwich makers! 💜</span>
-                            )}
-                        </p>
-                        {invoice.pdf_url && (
-                            <a href={invoice.pdf_url} target="_blank" rel="noopener noreferrer" style={styles.downloadLink}>
-                                Download PDF Receipt
-                            </a>
+
+                    {/* Paid Status & Payment Method Summary Card */}
+                    <div style={{ padding: '24px 32px 16px' }}>
+                        <div style={{
+                            backgroundColor: '#ecfdf5',
+                            border: '1.5px solid #a7f3d0',
+                            borderRadius: '16px',
+                            padding: '20px 24px',
+                            display: 'flex',
+                            justifyContent: 'space-between',
+                            alignItems: 'center',
+                            flexWrap: 'wrap',
+                            gap: '16px',
+                            marginBottom: '24px',
+                        }}>
+                            <div>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px' }}>
+                                    <span style={{
+                                        backgroundColor: '#10b981',
+                                        color: 'white',
+                                        padding: '4px 10px',
+                                        borderRadius: '20px',
+                                        fontSize: '11px',
+                                        fontWeight: 900,
+                                        letterSpacing: '0.05em',
+                                    }}>
+                                        PAID
+                                    </span>
+                                    <span style={{ fontSize: '13px', color: '#065f46', fontWeight: 600 }}>
+                                        {paidTimestamp}
+                                    </span>
+                                </div>
+                                <h2 style={{ fontSize: '20px', fontWeight: 900, color: '#064e3b', margin: 0 }}>
+                                    Receipt for {invoice.company_name}
+                                </h2>
+                            </div>
+                            <div style={{ textAlign: 'right' as const }}>
+                                <span style={{ fontSize: '12px', color: '#047857', fontWeight: 700, display: 'block' }}>Total Paid</span>
+                                <span style={{ fontSize: '28px', fontWeight: 900, color: '#064e3b' }}>
+                                    {formatCurrency(totalPaidAmount)}
+                                </span>
+                            </div>
+                        </div>
+
+                        {/* Payment Details Metadata Box */}
+                        <div style={{
+                            display: 'grid',
+                            gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
+                            gap: '16px',
+                            backgroundColor: '#f9fafb',
+                            borderRadius: '12px',
+                            padding: '16px 20px',
+                            border: '1px solid #e5e7eb',
+                            marginBottom: '24px',
+                        }}>
+                            <div>
+                                <span style={{ fontSize: '11px', fontWeight: 800, color: '#6b7280', textTransform: 'uppercase' as const, letterSpacing: '0.05em' }}>
+                                    Payment Method
+                                </span>
+                                <p style={{ margin: '4px 0 0 0', fontSize: '14px', fontWeight: 700, color: '#111827' }}>
+                                    {pmInfo.icon} {pmInfo.label}
+                                </p>
+                            </div>
+                            <div>
+                                <span style={{ fontSize: '11px', fontWeight: 800, color: '#6b7280', textTransform: 'uppercase' as const, letterSpacing: '0.05em' }}>
+                                    Billing Period
+                                </span>
+                                <p style={{ margin: '4px 0 0 0', fontSize: '14px', fontWeight: 700, color: '#111827' }}>
+                                    {formatDate(invoice.period_start)} — {formatDate(invoice.period_end)}
+                                </p>
+                            </div>
+                            <div>
+                                <span style={{ fontSize: '11px', fontWeight: 800, color: '#6b7280', textTransform: 'uppercase' as const, letterSpacing: '0.05em' }}>
+                                    Invoice Reference
+                                </span>
+                                <p style={{ margin: '4px 0 0 0', fontSize: '14px', fontWeight: 700, color: '#111827' }}>
+                                    #{invoice.id.slice(0, 8).toUpperCase()}
+                                </p>
+                            </div>
+                        </div>
+
+                        {/* Summary of Line Items */}
+                        {invoice.line_items.length > 0 && (
+                            <div style={{ borderTop: '1px solid #e5e7eb', paddingTop: '20px', marginBottom: '24px' }}>
+                                <h3 style={{ fontSize: '14px', fontWeight: 800, color: '#374151', textTransform: 'uppercase' as const, letterSpacing: '0.05em', marginBottom: '12px' }}>
+                                    Itemized Charges
+                                </h3>
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                                    {invoice.line_items.map((item, idx) => (
+                                        <div key={idx} style={{ display: 'flex', justifyContent: 'space-between', fontSize: '14px', padding: '6px 0', borderBottom: '1px border-dashed #f3f4f6' }}>
+                                            <span style={{ color: '#374151', fontWeight: 500 }}>{item.description}</span>
+                                            <span style={{ color: '#111827', fontWeight: 700 }}>{formatCurrency(item.amount)}</span>
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
                         )}
+
+                        {/* Totals Breakdown */}
+                        <div style={{ backgroundColor: '#f9fafb', borderRadius: '12px', padding: '16px 20px', border: '1px solid #e5e7eb' }}>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '14px', color: '#4b5563', marginBottom: '8px' }}>
+                                <span>Base Invoice Subtotal</span>
+                                <span>{formatCurrency(invoice.total_amount)}</span>
+                            </div>
+                            {invoice.tip_amount > 0 && (
+                                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '14px', color: '#059669', fontWeight: 600, marginBottom: '8px' }}>
+                                    <span>Tip for Sandwich Makers 💜</span>
+                                    <span>{formatCurrency(invoice.tip_amount)}</span>
+                                </div>
+                            )}
+                            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '18px', fontWeight: 900, color: '#111827', borderTop: '2px solid #e5e7eb', paddingTop: '12px', marginTop: '8px' }}>
+                                <span>Total Amount Paid</span>
+                                <span>{formatCurrency(totalPaidAmount)}</span>
+                            </div>
+                        </div>
+
+                        {/* Footer message */}
+                        <div style={{ marginTop: '32px', textAlign: 'center' as const, color: '#6b7280', fontSize: '13px' }}>
+                            <p style={{ margin: 0 }}>Thank you for doing business with Mountain Mama&apos;s Café!</p>
+                            <p style={{ margin: '4px 0 0 0', fontSize: '12px', color: '#9ca3af' }}>This receipt will remain available indefinitely for your recordkeeping.</p>
+                        </div>
                     </div>
                 </div>
+
+                <style>{`
+                    @media print {
+                        .no-print { display: none !important; }
+                        body { background: white !important; padding: 0 !important; }
+                        .printable-receipt-wrapper { min-height: auto !important; padding: 0 !important; background: none !important; }
+                        .printable-receipt-card { max-width: 100% !important; box-shadow: none !important; border: none !important; }
+                    }
+                `}</style>
             </div>
         );
     }
