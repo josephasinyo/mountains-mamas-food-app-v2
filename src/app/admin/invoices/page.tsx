@@ -11,6 +11,7 @@ export default async function InvoicesPage() {
         .from('tour_companies')
         .select('*')
         .eq('is_active', true)
+        .neq('payment_method', 'direct_pay')
         .order('name');
 
     const { data: invoices } = await supabase
