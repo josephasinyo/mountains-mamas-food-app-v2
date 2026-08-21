@@ -136,7 +136,24 @@ export async function payInvoiceManually(invoiceId: string, paymentMethod: strin
             })
             .eq('id', invoiceId);
 
-        if (updateError) throw updateError;
+        if (updateError) {
+            // Fallback: If payment_method_details/type columns don't exist yet in live Supabase schema, update status & paid_at
+            if (updateError.message?.includes('payment_method') || updateError.message?.includes('schema cache')) {
+                console.warn('[payInvoiceManually] Falling back to basic invoice update due to missing schema columns:', updateError.message);
+                const { error: fallbackError } = await supabase
+                    .from('invoices')
+                    .update({
+                        status: 'paid',
+                        paid_at: now,
+                        updated_at: now,
+                    })
+                    .eq('id', invoiceId);
+
+                if (fallbackError) throw fallbackError;
+            } else {
+                throw updateError;
+            }
+        }
 
         // 4. Mark all orders linked to this invoice as paid
         const { error: orderError } = await supabase
@@ -164,6 +181,96 @@ export async function payInvoiceManually(invoiceId: string, paymentMethod: strin
         return { success: true };
     } catch (e: any) {
         console.error('[payInvoiceManually] Error:', e);
+        return { success: false, error: e.message || String(e) };
+    }
+}
+
+export async function unpayInvoiceManually(invoiceId: string) {
+    try {
+        const supabase = createAdminClient();
+
+        // 1. Fetch invoice details
+        const { data: invoice, error: invError } = await supabase
+            .from('invoices')
+            .select('*')
+            .eq('id', invoiceId)
+            .single();
+
+        if (invError || !invoice) {
+            throw new Error(invError?.message || 'Invoice not found');
+        }
+
+        if (invoice.status !== 'paid') {
+            throw new Error('Invoice is not currently marked as paid.');
+        }
+
+        const isCheck = invoice.payment_method_type === 'check' || invoice.payment_method_type === 'manual' || invoice.payment_method_details?.note === 'Manually processed';
+        if (!isCheck) {
+            throw new Error('Only invoices paid manually by check can be unmarked as paid.');
+        }
+
+        const now = new Date().toISOString();
+        const revertedStatus = invoice.sent_at ? 'sent' : 'draft';
+
+        // 2. Update database record to revert status
+        let updatePayload: any = {
+            status: revertedStatus,
+            payment_method_type: null,
+            payment_method_details: null,
+            paid_at: null,
+            updated_at: now,
+        };
+
+        let { error: updateError } = await supabase
+            .from('invoices')
+            .update(updatePayload)
+            .eq('id', invoiceId);
+
+        if (updateError) {
+            if (updateError.message?.includes('payment_method') || updateError.message?.includes('schema cache')) {
+                console.warn('[unpayInvoiceManually] Falling back to basic invoice update due to missing schema columns:', updateError.message);
+                const { error: fallbackError } = await supabase
+                    .from('invoices')
+                    .update({
+                        status: revertedStatus,
+                        paid_at: null,
+                        updated_at: now,
+                    })
+                    .eq('id', invoiceId);
+
+                if (fallbackError) throw fallbackError;
+            } else {
+                throw updateError;
+            }
+        }
+
+        // 3. Mark all orders linked to this invoice back to unpaid
+        const { error: orderError } = await supabase
+            .from('orders')
+            .update({
+                payment_status: 'unpaid',
+                updated_at: now,
+            })
+            .eq('invoice_id', invoiceId);
+
+        if (orderError) throw orderError;
+
+        // 4. Log activity
+        await logActivity({
+            userRole: 'admin',
+            action: 'invoice_unmarked_paid',
+            entityType: 'invoice',
+            entityId: invoiceId,
+            details: {
+                previous_status: 'paid',
+                reverted_status: revertedStatus,
+                amount: invoice.total_amount,
+            },
+        });
+
+        return { success: true };
+    } catch (e: any) {
+        console.error('[unpayInvoiceManually] Error:', e);
         return { success: false, error: e.message || String(e) };
     }
 }

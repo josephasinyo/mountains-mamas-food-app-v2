@@ -16,10 +16,10 @@ import {
 } from '@/components/ui/table';
 import {
     Building2, Calendar, ClipboardList, CreditCard, ExternalLink, 
-    FileText, Loader2, RefreshCw, ScrollText, CheckCircle2, ChevronRight, ChevronDown, Trash2, Search, Mail, Copy
+    FileText, Loader2, RefreshCw, ScrollText, CheckCircle2, ChevronRight, ChevronDown, Trash2, Search, Mail, Copy, RotateCcw
 } from 'lucide-react';
 import { cn, formatDateUS, formatCurrency, formatNumber } from '@/lib/utils';
-import { fetchOrdersForInvoicing, fetchInvoicesHistory, sendInvoiceToCompany, fetchInvoiceOrders, payInvoiceManually } from './actions';
+import { fetchOrdersForInvoicing, fetchInvoicesHistory, sendInvoiceToCompany, fetchInvoiceOrders, payInvoiceManually, unpayInvoiceManually } from './actions';
 import { generateCompanyInvoice } from '../orders/actions';
 import { deleteInvoice } from '../companies/actions';
 
@@ -97,7 +97,8 @@ function getDateRange(preset: string): { start: string; end: string } {
     };
 }
 
-export function InvoicesClient({ companies, initialInvoices }: InvoicesClientProps) {
+export function InvoicesClient({ companies: rawCompanies, initialInvoices }: InvoicesClientProps) {
+    const companies = (rawCompanies || []).filter((c: any) => c.payment_method !== 'direct_pay');
     const initialRange = getDateRange('this_month');
     
     // Tab State
@@ -155,6 +156,8 @@ export function InvoicesClient({ companies, initialInvoices }: InvoicesClientPro
     const [bulkSending, setBulkSending] = useState<boolean>(false);
     const [invoiceToMarkPaid, setInvoiceToMarkPaid] = useState<{ id: string; amount: number } | null>(null);
     const [markingPaidId, setMarkingPaidId] = useState<string | null>(null);
+    const [invoiceToUnmarkPaid, setInvoiceToUnmarkPaid] = useState<{ id: string; amount: number } | null>(null);
+    const [unmarkingPaidId, setUnmarkingPaidId] = useState<string | null>(null);
 
     // Per-Lunch Discount State
     const [applyPerLunchDiscount, setApplyPerLunchDiscount] = useState<boolean>(false);
@@ -437,6 +440,30 @@ export function InvoicesClient({ companies, initialInvoices }: InvoicesClientPro
             toast.error('An unexpected error occurred.', { id: toastId });
         } finally {
             setMarkingPaidId(null);
+        }
+    };
+
+    const executeUnmarkAsPaid = async () => {
+        if (!invoiceToUnmarkPaid) return;
+        const targetId = invoiceToUnmarkPaid.id;
+        setUnmarkingPaidId(targetId);
+        const toastId = toast.loading('Reverting invoice payment status...');
+        try {
+            const res = await unpayInvoiceManually(targetId);
+            if (res.success) {
+                toast.success('Invoice payment cancelled & orders reverted to unpaid!', { id: toastId });
+                const historyRes = await fetchInvoicesHistory();
+                if (historyRes.success) {
+                    setInvoices(historyRes.invoices);
+                }
+                setInvoiceToUnmarkPaid(null);
+            } else {
+                toast.error(res.error || 'Failed to cancel paid status.', { id: toastId });
+            }
+        } catch (err: any) {
+            toast.error('An unexpected error occurred.', { id: toastId });
+        } finally {
+            setUnmarkingPaidId(null);
         }
     };
 
@@ -1346,6 +1373,7 @@ export function InvoicesClient({ companies, initialInvoices }: InvoicesClientPro
                                 {filteredInvoices.map((invoice: any) => {
                                     const isExpanded = expandedInvoiceId === invoice.id;
                                     const resortTax = invoice.tip_amount ?? 0;
+                                    const isPaidByCheck = invoice.status === 'paid' && (invoice.payment_method_type === 'check' || invoice.payment_method_type === 'manual' || invoice.payment_method_details?.note === 'Manually processed');
                                     return (
                                         <React.Fragment key={invoice.id}>
                                             <TableRow 
@@ -1451,7 +1479,7 @@ export function InvoicesClient({ companies, initialInvoices }: InvoicesClientPro
                                                                 )}
                                                             </button>
                                                         )}
-                                                        {invoice.status !== 'paid' && (
+                                                        {invoice.status !== 'paid' ? (
                                                             <button 
                                                                 onClick={() => setInvoiceToMarkPaid({ id: invoice.id, amount: invoice.total_amount })}
                                                                 disabled={markingPaidId !== null}
@@ -1460,7 +1488,16 @@ export function InvoicesClient({ companies, initialInvoices }: InvoicesClientPro
                                                             >
                                                                 <CheckCircle2 className="size-3.5" />
                                                             </button>
-                                                        )}
+                                                        ) : isPaidByCheck ? (
+                                                            <button 
+                                                                onClick={() => setInvoiceToUnmarkPaid({ id: invoice.id, amount: invoice.total_amount })}
+                                                                disabled={unmarkingPaidId !== null}
+                                                                className="size-8 rounded-lg bg-white border border-amber-200 flex items-center justify-center text-amber-600 hover:bg-amber-50 hover:border-amber-300 transition-all cursor-pointer disabled:opacity-50"
+                                                                title="Cancel Paid Status (Mark as Unpaid)"
+                                                            >
+                                                                <RotateCcw className="size-3.5" />
+                                                            </button>
+                                                        ) : null}
                                                         {invoice.status !== 'paid' && (
                                                             <button 
                                                                 onClick={() => setInvoiceToDelete({ id: invoice.id, amount: invoice.total_amount, companyId: invoice.company_id })}
@@ -1601,7 +1638,7 @@ export function InvoicesClient({ companies, initialInvoices }: InvoicesClientPro
                                                                                 )}
                                                                             </div>
 
-                                                                            {invoice.status !== 'paid' && (
+                                                                            {invoice.status !== 'paid' ? (
                                                                                 <div>
                                                                                     <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1.5">Offline Payment</p>
                                                                                     <Button
@@ -1613,7 +1650,20 @@ export function InvoicesClient({ companies, initialInvoices }: InvoicesClientPro
                                                                                         Mark Paid by Check
                                                                                     </Button>
                                                                                 </div>
-                                                                            )}
+                                                                            ) : isPaidByCheck ? (
+                                                                                <div>
+                                                                                    <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1.5">Offline Payment</p>
+                                                                                    <Button
+                                                                                        onClick={() => setInvoiceToUnmarkPaid({ id: invoice.id, amount: invoice.total_amount })}
+                                                                                        disabled={unmarkingPaidId !== null}
+                                                                                        variant="outline"
+                                                                                        className="border-amber-200 text-amber-700 hover:bg-amber-50 hover:border-amber-300 font-bold h-9 px-4 text-xs rounded-xl shadow-sm flex items-center gap-1.5 transition-all cursor-pointer"
+                                                                                    >
+                                                                                        <RotateCcw className="size-4" />
+                                                                                        Cancel Paid Status (Mark as Unpaid)
+                                                                                    </Button>
+                                                                                </div>
+                                                                            ) : null}
                                                                         </div>
 
                                                                         {/* Right Column: Financial Breakdown */}
@@ -1714,6 +1764,21 @@ export function InvoicesClient({ companies, initialInvoices }: InvoicesClientPro
                 confirmText={markingPaidId !== null ? "Marking Paid..." : "Mark as Paid"}
                 cancelText="Cancel"
                 variant="success"
+            />
+
+            <ConfirmDialog
+                isOpen={invoiceToUnmarkPaid !== null}
+                onClose={() => setInvoiceToUnmarkPaid(null)}
+                onConfirm={executeUnmarkAsPaid}
+                title="Cancel Paid Status?"
+                description={
+                    invoiceToUnmarkPaid
+                        ? `Are you sure you want to cancel the paid status for this invoice ($${invoiceToUnmarkPaid.amount.toFixed(2)})? This will revert the invoice status back to unpaid and restore all linked orders to unpaid.`
+                        : ''
+                }
+                confirmText={unmarkingPaidId !== null ? "Cancelling..." : "Yes, Mark as Unpaid"}
+                cancelText="Keep as Paid"
+                variant="danger"
             />
         </div>
     );
