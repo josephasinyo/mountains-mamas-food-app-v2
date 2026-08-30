@@ -13,6 +13,7 @@ import Link from 'next/link';
 import { motion, AnimatePresence } from 'framer-motion';
 import { formatDateUS, formatCurrency } from '@/lib/utils';
 import { OrderItemDetails } from '@/components/ui/OrderItemCustomFields';
+import { isUnapprovedReq, getStatusLabel } from './orders/date-utils';
 
 
 interface CompanyDashboardClientProps {
@@ -294,12 +295,12 @@ export default function CompanyDashboardClient({ initialData }: CompanyDashboard
                                                     <td className="px-8 py-5">
                                                         <Badge variant="outline" className={`
                                                             rounded-lg px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider border-transparent shadow-none
-                                                            ${order.status === 'pending' ? 'bg-amber-50 text-amber-700 border-amber-200' : ''}
+                                                            ${(order.status === 'pending' || isUnapprovedReq(order)) ? 'bg-amber-50 text-amber-700 border-amber-200' : ''}
                                                             ${order.status === 'fulfilled' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : ''}
                                                             ${order.status === 'cancelled' ? 'bg-rose-50 text-rose-700 border-rose-200' : ''}
                                                             ${order.status === 'ticket_created' ? 'bg-violet-50 text-violet-700 border-violet-200' : ''}
                                                         `}>
-                                                            {order.status.replace('_', ' ')}
+                                                            {getStatusLabel(order)}
                                                         </Badge>
                                                     </td>
                                                     <td className="px-8 py-5 text-left">
@@ -418,12 +419,12 @@ export default function CompanyDashboardClient({ initialData }: CompanyDashboard
                                             <div className="flex items-center justify-between pt-2 mt-2">
                                                 <Badge variant="outline" className={`
                                                     rounded-lg px-2 py-0.5 text-[9px] font-bold uppercase tracking-wider border-transparent shadow-none
-                                                    ${order.status === 'pending' ? 'bg-amber-50 text-amber-700 border-amber-200' : ''}
+                                                    ${(order.status === 'pending' || isUnapprovedReq(order)) ? 'bg-amber-50 text-amber-700 border-amber-200' : ''}
                                                     ${order.status === 'fulfilled' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : ''}
                                                     ${order.status === 'cancelled' ? 'bg-rose-50 text-rose-700 border-rose-200' : ''}
                                                     ${order.status === 'ticket_created' ? 'bg-violet-50 text-violet-700 border-violet-200' : ''}
                                                 `}>
-                                                    {order.status.replace('_', ' ')}
+                                                    {getStatusLabel(order)}
                                                 </Badge>
 
                                                 <div className="text-right">

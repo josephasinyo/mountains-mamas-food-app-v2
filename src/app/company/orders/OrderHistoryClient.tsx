@@ -60,15 +60,9 @@ import { Label } from '@/components/ui/label';
 import { motion, AnimatePresence } from 'framer-motion';
 import { updateCompanyOrderStatus, deleteCompanyOrder, getCompanyMenuSelections, getPaginatedCompanyOrders } from '../actions';
 import { createOrderChangeRequest } from './change-actions';
-import { isMoreThan14HoursAway, isMoreThan24HoursAway, getHoursUntilPickup, PICKUP_TIME_OPTIONS, getFormattedRemainingTime } from './date-utils';
+import { isMoreThan14HoursAway, isMoreThan24HoursAway, getHoursUntilPickup, PICKUP_TIME_OPTIONS, getFormattedRemainingTime, STATUS_LABELS, isUnapprovedReq, getStatusLabel } from './date-utils';
 import { toast } from 'sonner';
 import { OrderItemCustomFields } from '@/components/ui/OrderItemCustomFields';
-
-const STATUS_LABELS: Record<string, string> = {
-    pending: 'Pending',
-    fulfilled: 'Fulfilled',
-    cancelled: 'Cancelled',
-};
 
 const formatBoxType = (box: string | null) => {
     if (!box) return '';
@@ -625,11 +619,11 @@ export default function OrderHistoryClient({ initialData }: OrderHistoryClientPr
                     <div className="flex items-center gap-1.5 flex-wrap">
                         <Badge variant="outline" className={`
                             rounded-lg px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wider
-                            ${order.status === 'pending' ? 'bg-amber-50 text-amber-700 border-amber-200' : ''}
+                            ${(order.status === 'pending' || isUnapprovedReq(order)) ? 'bg-amber-50 text-amber-700 border-amber-200' : ''}
                             ${order.status === 'fulfilled' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : ''}
                             ${order.status === 'cancelled' ? 'bg-rose-50 text-rose-700 border-rose-200' : ''}
                         `}>
-                            {STATUS_LABELS[order.status] || order.status.replace('_', ' ')}
+                            {getStatusLabel(order)}
                         </Badge>
                         {(() => {
                             const pendingReq = order.order_change_requests?.find((r: any) => r.status === 'pending');
@@ -912,7 +906,7 @@ export default function OrderHistoryClient({ initialData }: OrderHistoryClientPr
             return;
         }
         
-        const hours = getHoursUntilPickup(editingOrder.tour_date, editingOrder.pickup_time);
+        const hours = getHoursUntilPickup(tourDate, pickupTime || null);
         if (hours < 14) {
             toast.error('Please call or text Kim at 406-461-1024 to make changes');
             return;
@@ -1160,6 +1154,7 @@ export default function OrderHistoryClient({ initialData }: OrderHistoryClientPr
                         <SelectContent>
                             <SelectItem value="">All Statuses</SelectItem>
                             <SelectItem value="pending" className="font-semibold text-xs">Pending</SelectItem>
+                            <SelectItem value="pending_request" className="font-semibold text-xs">Pending Order Request</SelectItem>
                             <SelectItem value="fulfilled" className="font-semibold text-xs">Fulfilled</SelectItem>
                             <SelectItem value="cancelled" className="font-semibold text-xs">Cancelled</SelectItem>
                         </SelectContent>
@@ -1545,11 +1540,11 @@ export default function OrderHistoryClient({ initialData }: OrderHistoryClientPr
                                             <div className="flex items-center gap-1.5 flex-wrap">
                                                 <Badge variant="outline" className={cn(
                                                     "rounded-lg px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wider",
-                                                    order.status === 'pending' ? 'bg-amber-50 text-amber-700 border-amber-200' : '',
+                                                    (order.status === 'pending' || isUnapprovedReq(order)) ? 'bg-amber-50 text-amber-700 border-amber-200' : '',
                                                     order.status === 'fulfilled' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : '',
                                                     order.status === 'cancelled' ? 'bg-rose-50 text-rose-700 border-rose-200' : ''
                                                 )}>
-                                                    {STATUS_LABELS[order.status] || order.status.replace('_', ' ')}
+                                                    {getStatusLabel(order)}
                                                 </Badge>
                                                 {(() => {
                                                     const pendingReq = order.order_change_requests?.find((r: any) => r.status === 'pending');
@@ -1678,8 +1673,10 @@ export default function OrderHistoryClient({ initialData }: OrderHistoryClientPr
                     </DialogHeader>
 
                     {editingOrder && (() => {
-                        const hours = getHoursUntilPickup(editingOrder.tour_date, editingOrder.pickup_time);
-                        const remainingStr = getFormattedRemainingTime(editingOrder.tour_date, editingOrder.pickup_time);
+                        const currentTourDate = tourDate || editingOrder.tour_date;
+                        const currentPickupTime = pickupTime !== undefined ? pickupTime : editingOrder.pickup_time;
+                        const hours = getHoursUntilPickup(currentTourDate, currentPickupTime);
+                        const remainingStr = getFormattedRemainingTime(currentTourDate, currentPickupTime);
                         const timeInfo = remainingStr ? ` (${remainingStr})` : '';
 
                         if (hours < 14) {
@@ -1931,8 +1928,12 @@ export default function OrderHistoryClient({ initialData }: OrderHistoryClientPr
 
                         <DialogFooter className="bg-gray-50/50 px-8 py-6 border-t border-gray-100">
                             <Button type="button" variant="ghost" className="rounded-xl font-bold text-gray-500" onClick={() => setIsEditDialogOpen(false)}>Cancel</Button>
-                            <Button type="submit" disabled={loading || !hasChanges || editItems.length === 0} className="rounded-xl bg-violet-600 hover:bg-violet-700 font-bold px-10 shadow-lg shadow-violet-100">
-                                {loading ? 'Saving...' : 'Save Changes'}
+                            <Button 
+                                type="submit" 
+                                disabled={loading || !hasChanges || editItems.length === 0 || (editingOrder && getHoursUntilPickup(tourDate || editingOrder.tour_date, pickupTime !== undefined ? pickupTime : editingOrder.pickup_time) < 14)} 
+                                className="rounded-xl bg-violet-600 hover:bg-violet-700 font-bold px-10 shadow-lg shadow-violet-100"
+                            >
+                                {loading ? 'Saving...' : (editingOrder && getHoursUntilPickup(tourDate || editingOrder.tour_date, pickupTime !== undefined ? pickupTime : editingOrder.pickup_time) < 24) ? 'Submit Change Request' : 'Save Changes'}
                             </Button>
                         </DialogFooter>
                     </form>

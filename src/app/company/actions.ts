@@ -517,7 +517,13 @@ export async function getPaginatedCompanyOrders(filters: {
             .order('created_at', { ascending: false });
 
         if (filters.status) {
-            query = query.eq('status', filters.status);
+            if (filters.status === 'pending_request') {
+                query = query.or('status.eq.pending_request,and(status.eq.pending,custom_fields->is_approved.eq.false)');
+            } else if (filters.status === 'pending') {
+                query = query.or('status.eq.pending,status.eq.pending_request');
+            } else {
+                query = query.eq('status', filters.status);
+            }
         }
 
         // Apply date range
@@ -568,7 +574,13 @@ export async function getPaginatedCompanyOrders(filters: {
             .order('created_at', { ascending: false });
 
         if (filters.status) {
-            statsQuery = statsQuery.eq('status', filters.status);
+            if (filters.status === 'pending_request') {
+                statsQuery = statsQuery.or('status.eq.pending_request,and(status.eq.pending,custom_fields->is_approved.eq.false)');
+            } else if (filters.status === 'pending') {
+                statsQuery = statsQuery.or('status.eq.pending,status.eq.pending_request');
+            } else {
+                statsQuery = statsQuery.eq('status', filters.status);
+            }
         }
         if (filters.startDate) {
             const val = filters.dateFilterMode === 'tour' ? filters.startDate : `${filters.startDate}T00:00:00.000Z`;

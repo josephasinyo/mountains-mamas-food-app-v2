@@ -8,7 +8,7 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import {
     LayoutDashboard, ShoppingCart, UtensilsCrossed,
     Settings, LogOut, Mountain, PanelLeftClose, PanelLeft,
-    Clock, ExternalLink, Eye, ArrowLeft, FileText,
+    Clock, ExternalLink, Eye, ArrowLeft, FileText, BookOpen
 } from 'lucide-react';
 import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -23,6 +23,7 @@ const navSections = [
             { title: 'Dashboard', href: '/company', icon: LayoutDashboard },
             { title: 'Orders', href: '/company/orders', icon: ShoppingCart },
             { title: 'Invoices', href: '/company/invoices', icon: FileText },
+            { title: 'User Manual', href: '/company/manual', icon: BookOpen },
         ],
     },
     {
@@ -187,7 +188,7 @@ export default function CompanyLayout({ children }: { children: React.ReactNode 
         <div className="flex flex-col min-h-screen bg-[#fafafa] overflow-x-hidden">
             {/* Impersonation Banner */}
             {impersonation.isImpersonating && (
-                <div className="no-print w-full h-10 bg-violet-600 text-white px-8 flex items-center justify-between text-[11px] font-black uppercase tracking-wider shadow-md z-50 sticky top-0 border-b border-violet-700">
+                <div className="no-print print:hidden w-full h-10 bg-violet-600 text-white px-8 flex items-center justify-between text-[11px] font-black uppercase tracking-wider shadow-md z-50 sticky top-0 border-b border-violet-700">
                     <div className="flex items-center gap-2">
                         <Eye className="size-4 animate-pulse text-violet-200" />
                         <span>Viewing Portal as <span className="underline decoration-violet-300 decoration-2 underline-offset-2">{impersonation.companyName}</span></span>
@@ -223,7 +224,7 @@ export default function CompanyLayout({ children }: { children: React.ReactNode 
                     animate={isMobile ? { x: mobileOpen ? 0 : -280, width: 260 } : { width: collapsed ? 70 : 260, x: 0 }}
                     transition={{ type: 'spring', damping: 26, stiffness: 220 }}
                     className={cn(
-                        "fixed inset-y-0 left-0 z-40 flex flex-col border-r bg-white shadow-[1px_0_0_0_rgba(0,0,0,0.05)]",
+                        "fixed inset-y-0 left-0 z-40 flex flex-col border-r bg-white shadow-[1px_0_0_0_rgba(0,0,0,0.05)] print:hidden",
                         impersonation.isImpersonating ? "top-10" : "top-0",
                         isMobile && "shadow-2xl"
                     )}
@@ -364,11 +365,11 @@ export default function CompanyLayout({ children }: { children: React.ReactNode 
                 <motion.div 
                     animate={isMobile ? { marginLeft: 0 } : { marginLeft: collapsed ? 70 : 260 }}
                     transition={{ type: 'spring', damping: 26, stiffness: 220 }}
-                    className="flex-1 flex flex-col min-w-0"
+                    className="flex-1 flex flex-col min-w-0 print:!ml-0 print:!p-0"
                 >
                     {/* Top bar */}
                     <header className={cn(
-                        "sticky top-0 z-30 flex h-16 items-center gap-4 border-b border-gray-100 bg-white/80 backdrop-blur-xl px-4 sm:px-8",
+                        "sticky top-0 z-30 flex h-16 items-center gap-4 border-b border-gray-100 bg-white/80 backdrop-blur-xl px-4 sm:px-8 print:hidden",
                         impersonation.isImpersonating && "top-10"
                     )}>
                         <button
@@ -412,7 +413,7 @@ export default function CompanyLayout({ children }: { children: React.ReactNode 
                     </header>
 
                     {/* Page content */}
-                    <main className="flex-1 p-4 sm:p-8 overflow-y-auto">
+                    <main className="flex-1 p-4 sm:p-8 overflow-y-auto print:!p-0 print:!m-0 print:overflow-visible">
                         <div className="max-w-[1600px] mx-auto">
                             {children}
                         </div>

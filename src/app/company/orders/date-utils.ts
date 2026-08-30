@@ -116,3 +116,28 @@ export function getFormattedRemainingTime(tourDateStr: string, pickupTimeStr: st
     }
 }
 
+export const STATUS_LABELS: Record<string, string> = {
+    pending: 'Pending',
+    pending_request: 'Pending Order Request',
+    fulfilled: 'Fulfilled',
+    cancelled: 'Cancelled',
+};
+
+export function isUnapprovedReq(order: any): boolean {
+    if (!order) return false;
+    if (order.status === 'cancelled' || order.status === 'fulfilled') return false;
+    if (order.status === 'pending_request') return true;
+    if (order.custom_fields?.is_approved === true) return false;
+    
+    const isLastMinute = order.custom_fields?.is_last_minute || (order.tour_date ? getHoursUntilPickup(order.tour_date, order.pickup_time) < 14 : false);
+    return order.status === 'pending' && (isLastMinute || order.custom_fields?.is_approved === false);
+}
+
+export function getStatusLabel(order: any): string {
+    if (!order) return '';
+    if (isUnapprovedReq(order)) {
+        return 'Pending Order Request';
+    }
+    return STATUS_LABELS[order.status] || (order.status ? order.status.replace('_', ' ') : '');
+}
+

@@ -9,7 +9,7 @@ import {
     LayoutDashboard, ShoppingCart, ClipboardList, UtensilsCrossed,
     Building2, FileText, ScrollText, BarChart3, Activity,
     LogOut, Ticket, Mountain, PanelLeftClose, PanelLeft, Settings, UserCog,
-    BellRing, X, Eye, Mail
+    BellRing, X, Eye, Mail, BookOpen
 } from 'lucide-react';
 import { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -28,6 +28,7 @@ const ALL_NAV_SECTIONS = [
         label: 'Overview',
         items: [
             { title: 'Dashboard', href: '/admin', icon: LayoutDashboard },
+            { title: 'User Manual', href: '/admin/manual', icon: BookOpen },
         ],
     },
     {
@@ -450,7 +451,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
                 animate={isMobile ? { x: mobileOpen ? 0 : -280, width: 260 } : { width: collapsed ? 70 : 260, x: 0 }}
                 transition={{ type: 'spring', damping: 26, stiffness: 220 }}
                 className={cn(
-                    "fixed inset-y-0 left-0 z-40 flex flex-col border-r bg-white shadow-[1px_0_0_0_rgba(0,0,0,0.05)]",
+                    "fixed inset-y-0 left-0 z-40 flex flex-col border-r bg-white shadow-[1px_0_0_0_rgba(0,0,0,0.05)] print:hidden",
                     isMobile && "shadow-2xl"
                 )}
             >
@@ -661,7 +662,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
             <motion.div 
                 animate={isMobile ? { marginLeft: 0 } : { marginLeft: collapsed ? 70 : 260 }}
                 transition={{ type: 'spring', damping: 26, stiffness: 220 }}
-                className="flex-1 flex flex-col min-w-0"
+                className="flex-1 flex flex-col min-w-0 print:!ml-0 print:!p-0"
             >
                 {/* Autoplay Warning Banner */}
                 {isAudioSuspended && (
@@ -680,7 +681,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
                 )}
 
                 {/* Top bar */}
-                <header className="sticky top-0 z-30 flex h-16 items-center gap-4 border-b border-gray-100 bg-white/80 backdrop-blur-xl px-4 sm:px-8">
+                <header className="sticky top-0 z-30 flex h-16 items-center gap-4 border-b border-gray-100 bg-white/80 backdrop-blur-xl px-4 sm:px-8 print:hidden">
                     <button
                         onClick={() => isMobile ? setMobileOpen(!mobileOpen) : setCollapsed(!collapsed)}
                         className="flex items-center justify-center size-9 rounded-xl text-gray-400 hover:text-gray-900 hover:bg-gray-100 transition-all"
@@ -736,7 +737,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
                 </header>
 
                 {/* Page content */}
-                <main className="flex-1 p-4 sm:p-8 overflow-y-auto">
+                <main className="flex-1 p-4 sm:p-8 overflow-y-auto print:!p-0 print:!m-0 print:overflow-visible">
                     <div className="max-w-[1600px] mx-auto">
                         {!loadingSession ? children : (
                             <div className="flex items-center justify-center h-64">

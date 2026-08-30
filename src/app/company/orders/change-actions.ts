@@ -73,7 +73,7 @@ export async function createOrderChangeRequest(
 
         const origHours = getHoursUntilPickup(order.tour_date, order.pickup_time);
         const propHours = getHoursUntilPickup(effectiveTourDate, effectivePickupTime);
-        const hoursUntilPickup = Math.min(origHours, propHours);
+        const hoursUntilPickup = (type === 'update') ? propHours : origHours;
 
         // 3. Enforce 3-Tier Modification Policy
         // Tier 3: Less than 14 hours away -> Locked. Must call/text Kim.
