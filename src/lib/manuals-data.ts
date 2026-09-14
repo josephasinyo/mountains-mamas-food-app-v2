@@ -868,7 +868,7 @@ export const ADMIN_MANUAL_DATA: ManualData = {
                         "Click + Add Lead at the top right of /admin/outreach.",
                         "Enter Company Name * (e.g. Yellowstone Tour Guides) and primary Email * for outreach campaigns.",
                         "Provide Phone number and Website URL to verify their excursion offerings and schedules.",
-                        "Set Operational Details: Enter Home Base (e.g. West Yellowstone), State (e.g. MT), Primary Gate (e.g. West), Tour Type (e.g. Sightseeing, Fly Fishing, Bus Tours), and Season (e.g. Summer).",
+                        "Set Operational & Location Details: Enter Home Base (e.g. West Yellowstone), State (e.g. MT), Mailing Address (e.g. 123 Main St, West Yellowstone, MT 59758), Primary Gate (e.g. West), Tour Type (e.g. Sightseeing, Fly Fishing, Bus Tours), and Season (e.g. Summer).",
                         "Assign Outreach Tier & Priority: Specify Outreach Tier (e.g. Tier 1) and Priority level (e.g. A+) to prioritize high-value tour operators.",
                         "Enter Key Contact: Provide Contact Name (e.g. John Doe) and Title (e.g. Director of Travel).",
                         "Estimate Group Volume: Specify Average Group Size (e.g. 25) and Estimated Annual Guests (e.g. 1,500) to gauge catering potential.",
@@ -913,6 +913,19 @@ export const ADMIN_MANUAL_DATA: ManualData = {
                             alt: "Customize Campaign modal showing email template selector on left and live preview on right",
                             caption: "Customize Campaign Modal - Choose from 4 pre-built email templates, preview live merge content, and send to recipients"
                         }
+                    ]
+                },
+                {
+                    title: "Printing Sticky Mailing Labels",
+                    paragraphs: [
+                        "Admins can print physical sticky mailing labels containing company names and mailing addresses for one, multiple, or all tour leads directly with one click:",
+                        "• Single Lead Print: Click the printer icon next to any lead's mailing address in the table or select Print Mailing Label from the ... actions menu to immediately print that lead's label.",
+                        "• Bulk & All Leads Print: Select multiple leads or click the Print Labels button in the top action bar to immediately print all selected or available mailing labels."
+                    ],
+                    steps: [
+                        "Select one or more leads on /admin/outreach (or leave unselected to print all leads with mailing addresses).",
+                        "Click Print Labels at the top of the table (or click the printer icon on any individual lead row).",
+                        "The browser print dialog opens immediately to print your sticky labels."
                     ]
                 },
                 {

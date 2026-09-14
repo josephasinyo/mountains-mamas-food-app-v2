@@ -16,6 +16,7 @@ interface OutreachLead {
     website?: string;
     home_base?: string;
     state?: string;
+    mailing_address?: string;
     primary_gate?: string;
     tour_type?: string;
     season?: string;
@@ -78,6 +79,11 @@ const COLUMN_MAP: Record<string, string> = {
     // state
     'state': 'state',
     'st': 'state',
+    // mailing_address
+    'mailing address': 'mailing_address',
+    'mailing': 'mailing_address',
+    'address': 'mailing_address',
+    'street address': 'mailing_address',
     // primary_gate
     'primary gate': 'primary_gate',
     'gate': 'primary_gate',
@@ -223,13 +229,14 @@ export async function importLeadsFromCSV(headers: string[], rows: string[][]) {
         }
         const finalNotes = notesParts.join('\n\n');
 
-        const { error } = await supabase.from('outreach_leads').insert({
+        const insertObj: Record<string, any> = {
             company_name: lead.company_name,
             phone: lead.phone || null,
             email: normalizedEmail,
             website: lead.website || null,
             home_base: lead.home_base || null,
             state: lead.state || null,
+            mailing_address: lead.mailing_address || null,
             primary_gate: lead.primary_gate || null,
             tour_type: lead.tour_type || null,
             season: lead.season || null,
@@ -242,7 +249,19 @@ export async function importLeadsFromCSV(headers: string[], rows: string[][]) {
             average_group_size: lead.average_group_size ? parseInt(lead.average_group_size, 10) : null,
             estimated_annual_yellowstone_guests: lead.estimated_annual_yellowstone_guests ? parseInt(lead.estimated_annual_yellowstone_guests, 10) : null,
             status: 'not_contacted',
-        });
+        };
+
+        let { error } = await supabase.from('outreach_leads').insert(insertObj);
+
+        if (error && (error.message.includes('mailing_address') || error.message.includes('schema cache'))) {
+            delete insertObj.mailing_address;
+            if (lead.mailing_address) {
+                const extra = `Mailing Address: ${lead.mailing_address}`;
+                insertObj.notes = insertObj.notes ? `${insertObj.notes}\n${extra}` : extra;
+            }
+            const retry = await supabase.from('outreach_leads').insert(insertObj);
+            error = retry.error;
+        }
 
         if (error) {
             errors.push(`${lead.company_name}: ${error.message}`);
@@ -279,6 +298,7 @@ export async function createOutreachLead(leadData: {
     website?: string;
     home_base?: string;
     state?: string;
+    mailing_address?: string;
     primary_gate?: string;
     tour_type?: string;
     season?: string;
@@ -310,30 +330,49 @@ export async function createOutreachLead(leadData: {
         return { success: false, error: 'A lead with this email address already exists.' };
     }
 
-    const { data, error } = await supabase
+    const insertPayload: Record<string, any> = {
+        company_name: leadData.company_name,
+        email: normalizedEmail,
+        phone: leadData.phone || null,
+        website: leadData.website || null,
+        home_base: leadData.home_base || null,
+        state: leadData.state || null,
+        mailing_address: leadData.mailing_address || null,
+        primary_gate: leadData.primary_gate || null,
+        tour_type: leadData.tour_type || null,
+        season: leadData.season || null,
+        notes: leadData.notes || null,
+        partnership_notes: leadData.partnership_notes || null,
+        outreach_tier: leadData.outreach_tier || null,
+        priority: leadData.priority || null,
+        contact_name: leadData.contact_name || null,
+        title: leadData.title || null,
+        average_group_size: leadData.average_group_size || null,
+        estimated_annual_yellowstone_guests: leadData.estimated_annual_yellowstone_guests || null,
+        status: 'not_contacted',
+    };
+
+    let { data, error } = await supabase
         .from('outreach_leads')
-        .insert({
-            company_name: leadData.company_name,
-            email: normalizedEmail,
-            phone: leadData.phone || null,
-            website: leadData.website || null,
-            home_base: leadData.home_base || null,
-            state: leadData.state || null,
-            primary_gate: leadData.primary_gate || null,
-            tour_type: leadData.tour_type || null,
-            season: leadData.season || null,
-            notes: leadData.notes || null,
-            partnership_notes: leadData.partnership_notes || null,
-            outreach_tier: leadData.outreach_tier || null,
-            priority: leadData.priority || null,
-            contact_name: leadData.contact_name || null,
-            title: leadData.title || null,
-            average_group_size: leadData.average_group_size || null,
-            estimated_annual_yellowstone_guests: leadData.estimated_annual_yellowstone_guests || null,
-            status: 'not_contacted',
-        })
+        .insert(insertPayload)
         .select('*')
         .single();
+
+    // Gracefully handle case where mailing_address column is not yet in Supabase schema cache
+    if (error && (error.message.includes('mailing_address') || error.message.includes('schema cache'))) {
+        delete insertPayload.mailing_address;
+        if (leadData.mailing_address) {
+            const extra = `Mailing Address: ${leadData.mailing_address}`;
+            insertPayload.notes = insertPayload.notes ? `${insertPayload.notes}\n${extra}` : extra;
+        }
+        const retry = await supabase
+            .from('outreach_leads')
+            .insert(insertPayload)
+            .select('*')
+            .single();
+        data = retry.data;
+        error = retry.error;
+    }
 
     if (error) {
         return { success: false, error: error.message };
@@ -361,6 +400,7 @@ export async function updateOutreachLead(leadId: string, leadData: {
     website?: string;
     home_base?: string;
     state?: string;
+    mailing_address?: string;
     primary_gate?: string;
     tour_type?: string;
     season?: string;
@@ -383,6 +423,7 @@ export async function updateOutreachLead(leadId: string, leadData: {
     if (leadData.website !== undefined) updates.website = leadData.website || null;
     if (leadData.home_base !== undefined) updates.home_base = leadData.home_base || null;
     if (leadData.state !== undefined) updates.state = leadData.state || null;
+    if (leadData.mailing_address !== undefined) updates.mailing_address = leadData.mailing_address || null;
     if (leadData.primary_gate !== undefined) updates.primary_gate = leadData.primary_gate || null;
     if (leadData.tour_type !== undefined) updates.tour_type = leadData.tour_type || null;
     if (leadData.season !== undefined) updates.season = leadData.season || null;
@@ -399,12 +440,32 @@ export async function updateOutreachLead(leadId: string, leadData: {
         return { success: false, error: 'No fields to update.' };
     }
 
-    const { data, error } = await supabase
+    let { data, error } = await supabase
         .from('outreach_leads')
         .update(updates)
         .eq('id', leadId)
         .select('*')
         .single();
+
+    // Gracefully handle case where mailing_address column is not yet in Supabase schema cache
+    if (error && (error.message.includes('mailing_address') || error.message.includes('schema cache'))) {
+        const fallbackAddress = updates.mailing_address;
+        delete updates.mailing_address;
+        if (fallbackAddress && updates.notes !== undefined) {
+            const extra = `Mailing Address: ${fallbackAddress}`;
+            updates.notes = updates.notes ? `${updates.notes}\n${extra}` : extra;
+        }
+        if (Object.keys(updates).length > 0) {
+            const retry = await supabase
+                .from('outreach_leads')
+                .update(updates)
+                .eq('id', leadId)
+                .select('*')
+                .single();
+            data = retry.data;
+            error = retry.error;
+        }
+    }
 
     if (error) {
         return { success: false, error: error.message };
@@ -1153,6 +1214,9 @@ export async function convertLeadToPartner(leadId: string) {
         order_link: `${baseUrl}/${defaultSlug}`,
         email: lead.email,
         phone: lead.phone || null,
+        representative_name: lead.contact_name || null,
+        representative_title: lead.title || null,
+        mailing_address: lead.mailing_address || null,
         payment_method: 'monthly_invoice',
         status: 'active' as const,
         is_active: true,

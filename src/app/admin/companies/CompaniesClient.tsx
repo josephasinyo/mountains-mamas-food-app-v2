@@ -30,7 +30,7 @@ import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import {
     Plus, MoreHorizontal, Pencil, CheckCircle, XCircle, Trash2,
     Building2, CreditCard, FileText, Copy, ChevronRight, ChevronDown,
-    Phone, Mail, Globe, ExternalLink, Clock, LayoutGrid, List, Send, User, Percent, Settings
+    Phone, Mail, Globe, ExternalLink, Clock, Send, User, Percent, Settings, MapPin
 } from 'lucide-react';
 import { cn, formatDateUS } from '@/lib/utils';
 
@@ -52,7 +52,6 @@ export function CompaniesClient({ initialCompanies }: CompaniesClientProps) {
     const [companyToDelete, setCompanyToDelete] = useState<{ id: string; name: string } | null>(null);
     const [companyToResend, setCompanyToResend] = useState<{ id: string; name: string } | null>(null);
     const [filter, setFilter] = useState('all');
-    const [viewMode, setViewMode] = useState<'table' | 'cards'>('table');
     
     // Form States
     const [name, setName] = useState('');
@@ -61,6 +60,7 @@ export function CompaniesClient({ initialCompanies }: CompaniesClientProps) {
     const [paymentMethod, setPaymentMethod] = useState('direct_pay');
     const [representativeName, setRepresentativeName] = useState('');
     const [representativeTitle, setRepresentativeTitle] = useState('');
+    const [mailingAddress, setMailingAddress] = useState('');
     const [discountPercentage, setDiscountPercentage] = useState('0');
     const [prepInstructions, setPrepInstructions] = useState('');
     const [useMountainMamasBranding, setUseMountainMamasBranding] = useState(false);
@@ -75,12 +75,13 @@ export function CompaniesClient({ initialCompanies }: CompaniesClientProps) {
         paymentMethod !== editingCompany.payment_method ||
         representativeName !== (editingCompany.representative_name || '') ||
         representativeTitle !== (editingCompany.representative_title || '') ||
+        mailingAddress !== (editingCompany.mailing_address || '') ||
         discountPercentage !== String(editingCompany.discount_percentage ?? 0) ||
         prepInstructions !== (editingCompany.prep_instructions || '') ||
         useMountainMamasBranding !== (editingCompany.company_app_config?.use_mountain_mamas_branding ?? false) ||
         customWelcomeMessage !== (editingCompany.company_app_config?.custom_welcome_message || '')
     ) : (
-        name.length > 0 || email.length > 0 || prepInstructions.length > 0 || useMountainMamasBranding || customWelcomeMessage.length > 0
+        name.length > 0 || email.length > 0 || mailingAddress.length > 0 || prepInstructions.length > 0 || useMountainMamasBranding || customWelcomeMessage.length > 0
     );
 
     const [invoiceToDelete, setInvoiceToDelete] = useState<{ id: string; amount: number; companyId: string } | null>(null);
@@ -133,6 +134,7 @@ export function CompaniesClient({ initialCompanies }: CompaniesClientProps) {
         setPaymentMethod('direct_pay');
         setRepresentativeName('');
         setRepresentativeTitle('');
+        setMailingAddress('');
         setDiscountPercentage('0');
         setPrepInstructions('');
         setUseMountainMamasBranding(false);
@@ -148,6 +150,7 @@ export function CompaniesClient({ initialCompanies }: CompaniesClientProps) {
         setPaymentMethod(company.payment_method);
         setRepresentativeName(company.representative_name || '');
         setRepresentativeTitle(company.representative_title || '');
+        setMailingAddress(company.mailing_address || '');
         setDiscountPercentage(String(company.discount_percentage ?? 0));
         setPrepInstructions(company.prep_instructions || '');
         setUseMountainMamasBranding(company.company_app_config?.use_mountain_mamas_branding ?? false);
@@ -166,6 +169,7 @@ export function CompaniesClient({ initialCompanies }: CompaniesClientProps) {
             formData.set('payment_method', paymentMethod);
             formData.set('representative_name', representativeName);
             formData.set('representative_title', representativeTitle);
+            formData.set('mailing_address', mailingAddress);
             formData.set('discount_percentage', discountPercentage);
             formData.set('prep_instructions', prepInstructions);
             formData.set('use_mountain_mamas_branding', String(useMountainMamasBranding));
@@ -286,26 +290,6 @@ export function CompaniesClient({ initialCompanies }: CompaniesClientProps) {
                     <p className="text-sm text-muted-foreground font-medium">Manage partners, payment methods, and onboarding.</p>
                 </div>
                 <div className="flex items-center gap-2">
-                    <div className="flex items-center gap-1 bg-gray-100 p-1 rounded-xl mr-2">
-                        <Button 
-                            variant="ghost" 
-                            size="sm" 
-                            onClick={() => setViewMode('table')}
-                            className={`h-8 rounded-lg px-3 transition-all ${viewMode === 'table' ? 'bg-white shadow-sm text-violet-600' : 'text-gray-500'}`}
-                        >
-                            <List className="size-4 mr-1.5" />
-                            <span className="text-xs font-bold">Table</span>
-                        </Button>
-                        <Button 
-                            variant="ghost" 
-                            size="sm" 
-                            onClick={() => setViewMode('cards')}
-                            className={`h-8 rounded-lg px-3 transition-all ${viewMode === 'cards' ? 'bg-white shadow-sm text-violet-600' : 'text-gray-500'}`}
-                        >
-                            <LayoutGrid className="size-4 mr-1.5" />
-                            <span className="text-xs font-bold">Cards</span>
-                        </Button>
-                    </div>
                     <Button onClick={openCreate} className="gap-1.5 rounded-xl bg-violet-600 hover:bg-violet-700 shadow-lg shadow-violet-100 font-bold">
                         <Plus className="size-4" /> Add Company
                     </Button>
@@ -335,7 +319,7 @@ export function CompaniesClient({ initialCompanies }: CompaniesClientProps) {
                         <p className="text-sm font-medium mt-1">{filter === 'all' ? 'Add your first tour company.' : 'Try a different filter.'}</p>
                     </CardContent>
                 </Card>
-            ) : viewMode === 'table' ? (
+            ) : (
                 <Card className="rounded-3xl border-none shadow-xl shadow-gray-200/50 overflow-hidden">
                     <Table>
                         <TableHeader className="bg-gray-50/50">
@@ -354,101 +338,107 @@ export function CompaniesClient({ initialCompanies }: CompaniesClientProps) {
                                 const isExpanded = expandedCompanyId === company.id;
                                 return (
                                     <React.Fragment key={company.id}>
-                                        <TableRow 
-                                            className={cn(
-                                                "cursor-pointer transition-all duration-200 group border-gray-50",
-                                                isExpanded ? "bg-violet-50/30" : "hover:bg-violet-50/10"
-                                            )}
-                                            onClick={() => toggleExpand(company.id)}
-                                        >
-                                            <TableCell className={cn(
-                                                "relative py-4 pl-6",
-                                                isExpanded && "after:absolute after:left-0 after:top-0 after:bottom-0 after:w-1 after:bg-violet-600"
-                                            )}>
-                                                <ChevronRight className={cn(
-                                                    "size-4 text-muted-foreground transition-all duration-300",
-                                                    isExpanded && "rotate-90 text-violet-600 scale-110"
-                                                )} />
+                                        <TableRow className={cn(
+                                            "group transition-colors border-gray-50",
+                                            isExpanded ? "bg-violet-50/30 hover:bg-violet-50/40" : "hover:bg-gray-50/50"
+                                        )}>
+                                            <TableCell className="pl-4">
+                                                <button
+                                                    onClick={() => toggleExpand(company.id)}
+                                                    className="size-7 rounded-lg flex items-center justify-center text-gray-400 hover:text-violet-600 hover:bg-violet-50 transition-colors"
+                                                >
+                                                    {isExpanded ? <ChevronDown className="size-4" /> : <ChevronRight className="size-4" />}
+                                                </button>
                                             </TableCell>
-                                            <TableCell>
+                                            <TableCell className="font-medium">
                                                 <div className="flex items-center gap-3">
                                                     <div className={cn(
-                                                        "size-10 rounded-2xl flex items-center justify-center text-sm font-black transition-all duration-300 shadow-sm border border-gray-100",
-                                                        isExpanded 
-                                                            ? "bg-violet-600 text-white shadow-lg shadow-violet-200 scale-110" 
-                                                            : "bg-white text-gray-400 group-hover:bg-violet-50 group-hover:text-violet-600 group-hover:border-violet-100"
+                                                        "size-9 rounded-xl flex items-center justify-center font-bold text-sm shadow-sm border border-gray-100",
+                                                        company.status === 'active' ? "bg-violet-600 text-white" : "bg-gray-100 text-gray-400"
                                                     )}>
                                                         {company.name.charAt(0).toUpperCase()}
                                                     </div>
                                                     <div>
-                                                        <p className={cn(
-                                                            "font-bold text-[15px] transition-colors",
-                                                            isExpanded ? "text-violet-900" : "text-gray-900"
-                                                        )}>{company.name}</p>
-                                                        <p className="text-xs text-gray-500 font-medium">{company.email}</p>
+                                                        <div className="font-bold text-gray-900 flex items-center gap-2">
+                                                            {company.name}
+                                                            {company.discount_percentage > 0 && (
+                                                                <Badge variant="secondary" className="bg-emerald-50 text-emerald-700 text-[10px] font-black border-none px-1.5 py-0">
+                                                                    {company.discount_percentage}% OFF
+                                                                </Badge>
+                                                            )}
+                                                        </div>
+                                                        <div className="text-xs text-muted-foreground flex items-center gap-2 font-medium">
+                                                            <span>{company.email}</span>
+                                                            {company.phone && <span>• {company.phone}</span>}
+                                                        </div>
                                                     </div>
                                                 </div>
                                             </TableCell>
                                             <TableCell>
-                                                <Badge variant="outline" className="text-[10px] font-bold rounded-lg px-2.5 py-0.5 border-gray-200 text-gray-500 gap-1.5">
-                                                    {company.payment_method === 'direct_pay'
-                                                        ? <><CreditCard className="size-3 text-emerald-500" /> Direct Pay</>
-                                                        : <><FileText className="size-3 text-blue-500" /> Invoice</>
-                                                    }
-                                                </Badge>
+                                                {company.payment_method === 'direct_pay' ? (
+                                                    <Badge variant="outline" className="font-bold text-[10px] uppercase tracking-wider rounded-lg bg-blue-50 text-blue-700 border border-blue-200 hover:bg-blue-50 gap-1.5">
+                                                        <CreditCard className="size-3 text-blue-500" />
+                                                        Direct Pay
+                                                    </Badge>
+                                                ) : (
+                                                    <Badge variant="outline" className="font-bold text-[10px] uppercase tracking-wider rounded-lg bg-purple-50 text-purple-700 border border-purple-200 hover:bg-purple-50 gap-1.5">
+                                                        <FileText className="size-3 text-purple-500" />
+                                                        Invoice
+                                                    </Badge>
+                                                )}
                                             </TableCell>
                                             <TableCell>
                                                 <Badge
                                                     variant={company.status === 'active' ? 'default' : company.status === 'suspended' ? 'destructive' : 'secondary'}
-                                                    className={`text-[10px] font-bold rounded-lg px-2.5 py-0.5 uppercase tracking-wider ${
-                                                        company.status === 'active' ? 'bg-emerald-50 text-emerald-700 border-emerald-100' : 
-                                                        company.status === 'suspended' ? 'bg-rose-50 text-rose-700 border-rose-100' : 
-                                                        company.status === 'pending_approval' ? 'bg-amber-50 text-amber-700 border-amber-100' :
-                                                        'bg-gray-100 text-gray-400 border-gray-200'
+                                                    className={`text-[10px] font-bold rounded-lg uppercase tracking-wider ${
+                                                        company.status === 'active' ? 'bg-emerald-50 text-emerald-700 border border-emerald-200 hover:bg-emerald-50' :
+                                                        company.status === 'suspended' ? 'bg-rose-50 text-rose-700 border border-rose-200 hover:bg-rose-50' :
+                                                        'bg-gray-100 text-gray-600 hover:bg-gray-100'
                                                     }`}
                                                 >
                                                     {company.status.replace('_', ' ')}
                                                 </Badge>
                                             </TableCell>
-                                            <TableCell onClick={(e) => e.stopPropagation()} className="text-center">
+                                            <TableCell className="text-center">
                                                 {company.company_app_config?.use_mountain_mamas_branding ? (
-                                                    <div className="flex flex-col gap-1.5 items-center justify-center">
+                                                    <div className="flex flex-col items-center justify-center gap-1">
                                                         <button
                                                             onClick={() => copyLink(company.default_slug || company.slug)}
-                                                            className="inline-flex items-center gap-1.5 text-[11px] font-bold text-violet-600 hover:text-violet-700 bg-violet-50 hover:bg-violet-100 px-2 py-1 rounded-lg transition-colors group/link"
-                                                            title="Copy Default Link"
+                                                            className="inline-flex items-center gap-1.5 text-[11px] font-mono font-bold text-violet-600 hover:text-violet-700 bg-violet-50 hover:bg-violet-100 px-2 py-1 rounded-lg transition-colors group/link"
+                                                            title={`Copy default link: /${company.default_slug || company.slug}`}
                                                         >
-                                                            <span className="text-[9px] text-violet-400 font-normal uppercase mr-0.5">Default:</span>
-                                                            <code>/{company.default_slug || company.slug}</code>
-                                                            <Copy className="size-3 opacity-50 group-hover/link:opacity-100" />
+                                                            <span>/{company.default_slug || company.slug}</span>
+                                                            <Copy className="size-3 opacity-60 group-hover/link:opacity-100" />
                                                         </button>
                                                         <button
                                                             onClick={() => copyLink(company.generic_slug || company.slug)}
-                                                            className="inline-flex items-center gap-1.5 text-[11px] font-bold text-violet-600 hover:text-violet-700 bg-violet-50 hover:bg-violet-100 px-2 py-1 rounded-lg transition-colors group/link"
-                                                            title="Copy White-labeled Link"
+                                                            className="inline-flex items-center gap-1.5 text-[11px] font-mono font-bold text-blue-600 hover:text-blue-700 bg-blue-50 hover:bg-blue-100 px-2 py-1 rounded-lg transition-colors group/link"
+                                                            title={`Copy white-labeled link: /${company.generic_slug || company.slug}`}
                                                         >
-                                                            <span className="text-[9px] text-violet-400 font-normal uppercase mr-0.5">White-labeled:</span>
-                                                            <code>/{company.generic_slug || company.slug}</code>
-                                                            <Copy className="size-3 opacity-50 group-hover/link:opacity-100" />
+                                                            <span>/{company.generic_slug || company.slug}</span>
+                                                            <Copy className="size-3 opacity-60 group-hover/link:opacity-100" />
                                                         </button>
                                                     </div>
                                                 ) : (
-                                                    <button
+                                                    <Button
+                                                        variant="ghost"
+                                                        size="sm"
                                                         onClick={() => copyLink(company.slug)}
-                                                        className="inline-flex items-center gap-1.5 text-[11px] font-bold text-violet-600 hover:text-violet-700 bg-violet-50 hover:bg-violet-100 px-2 py-1 rounded-lg transition-colors group/link"
+                                                        className="h-8 rounded-lg text-xs font-mono font-bold text-violet-600 hover:text-violet-700 hover:bg-violet-50 gap-1.5"
+                                                        title={`Copy ordering link: /${company.slug}`}
                                                     >
-                                                        <code>/{company.slug}</code>
-                                                        <Copy className="size-3 opacity-50 group-hover/link:opacity-100" />
-                                                    </button>
+                                                        <Copy className="size-3.5" />
+                                                        /{company.slug}
+                                                    </Button>
                                                 )}
                                             </TableCell>
-                                            <TableCell className="text-[11px] text-gray-400 font-bold" suppressHydrationWarning>
+                                            <TableCell className="text-xs text-muted-foreground font-medium">
                                                 {formatDateUS(company.created_at)}
                                             </TableCell>
-                                            <TableCell className="text-right pr-6" onClick={(e) => e.stopPropagation()}>
+                                            <TableCell className="text-right pr-6">
                                                 <DropdownMenu>
-                                                    <DropdownMenuTrigger className="inline-flex items-center justify-center size-9 rounded-xl text-gray-400 hover:text-violet-600 hover:bg-violet-50 transition-all cursor-pointer">
-                                                            <MoreHorizontal className="size-5" />
+                                                    <DropdownMenuTrigger className="size-8 rounded-lg hover:bg-gray-100 text-gray-400 hover:text-gray-600 inline-flex items-center justify-center transition-colors">
+                                                        <MoreHorizontal className="size-4" />
                                                     </DropdownMenuTrigger>
                                                     <DropdownMenuContent align="end" className="w-[180px] rounded-xl border-gray-100 shadow-xl p-1">
                                                         <DropdownMenuItem onClick={() => openEdit(company)} className="rounded-lg gap-2 font-bold text-gray-700 focus:bg-violet-50 focus:text-violet-700">
@@ -462,7 +452,7 @@ export function CompaniesClient({ initialCompanies }: CompaniesClientProps) {
                                                         </DropdownMenuItem>
                                                         <DropdownMenuSeparator className="bg-gray-100 my-1" />
                                                         {company.status === 'active' ? (
-                                                            <DropdownMenuItem
+                                                            <DropdownMenuItem 
                                                                 onClick={() => handleStatus(company.id, 'suspended')}
                                                                 className="rounded-lg gap-2 font-bold text-rose-600 focus:bg-rose-50 focus:text-rose-700"
                                                             >
@@ -484,194 +474,189 @@ export function CompaniesClient({ initialCompanies }: CompaniesClientProps) {
                                                 </DropdownMenu>
                                             </TableCell>
                                         </TableRow>
- 
+
                                         {isExpanded && (
                                             <TableRow className="bg-gray-50/20 hover:bg-gray-50/20 border-gray-50">
                                                 <TableCell colSpan={7} className="p-0">
-                                                    <div className="px-14 py-8 bg-white shadow-inner">
-                                                        <div className="grid grid-cols-1 md:grid-cols-3 gap-12">
-                                                            {/* Contact Details */}
-                                                            <div className="space-y-5">
-                                                                <div className="flex items-center gap-2.5 text-[10px] font-black uppercase tracking-[0.15em] text-gray-400">
+                                                    <div className="px-10 py-6 bg-white shadow-inner">
+                                                        <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
+                                                            {/* Column 1: Partner Details + Contract */}
+                                                            <div className="lg:col-span-5 space-y-4">
+                                                                <div className="flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.15em] text-gray-400">
                                                                     <Building2 className="size-3.5 text-violet-500" /> Partner Profile
                                                                 </div>
-                                                                <div className="space-y-4">
-                                                                    <div className="flex items-start gap-4">
-                                                                        <div className="size-8 rounded-xl bg-violet-50 flex items-center justify-center text-violet-600">
-                                                                            <Mail className="size-4" />
+                                                                <div className="space-y-3.5 bg-gray-50/50 rounded-2xl p-4 border border-gray-100">
+                                                                    <div className="flex items-start gap-3">
+                                                                        <div className="size-7 rounded-lg bg-violet-50 flex items-center justify-center text-violet-600 shrink-0">
+                                                                            <Mail className="size-3.5" />
                                                                         </div>
-                                                                        <div>
+                                                                        <div className="min-w-0">
                                                                             <p className="text-[10px] text-gray-400 font-bold uppercase tracking-wider">Email Address</p>
-                                                                            <p className="text-sm font-bold text-gray-900">{company.email}</p>
+                                                                            <p className="text-xs font-bold text-gray-900 truncate">{company.email}</p>
                                                                         </div>
                                                                     </div>
-                                                                    <div className="flex items-start gap-4">
-                                                                        <div className="size-8 rounded-xl bg-emerald-50 flex items-center justify-center text-emerald-600">
-                                                                            <Phone className="size-4" />
+                                                                    <div className="flex items-start gap-3">
+                                                                        <div className="size-7 rounded-lg bg-emerald-50 flex items-center justify-center text-emerald-600 shrink-0">
+                                                                            <Phone className="size-3.5" />
                                                                         </div>
-                                                                        <div>
+                                                                        <div className="min-w-0">
                                                                             <p className="text-[10px] text-gray-400 font-bold uppercase tracking-wider">Phone Contact</p>
-                                                                            <p className="text-sm font-bold text-gray-900">{company.phone || 'Not provided'}</p>
+                                                                            <p className="text-xs font-bold text-gray-900">{company.phone || 'Not provided'}</p>
                                                                         </div>
                                                                     </div>
-                                                                    <div className="flex items-start gap-4">
-                                                                        <div className="size-8 rounded-xl bg-violet-50 flex items-center justify-center text-violet-600">
-                                                                            <User className="size-4" />
+                                                                    <div className="flex items-start gap-3">
+                                                                        <div className="size-7 rounded-lg bg-indigo-50 flex items-center justify-center text-indigo-600 shrink-0">
+                                                                            <User className="size-3.5" />
                                                                         </div>
-                                                                        <div>
+                                                                        <div className="min-w-0">
                                                                             <p className="text-[10px] text-gray-400 font-bold uppercase tracking-wider">Legal Representative</p>
-                                                                            <p className="text-sm font-bold text-gray-900">{company.representative_name || 'Not provided'}{company.representative_title ? ` (${company.representative_title})` : ''}</p>
+                                                                            <p className="text-xs font-bold text-gray-900">{company.representative_name || 'Not provided'}{company.representative_title ? ` (${company.representative_title})` : ''}</p>
                                                                         </div>
                                                                     </div>
-                                                                    <div className="flex items-start gap-4">
-                                                                        <div className="size-8 rounded-xl bg-blue-50 flex items-center justify-center text-blue-600">
-                                                                            <Globe className="size-4" />
+                                                                    <div className="flex items-start gap-3">
+                                                                        <div className="size-7 rounded-lg bg-amber-50 flex items-center justify-center text-amber-600 shrink-0">
+                                                                            <MapPin className="size-3.5" />
                                                                         </div>
-                                                                        <div>
+                                                                        <div className="min-w-0">
+                                                                            <p className="text-[10px] text-gray-400 font-bold uppercase tracking-wider">Mailing Address</p>
+                                                                            <p className="text-xs font-bold text-gray-900 whitespace-pre-line">{company.mailing_address || 'Not provided'}</p>
+                                                                        </div>
+                                                                    </div>
+                                                                    <div className="flex items-start gap-3">
+                                                                        <div className="size-7 rounded-lg bg-blue-50 flex items-center justify-center text-blue-600 shrink-0">
+                                                                            <Globe className="size-3.5" />
+                                                                        </div>
+                                                                        <div className="min-w-0">
                                                                             <p className="text-[10px] text-gray-400 font-bold uppercase tracking-wider">Public Slug(s)</p>
                                                                             {company.company_app_config?.use_mountain_mamas_branding ? (
-                                                                                <div className="space-y-1">
+                                                                                <div className="space-y-0.5">
                                                                                     <p className="text-xs font-mono text-blue-600 font-bold">Default: /{company.default_slug || company.slug}</p>
                                                                                     <p className="text-xs font-mono text-blue-600 font-bold">White-labeled: /{company.generic_slug || company.slug}</p>
                                                                                 </div>
                                                                             ) : (
-                                                                                <p className="text-sm font-mono text-blue-600 font-bold">/{company.slug}</p>
+                                                                                <p className="text-xs font-mono text-blue-600 font-bold">/{company.slug}</p>
                                                                             )}
                                                                         </div>
                                                                     </div>
-                                                                    <div className="flex items-start gap-4">
-                                                                        <div className="size-8 rounded-xl bg-violet-50 flex items-center justify-center text-violet-600">
-                                                                            <Settings className="size-4" />
+                                                                    <div className="flex items-start gap-3 pt-1 border-t border-gray-100">
+                                                                        <div className="size-7 rounded-lg bg-blue-50 flex items-center justify-center text-blue-600 shrink-0">
+                                                                            <FileText className="size-3.5" />
                                                                         </div>
-                                                                        <div>
-                                                                            <p className="text-[10px] text-gray-400 font-bold uppercase tracking-wider">Ordering Branding</p>
-                                                                            <p className="text-sm font-bold text-gray-900">
-                                                                                {company.company_app_config?.use_mountain_mamas_branding 
-                                                                                    ? "Mountain Mama's Café" 
-                                                                                    : "Tour Company Name"}
-                                                                            </p>
-                                                                        </div>
-                                                                    </div>
-                                                                </div>
-                                                            </div>
- 
-                                                            {/* Contracts */}
-                                                            <div className="space-y-5">
-                                                                <div className="flex items-center gap-2.5 text-[10px] font-black uppercase tracking-[0.15em] text-gray-400">
-                                                                    <FileText className="size-3.5 text-blue-500" /> Active Contracts
-                                                                </div>
-                                                                {company.contracts && company.contracts.length > 0 ? (
-                                                                    <div className="space-y-3">
-                                                                        {company.contracts.map((contract: any) => (
-                                                                            <div key={contract.id} className="flex items-center justify-between p-3 rounded-2xl border border-gray-100 bg-gray-50/50 group/item hover:border-violet-200 transition-all">
-                                                                                <div className="flex items-center gap-3">
-                                                                                    <div className="size-10 rounded-xl bg-white shadow-sm flex items-center justify-center text-violet-600 border border-gray-100 group-hover/item:bg-violet-600 group-hover/item:text-white transition-all">
-                                                                                        <FileText className="size-5" />
-                                                                                    </div>
-                                                                                    <div>
-                                                                                        <p className="text-xs font-bold capitalize text-gray-900">{contract.status}</p>
-                                                                                        <p className="text-[10px] text-gray-400 font-bold">
-                                                                                            {contract.signed_at ? `Signed ${formatDateUS(contract.signed_at)}` : 'Awaiting signature'}
-                                                                                        </p>
-                                                                                    </div>
-                                                                                </div>
-                                                                                {(contract.pdf_url || contract.status === 'signed') && (
-                                                                                    <a 
-                                                                                        href={contract.pdf_url || `/admin/companies/contracts/${contract.id}`} 
-                                                                                        target="_blank" 
-                                                                                        rel="noopener noreferrer"
-                                                                                        className="size-8 rounded-lg bg-white border border-gray-100 flex items-center justify-center text-gray-400 hover:text-violet-600 hover:border-violet-200 transition-all cursor-pointer"
-                                                                                        title="View / Print Signed Contract"
-                                                                                    >
-                                                                                        <ExternalLink className="size-3.5" />
-                                                                                    </a>
-                                                                                )}
-                                                                            </div>
-                                                                        ))}
-                                                                    </div>
-                                                                ) : (
-                                                                    <div className="flex flex-col items-center justify-center py-8 rounded-2xl border border-dashed border-gray-200 text-gray-400 text-xs font-medium bg-gray-50/50">
-                                                                        <FileText className="size-6 mb-2 opacity-20" />
-                                                                        No active contracts.
-                                                                    </div>
-                                                                )}
-                                                            </div>
- 
-                                                            {/* Invoices */}
-                                                            <div className="space-y-5">
-                                                                <div className="flex items-center gap-2.5 text-[10px] font-black uppercase tracking-[0.15em] text-gray-400">
-                                                                    <CreditCard className="size-3.5 text-emerald-500" /> Recent Billing
-                                                                </div>
-                                                                {company.invoices && company.invoices.length > 0 ? (
-                                                                    <div className="space-y-3">
-                                                                        {company.invoices.slice(0, 3).map((invoice: any) => (
-                                                                            <div key={invoice.id} className="flex items-center justify-between p-3 rounded-2xl border border-gray-100 bg-gray-50/50 group/item hover:border-violet-200 transition-all">
-                                                                                <div className="flex items-center gap-3">
-                                                                                    <div className={cn(
-                                                                                        "size-10 rounded-xl bg-white shadow-sm flex items-center justify-center text-[9px] font-black uppercase border border-gray-100",
-                                                                                        invoice.status === 'paid' ? "text-emerald-600 group-hover/item:bg-emerald-600" : "text-amber-600 group-hover/item:bg-amber-600",
-                                                                                        "group-hover/item:text-white transition-all"
-                                                                                    )}>
-                                                                                        {invoice.status}
-                                                                                    </div>
-                                                                                    <div>
-                                                                                        <p className="text-sm font-black text-gray-900">${invoice.total_amount.toFixed(2)}</p>
-                                                                                        <p className="text-[10px] text-gray-400 font-bold">
-                                                                                            {formatDateUS(invoice.created_at)}
-                                                                                        </p>
-                                                                                    </div>
-                                                                                </div>
-                                                                                <div className="flex items-center gap-1.5">
-                                                                                    {invoice.pdf_url && (
+                                                                        <div className="min-w-0 flex-1">
+                                                                            <p className="text-[10px] text-gray-400 font-bold uppercase tracking-wider">Signed Agreement</p>
+                                                                            {company.contracts && company.contracts.length > 0 ? (
+                                                                                <div className="flex flex-wrap gap-2 mt-1">
+                                                                                    {company.contracts.map((contract: any) => (
                                                                                         <a 
-                                                                                            href={invoice.pdf_url} 
+                                                                                            key={contract.id} 
+                                                                                            href={contract.pdf_url || `/admin/companies/contracts/${contract.id}`} 
                                                                                             target="_blank" 
                                                                                             rel="noopener noreferrer"
-                                                                                            className="size-8 rounded-lg bg-white border border-gray-100 flex items-center justify-center text-gray-400 hover:text-violet-600 hover:border-violet-200 transition-all cursor-pointer"
-                                                                                            title="Download Stripe PDF"
+                                                                                            className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-blue-50 border border-blue-100 text-xs font-bold text-blue-700 hover:bg-blue-100 hover:border-blue-200 transition-all"
+                                                                                            title="View / Print Signed Contract"
                                                                                         >
-                                                                                            <FileText className="size-3.5" />
+                                                                                            <FileText className="size-3" />
+                                                                                            <span>{contract.status === 'signed' ? (contract.signed_at ? `Signed (${formatDateUS(contract.signed_at)})` : 'Signed Contract') : 'Contract (Pending)'}</span>
+                                                                                            <ExternalLink className="size-3 text-blue-500" />
                                                                                         </a>
-                                                                                    )}
-                                                                                    {invoice.stripe_payment_link && (
-                                                                                        <button 
-                                                                                            onClick={() => {
-                                                                                                const link = invoice.status === 'draft' ? invoice.stripe_payment_link : `${window.location.origin}/invoice/${invoice.id}/pay`;
-                                                                                                navigator.clipboard.writeText(link);
-                                                                                                toast.success(invoice.status === 'draft' ? 'Stripe draft link copied!' : 'Payment link copied to clipboard!');
-                                                                                            }}
-                                                                                            className="size-8 rounded-lg bg-white border border-gray-100 flex items-center justify-center text-gray-400 hover:text-emerald-600 hover:border-emerald-200 transition-all cursor-pointer"
-                                                                                            title={invoice.status === 'draft' ? "Copy Stripe Draft Link" : "Copy Payment Link"}
-                                                                                        >
-                                                                                            <Copy className="size-3.5" />
-                                                                                        </button>
-                                                                                    )}
-                                                                                    <button 
-                                                                                        onClick={() => setInvoiceToDelete({ id: invoice.id, amount: invoice.total_amount, companyId: company.id })}
-                                                                                        className="size-8 rounded-lg bg-white border border-gray-100 flex items-center justify-center text-gray-400 hover:text-rose-600 hover:border-rose-200 transition-all cursor-pointer"
-                                                                                        title="Delete Invoice & Reset Orders"
-                                                                                    >
-                                                                                        <Trash2 className="size-3.5" />
-                                                                                    </button>
+                                                                                    ))}
                                                                                 </div>
-                                                                            </div>
-                                                                        ))}
-                                                                        {company.invoices.length > 3 && (
-                                                                            <p className="text-[10px] text-center text-gray-400 font-black uppercase tracking-widest pt-1">
-                                                                                + {company.invoices.length - 3} more
-                                                                            </p>
-                                                                        )}
+                                                                            ) : (
+                                                                                <p className="text-xs font-medium text-gray-400 mt-0.5">No active contract</p>
+                                                                            )}
+                                                                        </div>
+                                                                    </div>
+                                                                </div>
+                                                            </div>
+
+                                                            {/* Column 2: Invoices in Table Format */}
+                                                            <div className="lg:col-span-7 space-y-4">
+                                                                <div className="flex items-center justify-between">
+                                                                    <div className="flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.15em] text-gray-400">
+                                                                        <CreditCard className="size-3.5 text-emerald-500" /> Invoices ({company.invoices?.length || 0})
+                                                                    </div>
+                                                                </div>
+
+                                                                {company.invoices && company.invoices.length > 0 ? (
+                                                                    <div className="rounded-2xl border border-gray-100 overflow-hidden bg-white shadow-sm">
+                                                                        <table className="w-full text-left border-collapse text-xs">
+                                                                            <thead>
+                                                                                <tr className="bg-gray-50/80 border-b border-gray-100 text-[10px] font-black uppercase tracking-wider text-gray-400">
+                                                                                    <th className="py-2.5 px-3">Date</th>
+                                                                                    <th className="py-2.5 px-3">Amount</th>
+                                                                                    <th className="py-2.5 px-3">Status</th>
+                                                                                    <th className="py-2.5 px-3 text-right">Link / Actions</th>
+                                                                                </tr>
+                                                                            </thead>
+                                                                            <tbody className="divide-y divide-gray-50 font-medium">
+                                                                                {company.invoices.map((invoice: any) => (
+                                                                                    <tr key={invoice.id} className="hover:bg-gray-50/50 transition-colors">
+                                                                                        <td className="py-2.5 px-3 text-gray-600 font-bold whitespace-nowrap">
+                                                                                            {formatDateUS(invoice.created_at)}
+                                                                                        </td>
+                                                                                        <td className="py-2.5 px-3 font-black text-gray-900 whitespace-nowrap">
+                                                                                            ${invoice.total_amount.toFixed(2)}
+                                                                                        </td>
+                                                                                        <td className="py-2.5 px-3 whitespace-nowrap">
+                                                                                            <span className={cn(
+                                                                                                "inline-flex items-center px-2 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider",
+                                                                                                invoice.status === 'paid' ? "bg-emerald-50 text-emerald-700 border border-emerald-200" : "bg-amber-50 text-amber-700 border border-amber-200"
+                                                                                            )}>
+                                                                                                {invoice.status}
+                                                                                            </span>
+                                                                                        </td>
+                                                                                        <td className="py-2.5 px-3 text-right whitespace-nowrap">
+                                                                                            <div className="inline-flex items-center gap-1 justify-end">
+                                                                                                {invoice.pdf_url && (
+                                                                                                    <a 
+                                                                                                        href={invoice.pdf_url} 
+                                                                                                        target="_blank" 
+                                                                                                        rel="noopener noreferrer"
+                                                                                                        className="size-7 rounded-lg bg-gray-50 border border-gray-100 flex items-center justify-center text-gray-500 hover:text-violet-600 hover:bg-violet-50 transition-all cursor-pointer"
+                                                                                                        title="Download Stripe PDF"
+                                                                                                    >
+                                                                                                        <FileText className="size-3.5" />
+                                                                                                    </a>
+                                                                                                )}
+                                                                                                {invoice.stripe_payment_link && (
+                                                                                                    <button 
+                                                                                                        onClick={() => {
+                                                                                                            const link = invoice.status === 'draft' ? invoice.stripe_payment_link : `${window.location.origin}/invoice/${invoice.id}/pay`;
+                                                                                                            navigator.clipboard.writeText(link);
+                                                                                                            toast.success(invoice.status === 'draft' ? 'Stripe draft link copied!' : 'Payment link copied to clipboard!');
+                                                                                                        }}
+                                                                                                        className="size-7 rounded-lg bg-gray-50 border border-gray-100 flex items-center justify-center text-gray-500 hover:text-emerald-600 hover:bg-emerald-50 transition-all cursor-pointer"
+                                                                                                        title={invoice.status === 'draft' ? "Copy Stripe Draft Link" : "Copy Payment Link"}
+                                                                                                    >
+                                                                                                        <Copy className="size-3.5" />
+                                                                                                    </button>
+                                                                                                )}
+                                                                                                <button 
+                                                                                                    onClick={() => setInvoiceToDelete({ id: invoice.id, amount: invoice.total_amount, companyId: company.id })}
+                                                                                                    className="size-7 rounded-lg bg-gray-50 border border-gray-100 flex items-center justify-center text-gray-500 hover:text-rose-600 hover:bg-rose-50 transition-all cursor-pointer"
+                                                                                                    title="Delete Invoice & Reset Orders"
+                                                                                                >
+                                                                                                    <Trash2 className="size-3.5" />
+                                                                                                </button>
+                                                                                            </div>
+                                                                                        </td>
+                                                                                    </tr>
+                                                                                ))}
+                                                                            </tbody>
+                                                                        </table>
                                                                     </div>
                                                                 ) : (
                                                                     <div className="flex flex-col items-center justify-center py-8 rounded-2xl border border-dashed border-gray-200 text-gray-400 text-xs font-medium bg-gray-50/50">
                                                                         <CreditCard className="size-6 mb-2 opacity-20" />
-                                                                        No billing history.
+                                                                        No invoices found.
                                                                     </div>
                                                                 )}
                                                             </div>
                                                         </div>
+
+                                                        {/* Optional notes/instructions */}
                                                         {company.prep_instructions && (
-                                                            <div className="mt-8 p-5 rounded-2xl bg-gray-50 border border-gray-100 space-y-2">
+                                                            <div className="mt-6 p-4 rounded-2xl bg-gray-50 border border-gray-100 space-y-1.5">
                                                                 <div className="flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.15em] text-gray-400">
                                                                     <FileText className="size-3.5 text-gray-500" /> Prep & Packaging Profile
                                                                 </div>
@@ -679,7 +664,7 @@ export function CompaniesClient({ initialCompanies }: CompaniesClientProps) {
                                                             </div>
                                                         )}
                                                         {company.company_app_config?.custom_welcome_message && (
-                                                            <div className="mt-4 p-5 rounded-2xl bg-violet-50/30 border border-violet-100/60 space-y-2">
+                                                            <div className="mt-3 p-4 rounded-2xl bg-violet-50/30 border border-violet-100/60 space-y-1.5">
                                                                 <div className="flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.15em] text-violet-500">
                                                                     <Settings className="size-3.5" /> Custom Welcome Message
                                                                 </div>
@@ -696,162 +681,6 @@ export function CompaniesClient({ initialCompanies }: CompaniesClientProps) {
                         </TableBody>
                     </Table>
                 </Card>
-            ) : (
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
-                    {filtered.map((company) => (
-                        <Card key={company.id} className={`rounded-[32px] border-none shadow-sm transition-all duration-300 group hover:ring-2 hover:ring-violet-500 hover:shadow-2xl hover:shadow-violet-100 ${
-                            company.status === 'active' ? 'bg-white' : 'bg-gray-50/80 opacity-70 grayscale'
-                        }`}>
-                            <CardContent className="p-6">
-                                <div className="flex items-start justify-between mb-6">
-                                    <div className={cn(
-                                        "size-14 rounded-2xl flex items-center justify-center text-xl font-black shadow-lg border border-gray-100 transition-all duration-500 group-hover:scale-110",
-                                        company.status === 'active' ? "bg-violet-600 text-white shadow-violet-200" : "bg-gray-200 text-gray-400"
-                                    )}>
-                                        {company.name.charAt(0).toUpperCase()}
-                                    </div>
-                                    <div className="flex flex-col items-end gap-2">
-                                        <Badge
-                                            variant={company.status === 'active' ? 'default' : company.status === 'suspended' ? 'destructive' : 'secondary'}
-                                            className={`text-[9px] font-black rounded-full px-2.5 py-0.5 uppercase tracking-[0.1em] shadow-sm border-none ${
-                                                company.status === 'active' ? 'bg-emerald-500 text-white' : 
-                                                company.status === 'suspended' ? 'bg-rose-500 text-white' : 
-                                                'bg-gray-400 text-white'
-                                            }`}
-                                        >
-                                            {company.status.replace('_', ' ')}
-                                        </Badge>
-                                        <Badge variant="outline" className="text-[9px] font-black rounded-full px-2.5 py-0.5 uppercase tracking-[0.1em] border-gray-100 text-gray-400 bg-gray-50/50">
-                                            {company.payment_method === 'direct_pay' ? 'Direct Pay' : 'Invoice'}
-                                        </Badge>
-                                    </div>
-                                </div>
- 
-                                <div className="space-y-1 mb-6">
-                                    <h3 className="font-bold text-[18px] text-gray-900 tracking-tight group-hover:text-violet-700 transition-colors">{company.name}</h3>
-                                    <div className="flex items-center gap-2 text-xs text-gray-500 font-medium">
-                                        <Mail className="size-3 text-violet-400" />
-                                        <span className="truncate">{company.email}</span>
-                                    </div>
-                                    <div className="flex items-center gap-2 text-xs text-gray-500 font-medium">
-                                        <Phone className="size-3 text-emerald-400" />
-                                        <span>{company.phone || 'No phone'}</span>
-                                    </div>
-                                    {company.representative_name && (
-                                        <div className="flex items-center gap-2 text-xs text-gray-500 font-medium">
-                                            <User className="size-3 text-indigo-400" />
-                                            <span className="truncate">{company.representative_name}{company.representative_title ? ` (${company.representative_title})` : ''}</span>
-                                        </div>
-                                    )}
-                                </div>
- 
-                                <div className="grid grid-cols-2 gap-3 mb-6">
-                                    <div className="bg-gray-50/50 rounded-2xl p-3 border border-gray-100 group-hover:bg-white group-hover:border-violet-100 transition-all">
-                                        <p className="text-[10px] font-black text-gray-300 uppercase tracking-widest mb-1">Contracts</p>
-                                        <p className="text-sm font-black text-gray-700">{company.contracts?.length || 0}</p>
-                                    </div>
-                                    <div className="bg-gray-50/50 rounded-2xl p-3 border border-gray-100 group-hover:bg-white group-hover:border-violet-100 transition-all">
-                                        <p className="text-[10px] font-black text-gray-300 uppercase tracking-widest mb-1">Invoices</p>
-                                        <p className="text-sm font-black text-gray-700">{company.invoices?.length || 0}</p>
-                                    </div>
-                                </div>
-                                {company.prep_instructions && (
-                                    <div className="bg-gray-50/50 rounded-2xl p-3 border border-gray-100 group-hover:bg-white group-hover:border-violet-100 transition-all mb-6">
-                                        <p className="text-[9px] font-black text-gray-400 uppercase tracking-widest mb-1 flex items-center gap-1">
-                                            <span>📝</span> Prep & Packaging Profile
-                                        </p>
-                                        <p className="text-xs text-gray-600 line-clamp-3 whitespace-pre-wrap leading-relaxed">
-                                            {company.prep_instructions}
-                                        </p>
-                                    </div>
-                                )}
-                                {company.company_app_config?.custom_welcome_message && (
-                                    <div className="bg-violet-50/30 rounded-2xl p-3 border border-violet-100/60 transition-all mb-6">
-                                        <p className="text-[9px] font-black text-violet-500 uppercase tracking-widest mb-1 flex items-center gap-1">
-                                            <span>👋</span> Custom Welcome Instructions
-                                        </p>
-                                        <p className="text-xs text-gray-600 line-clamp-3 whitespace-pre-wrap leading-relaxed">
-                                            {company.company_app_config.custom_welcome_message}
-                                        </p>
-                                    </div>
-                                )}
- 
-                                <div className="pt-5 border-t border-gray-50 flex flex-col gap-2 w-full">
-                                    {company.company_app_config?.use_mountain_mamas_branding ? (
-                                        <div className="flex flex-col gap-2 w-full text-left">
-                                            <div className="flex items-center justify-between">
-                                                <span className="text-[9px] text-gray-400 font-bold uppercase tracking-wider">Default Link</span>
-                                                <button
-                                                    onClick={() => copyLink(company.default_slug || company.slug)}
-                                                    className="text-[11px] font-black text-violet-600 hover:text-violet-700 uppercase tracking-widest flex items-center gap-1.5"
-                                                >
-                                                    Copy default <Copy className="size-3" />
-                                                </button>
-                                            </div>
-                                            <div className="flex items-center justify-between">
-                                                <span className="text-[9px] text-gray-400 font-bold uppercase tracking-wider">Generic Link</span>
-                                                <button
-                                                    onClick={() => copyLink(company.generic_slug || company.slug)}
-                                                    className="text-[11px] font-black text-violet-600 hover:text-violet-700 uppercase tracking-widest flex items-center gap-1.5"
-                                                >
-                                                    Copy generic <Copy className="size-3" />
-                                                </button>
-                                            </div>
-                                        </div>
-                                    ) : (
-                                        <div className="flex items-center justify-between w-full">
-                                            <button
-                                                onClick={() => copyLink(company.slug)}
-                                                className="text-[11px] font-black text-violet-600 hover:text-violet-700 uppercase tracking-widest flex items-center gap-1.5"
-                                            >
-                                                Copy Link <Copy className="size-3" />
-                                            </button>
-                                            <span className="text-[11px] font-mono text-gray-400">/{company.slug}</span>
-                                        </div>
-                                    )}
-                                </div>
-                                <div className="flex items-center justify-end w-full mt-2">
-                                    <DropdownMenu>
-                                        <DropdownMenuTrigger className="size-8 rounded-xl bg-gray-50 text-gray-400 hover:text-violet-600 hover:bg-violet-50 transition-all flex items-center justify-center">
-                                            <MoreHorizontal className="size-4" />
-                                        </DropdownMenuTrigger>
-                                        <DropdownMenuContent align="end" className="w-[180px] rounded-xl border-gray-100 shadow-xl p-1">
-                                            <DropdownMenuItem onClick={() => openEdit(company)} className="rounded-lg gap-2 font-bold text-gray-700 focus:bg-violet-50 focus:text-violet-700">
-                                                <Pencil className="size-3.5" /> Edit Profile
-                                            </DropdownMenuItem>
-                                            <DropdownMenuItem onClick={() => handleImpersonate(company.id, company.name)} className="rounded-lg gap-2 font-bold text-violet-600 focus:bg-violet-50 focus:text-violet-700">
-                                                <ExternalLink className="size-3.5" /> View Portal
-                                            </DropdownMenuItem>
-                                            <DropdownMenuItem onClick={() => handleResendInvitation(company.id, company.name)} className="rounded-lg gap-2 font-bold text-violet-600 focus:bg-violet-50 focus:text-violet-700">
-                                                <Send className="size-3.5" /> Resend Invitation
-                                            </DropdownMenuItem>
-                                            <DropdownMenuSeparator className="bg-gray-100 my-1" />
-                                            {company.status === 'active' ? (
-                                                <DropdownMenuItem
-                                                    onClick={() => handleStatus(company.id, 'suspended')}
-                                                    className="rounded-lg gap-2 font-bold text-rose-600 focus:bg-rose-50 focus:text-rose-700"
-                                                >
-                                                    <XCircle className="size-3.5" /> Suspend Partner
-                                                </DropdownMenuItem>
-                                            ) : (
-                                                <DropdownMenuItem onClick={() => handleStatus(company.id, 'active')} className="rounded-lg gap-2 font-bold text-emerald-600 focus:bg-emerald-50 focus:text-emerald-700">
-                                                    <CheckCircle className="size-3.5" /> Reactivate
-                                                </DropdownMenuItem>
-                                            )}
-                                            <DropdownMenuSeparator className="bg-gray-100 my-1" />
-                                            <DropdownMenuItem 
-                                                onClick={() => handleDelete(company.id, company.name)} 
-                                                className="rounded-lg gap-2 font-bold text-rose-600 focus:bg-rose-50 focus:text-rose-700"
-                                            >
-                                                <Trash2 className="size-3.5" /> Delete Partner
-                                            </DropdownMenuItem>
-                                        </DropdownMenuContent>
-                                    </DropdownMenu>
-                                </div>
-                            </CardContent>
-                        </Card>
-                    ))}
-                </div>
             )}
 
             {/* Add/Edit Dialog */}
@@ -900,6 +729,18 @@ export function CompaniesClient({ initialCompanies }: CompaniesClientProps) {
                                         <Input id="representative_title" name="representative_title" placeholder="Owner"
                                             value={representativeTitle || ''} onChange={(e) => setRepresentativeTitle(e.target.value)} />
                                     </div>
+                                </div>
+                                <div className="space-y-1.5">
+                                    <Label htmlFor="mailing_address" className="text-xs font-bold text-gray-700">Mailing / Delivery Address</Label>
+                                    <textarea 
+                                        id="mailing_address" 
+                                        name="mailing_address" 
+                                        rows={2}
+                                        placeholder="Street address, Suite / PO Box, City, State, ZIP"
+                                        value={mailingAddress || ''} 
+                                        onChange={(e) => setMailingAddress(e.target.value)}
+                                        className="w-full px-3.5 py-2.5 rounded-xl border border-gray-200 text-sm font-medium bg-gray-50/50 focus:bg-white focus:border-violet-300 focus:ring-2 focus:ring-violet-100 outline-none transition-all resize-none"
+                                    />
                                 </div>
                             </div>
                         </div>

@@ -5,11 +5,13 @@ import {
     Upload, Search, Send, Trash2, UserPlus, X, Mail,
     CheckCircle2, Clock, XCircle, ArrowRight, FileSpreadsheet,
     MoreHorizontal, ExternalLink, Phone, MapPin, Globe,
-    AlertCircle, ChevronDown, Loader2, StickyNote, Plus, Pencil
+    AlertCircle, ChevronDown, Loader2, StickyNote, Plus, Pencil,
+    Printer, Tag, ChevronLeft, ChevronRight
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { toast } from 'sonner';
 import Papa from 'papaparse';
+import { safePrint } from '@/lib/utils';
 import {
     importLeadsFromCSV,
     deleteOutreachLead,
@@ -32,6 +34,7 @@ interface Lead {
     website: string | null;
     home_base: string | null;
     state: string | null;
+    mailing_address: string | null;
     primary_gate: string | null;
     tour_type: string | null;
     season: string | null;
@@ -101,6 +104,7 @@ export function OutreachClient({ initialLeads }: { initialLeads: Lead[] }) {
         website: '',
         home_base: '',
         state: '',
+        mailing_address: '',
         primary_gate: '',
         tour_type: '',
         season: '',
@@ -130,6 +134,7 @@ export function OutreachClient({ initialLeads }: { initialLeads: Lead[] }) {
             website: lead.website || '',
             home_base: lead.home_base || '',
             state: lead.state || '',
+            mailing_address: lead.mailing_address || '',
             primary_gate: lead.primary_gate || '',
             tour_type: lead.tour_type || '',
             season: lead.season || '',
@@ -188,6 +193,31 @@ export function OutreachClient({ initialLeads }: { initialLeads: Lead[] }) {
     const [campaignProgress, setCampaignProgress] = useState({ current: 0, total: 0 });
     const [campaignCurrentName, setCampaignCurrentName] = useState('');
 
+    // Print Labels State
+    const [leadsToPrint, setLeadsToPrint] = useState<Lead[]>([]);
+
+    const handlePrintLabels = (leadIds?: string[]) => {
+        let targetLeads: Lead[] = [];
+        if (leadIds && leadIds.length > 0) {
+            targetLeads = leads.filter(l => leadIds.includes(l.id));
+        } else if (selectedIds.size > 0) {
+            targetLeads = leads.filter(l => selectedIds.has(l.id));
+        } else {
+            const withAddress = filteredLeads.filter(l => l.mailing_address && l.mailing_address.trim() !== '');
+            targetLeads = withAddress.length > 0 ? withAddress : filteredLeads;
+        }
+
+        if (targetLeads.length === 0) {
+            toast.error('No leads available to print.');
+            return;
+        }
+
+        setLeadsToPrint(targetLeads);
+        setTimeout(() => {
+            safePrint('print-labels-mode');
+        }, 150);
+    };
+
     const [isPending, startTransition] = useTransition();
 
     // ---- Filtering ----
@@ -195,7 +225,8 @@ export function OutreachClient({ initialLeads }: { initialLeads: Lead[] }) {
         const matchesSearch = search === '' ||
             lead.company_name.toLowerCase().includes(search.toLowerCase()) ||
             lead.email.toLowerCase().includes(search.toLowerCase()) ||
-            (lead.home_base && lead.home_base.toLowerCase().includes(search.toLowerCase()));
+            (lead.home_base && lead.home_base.toLowerCase().includes(search.toLowerCase())) ||
+            (lead.mailing_address && lead.mailing_address.toLowerCase().includes(search.toLowerCase()));
         const matchesStatus = statusFilter === 'all' || lead.status === statusFilter;
         return matchesSearch && matchesStatus;
     });
@@ -465,8 +496,9 @@ export function OutreachClient({ initialLeads }: { initialLeads: Lead[] }) {
     };
 
     return (
-        <div className="space-y-6">
-            {/* Page Header */}
+        <>
+            <div className="space-y-6 dashboard-web-view no-print">
+                {/* Page Header */}
             <div className="flex flex-col gap-1">
                 <h1 className="text-2xl sm:text-3xl font-black text-gray-900 tracking-tight">
                     Outreach Campaign Manager
@@ -546,6 +578,14 @@ export function OutreachClient({ initialLeads }: { initialLeads: Lead[] }) {
                             </button>
                         </>
                     )}
+                    <button
+                        onClick={() => handlePrintLabels()}
+                        className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-white text-gray-700 text-sm font-bold border border-gray-200 hover:bg-amber-50 hover:text-amber-700 hover:border-amber-200 transition-all shadow-sm"
+                        title="Print mailing labels"
+                    >
+                        <Printer className="size-4 text-amber-600" />
+                        Print Labels
+                    </button>
                     <button
                         onClick={openCreateModal}
                         className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-gradient-to-r from-emerald-500 to-emerald-600 text-white text-sm font-bold shadow-lg shadow-emerald-200 hover:shadow-xl hover:shadow-emerald-300 transition-all"
@@ -744,6 +784,23 @@ export function OutreachClient({ initialLeads }: { initialLeads: Lead[] }) {
                                                             {lead.home_base}{lead.state ? `, ${lead.state}` : ''}
                                                         </span>
                                                     )}
+                                                    {lead.mailing_address && (
+                                                        <div className="flex items-center gap-1.5 mt-0.5">
+                                                            <span className="text-[11px] text-gray-500 font-medium truncate max-w-[180px]" title={lead.mailing_address}>
+                                                                {lead.mailing_address}
+                                                            </span>
+                                                            <button
+                                                                onClick={(e) => {
+                                                                    e.stopPropagation();
+                                                                    handlePrintLabels([lead.id]);
+                                                                }}
+                                                                title="Print Mailing Label"
+                                                                className="text-gray-400 hover:text-amber-600 hover:bg-amber-50 p-1 rounded transition-colors shrink-0"
+                                                            >
+                                                                <Printer className="size-3" />
+                                                            </button>
+                                                        </div>
+                                                    )}
                                                     {lead.primary_gate && (
                                                         <span className="text-[11px] text-gray-400 font-medium">
                                                             Gate: {lead.primary_gate}
@@ -862,6 +919,17 @@ export function OutreachClient({ initialLeads }: { initialLeads: Lead[] }) {
                                                                             Mark as Rejected
                                                                         </button>
                                                                     )}
+
+                                                                    <button
+                                                                        onClick={() => {
+                                                                            setActionMenuOpen(null);
+                                                                            handlePrintLabels([lead.id]);
+                                                                        }}
+                                                                        className="w-full flex items-center gap-2.5 px-4 py-2.5 text-[13px] font-semibold text-gray-700 hover:bg-amber-50 hover:text-amber-800 transition-colors"
+                                                                    >
+                                                                        <Printer className="size-4 text-amber-600" />
+                                                                        Print Mailing Label
+                                                                    </button>
 
                                                                     <button
                                                                         onClick={() => {
@@ -1262,7 +1330,7 @@ export function OutreachClient({ initialLeads }: { initialLeads: Lead[] }) {
                                     <label className="block text-[11px] font-bold uppercase tracking-wider text-gray-400 mb-1.5">Company Name *</label>
                                     <input
                                         type="text"
-                                        value={leadForm.company_name}
+                                        value={leadForm.company_name ?? ''}
                                         onChange={(e) => setLeadForm(f => ({ ...f, company_name: e.target.value }))}
                                         placeholder="e.g. Yellowstone Tour Guides"
                                         className="w-full px-4 py-2.5 rounded-xl border border-gray-200 text-sm font-medium bg-gray-50/50 focus:bg-white focus:border-violet-300 focus:ring-2 focus:ring-violet-100 outline-none transition-all"
@@ -1274,7 +1342,7 @@ export function OutreachClient({ initialLeads }: { initialLeads: Lead[] }) {
                                     <label className="block text-[11px] font-bold uppercase tracking-wider text-gray-400 mb-1.5">Email *</label>
                                     <input
                                         type="email"
-                                        value={leadForm.email}
+                                        value={leadForm.email ?? ''}
                                         onChange={(e) => setLeadForm(f => ({ ...f, email: e.target.value }))}
                                         placeholder="info@company.com"
                                         className="w-full px-4 py-2.5 rounded-xl border border-gray-200 text-sm font-medium bg-gray-50/50 focus:bg-white focus:border-violet-300 focus:ring-2 focus:ring-violet-100 outline-none transition-all"
@@ -1287,7 +1355,7 @@ export function OutreachClient({ initialLeads }: { initialLeads: Lead[] }) {
                                         <label className="block text-[11px] font-bold uppercase tracking-wider text-gray-400 mb-1.5">Phone</label>
                                         <input
                                             type="text"
-                                            value={leadForm.phone}
+                                            value={leadForm.phone ?? ''}
                                             onChange={(e) => setLeadForm(f => ({ ...f, phone: e.target.value }))}
                                             placeholder="406-555-1234"
                                             className="w-full px-4 py-2.5 rounded-xl border border-gray-200 text-sm font-medium bg-gray-50/50 focus:bg-white focus:border-violet-300 focus:ring-2 focus:ring-violet-100 outline-none transition-all"
@@ -1297,7 +1365,7 @@ export function OutreachClient({ initialLeads }: { initialLeads: Lead[] }) {
                                         <label className="block text-[11px] font-bold uppercase tracking-wider text-gray-400 mb-1.5">Website</label>
                                         <input
                                             type="text"
-                                            value={leadForm.website}
+                                            value={leadForm.website ?? ''}
                                             onChange={(e) => setLeadForm(f => ({ ...f, website: e.target.value }))}
                                             placeholder="https://company.com"
                                             className="w-full px-4 py-2.5 rounded-xl border border-gray-200 text-sm font-medium bg-gray-50/50 focus:bg-white focus:border-violet-300 focus:ring-2 focus:ring-violet-100 outline-none transition-all"
@@ -1311,7 +1379,7 @@ export function OutreachClient({ initialLeads }: { initialLeads: Lead[] }) {
                                         <label className="block text-[11px] font-bold uppercase tracking-wider text-gray-400 mb-1.5">Home Base</label>
                                         <input
                                             type="text"
-                                            value={leadForm.home_base}
+                                            value={leadForm.home_base ?? ''}
                                             onChange={(e) => setLeadForm(f => ({ ...f, home_base: e.target.value }))}
                                             placeholder="West Yellowstone"
                                             className="w-full px-4 py-2.5 rounded-xl border border-gray-200 text-sm font-medium bg-gray-50/50 focus:bg-white focus:border-violet-300 focus:ring-2 focus:ring-violet-100 outline-none transition-all"
@@ -1321,12 +1389,24 @@ export function OutreachClient({ initialLeads }: { initialLeads: Lead[] }) {
                                         <label className="block text-[11px] font-bold uppercase tracking-wider text-gray-400 mb-1.5">State</label>
                                         <input
                                             type="text"
-                                            value={leadForm.state}
+                                            value={leadForm.state ?? ''}
                                             onChange={(e) => setLeadForm(f => ({ ...f, state: e.target.value }))}
                                             placeholder="MT"
                                             className="w-full px-4 py-2.5 rounded-xl border border-gray-200 text-sm font-medium bg-gray-50/50 focus:bg-white focus:border-violet-300 focus:ring-2 focus:ring-violet-100 outline-none transition-all"
                                         />
                                     </div>
+                                </div>
+
+                                {/* Row 4b: Mailing Address */}
+                                <div>
+                                    <label className="block text-[11px] font-bold uppercase tracking-wider text-gray-400 mb-1.5">Mailing Address</label>
+                                    <input
+                                        type="text"
+                                        value={leadForm.mailing_address ?? ''}
+                                        onChange={(e) => setLeadForm(f => ({ ...f, mailing_address: e.target.value }))}
+                                        placeholder="e.g. 123 Main St, West Yellowstone, MT 59758"
+                                        className="w-full px-4 py-2.5 rounded-xl border border-gray-200 text-sm font-medium bg-gray-50/50 focus:bg-white focus:border-violet-300 focus:ring-2 focus:ring-violet-100 outline-none transition-all"
+                                    />
                                 </div>
 
                                 {/* Row 5: Primary Gate & Tour Type */}
@@ -1335,7 +1415,7 @@ export function OutreachClient({ initialLeads }: { initialLeads: Lead[] }) {
                                         <label className="block text-[11px] font-bold uppercase tracking-wider text-gray-400 mb-1.5">Primary Gate</label>
                                         <input
                                             type="text"
-                                            value={leadForm.primary_gate}
+                                            value={leadForm.primary_gate ?? ''}
                                             onChange={(e) => setLeadForm(f => ({ ...f, primary_gate: e.target.value }))}
                                             placeholder="West"
                                             className="w-full px-4 py-2.5 rounded-xl border border-gray-200 text-sm font-medium bg-gray-50/50 focus:bg-white focus:border-violet-300 focus:ring-2 focus:ring-violet-100 outline-none transition-all"
@@ -1345,7 +1425,7 @@ export function OutreachClient({ initialLeads }: { initialLeads: Lead[] }) {
                                         <label className="block text-[11px] font-bold uppercase tracking-wider text-gray-400 mb-1.5">Tour Type</label>
                                         <input
                                             type="text"
-                                            value={leadForm.tour_type}
+                                            value={leadForm.tour_type ?? ''}
                                             onChange={(e) => setLeadForm(f => ({ ...f, tour_type: e.target.value }))}
                                             placeholder="Sightseeing"
                                             className="w-full px-4 py-2.5 rounded-xl border border-gray-200 text-sm font-medium bg-gray-50/50 focus:bg-white focus:border-violet-300 focus:ring-2 focus:ring-violet-100 outline-none transition-all"
@@ -1358,7 +1438,7 @@ export function OutreachClient({ initialLeads }: { initialLeads: Lead[] }) {
                                     <label className="block text-[11px] font-bold uppercase tracking-wider text-gray-400 mb-1.5">Season</label>
                                     <input
                                         type="text"
-                                        value={leadForm.season}
+                                        value={leadForm.season ?? ''}
                                         onChange={(e) => setLeadForm(f => ({ ...f, season: e.target.value }))}
                                         placeholder="Summer"
                                         className="w-full px-4 py-2.5 rounded-xl border border-gray-200 text-sm font-medium bg-gray-50/50 focus:bg-white focus:border-violet-300 focus:ring-2 focus:ring-violet-100 outline-none transition-all"
@@ -1371,7 +1451,7 @@ export function OutreachClient({ initialLeads }: { initialLeads: Lead[] }) {
                                         <label className="block text-[11px] font-bold uppercase tracking-wider text-gray-400 mb-1.5">Outreach Tier</label>
                                         <input
                                             type="text"
-                                            value={leadForm.outreach_tier}
+                                            value={leadForm.outreach_tier ?? ''}
                                             onChange={(e) => setLeadForm(f => ({ ...f, outreach_tier: e.target.value }))}
                                             placeholder="e.g. Tier 1"
                                             className="w-full px-4 py-2.5 rounded-xl border border-gray-200 text-sm font-medium bg-gray-50/50 focus:bg-white focus:border-violet-300 focus:ring-2 focus:ring-violet-100 outline-none transition-all"
@@ -1381,7 +1461,7 @@ export function OutreachClient({ initialLeads }: { initialLeads: Lead[] }) {
                                         <label className="block text-[11px] font-bold uppercase tracking-wider text-gray-400 mb-1.5">Priority</label>
                                         <input
                                             type="text"
-                                            value={leadForm.priority}
+                                            value={leadForm.priority ?? ''}
                                             onChange={(e) => setLeadForm(f => ({ ...f, priority: e.target.value }))}
                                             placeholder="e.g. A+"
                                             className="w-full px-4 py-2.5 rounded-xl border border-gray-200 text-sm font-medium bg-gray-50/50 focus:bg-white focus:border-violet-300 focus:ring-2 focus:ring-violet-100 outline-none transition-all"
@@ -1395,7 +1475,7 @@ export function OutreachClient({ initialLeads }: { initialLeads: Lead[] }) {
                                         <label className="block text-[11px] font-bold uppercase tracking-wider text-gray-400 mb-1.5">Contact Name</label>
                                         <input
                                             type="text"
-                                            value={leadForm.contact_name}
+                                            value={leadForm.contact_name ?? ''}
                                             onChange={(e) => setLeadForm(f => ({ ...f, contact_name: e.target.value }))}
                                             placeholder="John Doe"
                                             className="w-full px-4 py-2.5 rounded-xl border border-gray-200 text-sm font-medium bg-gray-50/50 focus:bg-white focus:border-violet-300 focus:ring-2 focus:ring-violet-100 outline-none transition-all"
@@ -1405,7 +1485,7 @@ export function OutreachClient({ initialLeads }: { initialLeads: Lead[] }) {
                                         <label className="block text-[11px] font-bold uppercase tracking-wider text-gray-400 mb-1.5">Title</label>
                                         <input
                                             type="text"
-                                            value={leadForm.title}
+                                            value={leadForm.title ?? ''}
                                             onChange={(e) => setLeadForm(f => ({ ...f, title: e.target.value }))}
                                             placeholder="Director of Travel"
                                             className="w-full px-4 py-2.5 rounded-xl border border-gray-200 text-sm font-medium bg-gray-50/50 focus:bg-white focus:border-violet-300 focus:ring-2 focus:ring-violet-100 outline-none transition-all"
@@ -1419,7 +1499,7 @@ export function OutreachClient({ initialLeads }: { initialLeads: Lead[] }) {
                                         <label className="block text-[11px] font-bold uppercase tracking-wider text-gray-400 mb-1.5">Avg Group Size</label>
                                         <input
                                             type="number"
-                                            value={leadForm.average_group_size}
+                                            value={leadForm.average_group_size ?? ''}
                                             onChange={(e) => setLeadForm(f => ({ ...f, average_group_size: e.target.value }))}
                                             placeholder="e.g. 25"
                                             className="w-full px-4 py-2.5 rounded-xl border border-gray-200 text-sm font-medium bg-gray-50/50 focus:bg-white focus:border-violet-300 focus:ring-2 focus:ring-violet-100 outline-none transition-all"
@@ -1429,7 +1509,7 @@ export function OutreachClient({ initialLeads }: { initialLeads: Lead[] }) {
                                         <label className="block text-[11px] font-bold uppercase tracking-wider text-gray-400 mb-1.5">Estimated Annual Guests</label>
                                         <input
                                             type="number"
-                                            value={leadForm.estimated_annual_yellowstone_guests}
+                                            value={leadForm.estimated_annual_yellowstone_guests ?? ''}
                                             onChange={(e) => setLeadForm(f => ({ ...f, estimated_annual_yellowstone_guests: e.target.value }))}
                                             placeholder="e.g. 1500"
                                             className="w-full px-4 py-2.5 rounded-xl border border-gray-200 text-sm font-medium bg-gray-50/50 focus:bg-white focus:border-violet-300 focus:ring-2 focus:ring-violet-100 outline-none transition-all"
@@ -1441,7 +1521,7 @@ export function OutreachClient({ initialLeads }: { initialLeads: Lead[] }) {
                                 <div>
                                     <label className="block text-[11px] font-bold uppercase tracking-wider text-gray-400 mb-1.5">Notes</label>
                                     <textarea
-                                        value={leadForm.notes}
+                                        value={leadForm.notes ?? ''}
                                         onChange={(e) => setLeadForm(f => ({ ...f, notes: e.target.value }))}
                                         placeholder="Internal notes about this lead..."
                                         rows={3}
@@ -1669,6 +1749,270 @@ export function OutreachClient({ initialLeads }: { initialLeads: Lead[] }) {
                     </motion.div>
                 )}
             </AnimatePresence>
-        </div>
+            </div> {/* Close dashboard-web-view no-print */}
+
+            {/* =================== PRINT LABELS CONTAINER (2 PER SHEET) =================== */}
+            <div className="print-only-section print-labels-container">
+                {Array.from({ length: Math.ceil(leadsToPrint.length / 2) }).map((_, pageIdx) => {
+                    const pageLeads = leadsToPrint.slice(pageIdx * 2, pageIdx * 2 + 2);
+                    return (
+                        <div key={pageIdx} className="sticky-label-page">
+                            {/* Top Half Label */}
+                            <div className="sticky-label-half">
+                                <div className="sticky-label-recipient">
+                                    <div className="sticky-label-to-tag">DELIVER TO:</div>
+                                    
+                                    <div className="sticky-label-company-name">
+                                        {pageLeads[0].company_name}
+                                    </div>
+
+                                    {(pageLeads[0].contact_name || pageLeads[0].title) && (
+                                        <div className="sticky-label-contact">
+                                            Attn: {pageLeads[0].contact_name}{pageLeads[0].title ? ` (${pageLeads[0].title})` : ''}
+                                        </div>
+                                    )}
+
+                                    <div className="sticky-label-address">
+                                        {pageLeads[0].mailing_address ? (
+                                            pageLeads[0].mailing_address.split('\n').map((line, lIdx) => (
+                                                <div key={lIdx}>{line}</div>
+                                            ))
+                                        ) : (
+                                            <div>
+                                                {pageLeads[0].home_base ? `${pageLeads[0].home_base}${pageLeads[0].state ? `, ${pageLeads[0].state}` : ''}` : ''}
+                                            </div>
+                                        )}
+                                    </div>
+                                </div>
+                            </div>
+
+                            {/* Center Cut Guide */}
+                            <div className="sticky-label-cut-guide">
+                                <div className="sticky-label-cut-line" />
+                                <div className="sticky-label-cut-badge">
+                                    <span>✂</span>
+                                    <span>CUT HERE</span>
+                                    <span>✂</span>
+                                </div>
+                            </div>
+
+                            {/* Bottom Half Label */}
+                            <div className="sticky-label-half">
+                                {pageLeads[1] ? (
+                                    <div className="sticky-label-recipient">
+                                        <div className="sticky-label-to-tag">DELIVER TO:</div>
+                                        
+                                        <div className="sticky-label-company-name">
+                                            {pageLeads[1].company_name}
+                                        </div>
+
+                                        {(pageLeads[1].contact_name || pageLeads[1].title) && (
+                                            <div className="sticky-label-contact">
+                                                Attn: {pageLeads[1].contact_name}{pageLeads[1].title ? ` (${pageLeads[1].title})` : ''}
+                                            </div>
+                                        )}
+
+                                        <div className="sticky-label-address">
+                                            {pageLeads[1].mailing_address ? (
+                                                pageLeads[1].mailing_address.split('\n').map((line, lIdx) => (
+                                                    <div key={lIdx}>{line}</div>
+                                                ))
+                                            ) : (
+                                                <div>
+                                                    {pageLeads[1].home_base ? `${pageLeads[1].home_base}${pageLeads[1].state ? `, ${pageLeads[1].state}` : ''}` : ''}
+                                                </div>
+                                            )}
+                                        </div>
+                                    </div>
+                                ) : (
+                                    <div className="sticky-label-recipient" style={{ visibility: 'hidden' }} />
+                                )}
+                            </div>
+                        </div>
+                    );
+                })}
+            </div>
+
+            {/* Global Print Stylesheet for Sticky Labels */}
+            <style dangerouslySetInnerHTML={{ __html: `
+                /* Hide print container on screen */
+                .print-only-section {
+                    display: none !important;
+                }
+
+                @media print {
+                    @page {
+                        margin: 6mm 8mm !important;
+                        size: portrait;
+                    }
+
+                    /* Hide EVERYTHING in the regular dashboard and navigation */
+                    nav,
+                    aside,
+                    header,
+                    .no-print,
+                    .dashboard-web-view,
+                    #impersonation-banner {
+                        display: none !important;
+                    }
+
+                    body.print-labels-mode,
+                    body.print-labels-mode html {
+                        margin: 0 !important;
+                        padding: 0 !important;
+                        height: auto !important;
+                        min-height: auto !important;
+                        background: #ffffff !important;
+                        -webkit-print-color-adjust: exact !important;
+                        print-color-adjust: exact !important;
+                    }
+
+                    body.print-labels-mode .print-labels-container {
+                        display: block !important;
+                        position: static !important;
+                        width: 100% !important;
+                        margin: 0 !important;
+                        padding: 0 !important;
+                        background: #ffffff !important;
+                    }
+
+                    body.print-labels-mode .sticky-label-page {
+                        display: flex !important;
+                        flex-direction: column !important;
+                        justify-content: space-between !important;
+                        align-items: stretch !important;
+                        width: 100% !important;
+                        height: 90vh !important;
+                        max-height: 91vh !important;
+                        box-sizing: border-box !important;
+                        padding: 0 !important;
+                        margin: 0 !important;
+                        overflow: hidden !important;
+                        background: #ffffff !important;
+                        page-break-inside: avoid !important;
+                        break-inside: avoid !important;
+                        position: relative !important;
+                    }
+
+                    body.print-labels-mode .sticky-label-page:not(:last-child) {
+                        page-break-after: always !important;
+                        break-after: page !important;
+                    }
+
+                    body.print-labels-mode .sticky-label-page:last-child {
+                        page-break-after: avoid !important;
+                        break-after: avoid !important;
+                        margin-bottom: 0 !important;
+                    }
+
+                    body.print-labels-mode .sticky-label-half {
+                        flex: 1 1 0 !important;
+                        min-height: 0 !important;
+                        height: 46% !important;
+                        max-height: 47% !important;
+                        display: flex !important;
+                        flex-direction: column !important;
+                        align-items: center !important;
+                        justify-content: center !important;
+                        box-sizing: border-box !important;
+                        width: 100% !important;
+                        padding: 1.5mm 0 !important;
+                        margin: 0 !important;
+                    }
+
+                    body.print-labels-mode .sticky-label-cut-guide {
+                        flex: 0 0 auto !important;
+                        display: flex !important;
+                        align-items: center !important;
+                        justify-content: center !important;
+                        width: 100% !important;
+                        height: 16px !important;
+                        margin: 1mm 0 !important;
+                        position: relative !important;
+                    }
+
+                    body.print-labels-mode .sticky-label-cut-line {
+                        position: absolute !important;
+                        left: 0 !important;
+                        right: 0 !important;
+                        top: 50% !important;
+                        border-top: 1.5px dashed #999999 !important;
+                        z-index: 1 !important;
+                    }
+
+                    body.print-labels-mode .sticky-label-cut-badge {
+                        position: relative !important;
+                        z-index: 2 !important;
+                        background: #ffffff !important;
+                        padding: 0 12px !important;
+                        font-size: 9.5pt !important;
+                        color: #777777 !important;
+                        display: flex !important;
+                        align-items: center !important;
+                        gap: 6px !important;
+                        letter-spacing: 0.12em !important;
+                        font-weight: 700 !important;
+                        text-transform: uppercase !important;
+                    }
+
+                    body.print-labels-mode .sticky-label-recipient {
+                        flex: 1 1 100% !important;
+                        width: 100% !important;
+                        max-width: 100% !important;
+                        height: 100% !important;
+                        box-sizing: border-box !important;
+                        border: 3.5px solid #000000 !important;
+                        border-radius: 16px !important;
+                        display: flex !important;
+                        flex-direction: column !important;
+                        justify-content: center !important;
+                        align-items: center !important;
+                        padding: 14px 20px !important;
+                        text-align: center !important;
+                        background: #ffffff !important;
+                        overflow: hidden !important;
+                    }
+
+                    body.print-labels-mode .sticky-label-to-tag {
+                        font-size: 12pt !important;
+                        font-weight: 800 !important;
+                        text-transform: uppercase !important;
+                        letter-spacing: 0.22em !important;
+                        color: #333333 !important;
+                        margin-bottom: 8px !important;
+                        text-align: center !important;
+                    }
+
+                    body.print-labels-mode .sticky-label-company-name {
+                        font-size: 26pt !important;
+                        font-weight: 900 !important;
+                        line-height: 1.15 !important;
+                        color: #000000 !important;
+                        margin-bottom: 10px !important;
+                        text-align: center !important;
+                        word-wrap: break-word !important;
+                    }
+
+                    body.print-labels-mode .sticky-label-contact {
+                        font-size: 16pt !important;
+                        font-weight: 700 !important;
+                        color: #111111 !important;
+                        line-height: 1.25 !important;
+                        margin-bottom: 10px !important;
+                        text-align: center !important;
+                    }
+
+                    body.print-labels-mode .sticky-label-address {
+                        font-size: 19pt !important;
+                        font-weight: 700 !important;
+                        color: #000000 !important;
+                        line-height: 1.35 !important;
+                        text-align: center !important;
+                        white-space: pre-line !important;
+                        word-wrap: break-word !important;
+                    }
+                }
+            ` }} />
+        </>
     );
 }

@@ -40,8 +40,12 @@ export async function registerCompany(formData: any) {
         signatureData,
         signerName,
         signerEmail,
-        signerTitle
+        signerTitle,
+        mailingAddress,
+        mailing_address,
     } = formData;
+
+    const resolvedMailingAddress = mailingAddress || mailing_address || null;
 
     if (!name || !email || !paymentMethod || !password) {
         return { success: false, error: 'Required fields are missing.' };
@@ -89,19 +93,32 @@ export async function registerCompany(formData: any) {
         payment_method: paymentMethod,
         representative_name: signerName || null,
         representative_title: signerTitle || null,
+        mailing_address: resolvedMailingAddress,
         status: 'pending_approval' as const,
         is_active: false,
         needs_password_change: false, // Since they set it themselves
     };
 
-    const { data: newCompany, error: dbError } = await supabase
+    let { data: newCompany, error: dbError } = await supabase
         .from('tour_companies')
         .insert(company)
         .select()
         .single();
 
-    if (dbError) {
-        return { success: false, error: dbError.message };
+    if (dbError && (dbError.message.includes('mailing_address') || dbError.message.includes('schema cache'))) {
+        const fallbackObj: any = { ...company };
+        delete fallbackObj.mailing_address;
+        const res = await supabase
+            .from('tour_companies')
+            .insert(fallbackObj)
+            .select()
+            .single();
+        newCompany = res.data;
+        dbError = res.error;
+    }
+
+    if (dbError || !newCompany) {
+        return { success: false, error: dbError?.message || 'Failed to register company' };
     }
 
     // 3. Onboarding Initialization

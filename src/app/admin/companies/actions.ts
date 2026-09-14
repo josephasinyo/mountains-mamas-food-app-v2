@@ -48,6 +48,7 @@ export async function createCompany(formData: FormData) {
         payment_method: paymentMethod,
         representative_name: representativeName,
         representative_title: representativeTitle,
+        mailing_address: (formData.get('mailing_address') as string) || null,
         discount_percentage: parseFloat(formData.get('discount_percentage') as string) || 0,
         prep_instructions: prepInstructions,
         status: 'active' as const,
@@ -63,15 +64,27 @@ export async function createCompany(formData: FormData) {
 
     log(`Creating company: ${name} (${company_email_val})`);
 
-    const { data, error } = await supabase
+    let { data, error } = await supabase
         .from('tour_companies')
         .insert(company)
         .select('*, company_app_config(*)')
         .single();
 
-    if (error) {
-        log(`Database Error: ${error.message}`);
-        return { success: false, error: error.message };
+    if (error && (error.message.includes('mailing_address') || error.message.includes('schema cache'))) {
+        const fallbackObj: any = { ...company };
+        delete fallbackObj.mailing_address;
+        const res = await supabase
+            .from('tour_companies')
+            .insert(fallbackObj)
+            .select('*, company_app_config(*)')
+            .single();
+        data = res.data;
+        error = res.error;
+    }
+
+    if (error || !data) {
+        log(`Database Error: ${error?.message}`);
+        return { success: false, error: error?.message || 'Failed to create company' };
     }
 
     log(`Company created in DB: ${data.id}`);
@@ -248,19 +261,33 @@ export async function updateCompany(id: string, formData: FormData) {
         payment_method: formData.get('payment_method') as string,
         representative_name: formData.get('representative_name') as string || null,
         representative_title: formData.get('representative_title') as string || null,
+        mailing_address: (formData.get('mailing_address') as string) || null,
         discount_percentage: parseFloat(formData.get('discount_percentage') as string) || 0,
         prep_instructions: formData.get('prep_instructions') as string || null,
     };
 
-    const { data, error } = await supabase
+    let { data, error } = await supabase
         .from('tour_companies')
         .update(updates)
         .eq('id', id)
         .select('*, company_app_config(*)')
         .single();
 
-    if (error) {
-        return { success: false, error: error.message };
+    if (error && (error.message.includes('mailing_address') || error.message.includes('schema cache'))) {
+        const fallbackUpdates: any = { ...updates };
+        delete fallbackUpdates.mailing_address;
+        const res = await supabase
+            .from('tour_companies')
+            .update(fallbackUpdates)
+            .eq('id', id)
+            .select('*, company_app_config(*)')
+            .single();
+        data = res.data;
+        error = res.error;
+    }
+
+    if (error || !data) {
+        return { success: false, error: error?.message || 'Failed to update company' };
     }
 
     // Update app config based on payment method and custom branding settings

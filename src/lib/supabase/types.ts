@@ -22,6 +22,7 @@ export interface TourCompany {
     order_link: string | null;
     needs_password_change: boolean;
     prep_instructions?: string | null;
+    mailing_address?: string | null;
     default_slug?: string | null;
     generic_slug?: string | null;
     logo_url?: string | null;

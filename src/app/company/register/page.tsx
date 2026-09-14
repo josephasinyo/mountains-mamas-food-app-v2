@@ -7,7 +7,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { 
     Mountain, User, Lock, Mail, Phone, Building2, CreditCard, 
     FileText, Check, CheckCircle2, ArrowLeft, ArrowRight, 
-    Trash2, PenTool, Type, HelpCircle, ShieldAlert, Sparkles, Loader2 
+    Trash2, PenTool, Type, HelpCircle, ShieldAlert, Sparkles, Loader2, MapPin 
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -28,6 +28,7 @@ export default function RegisterCompanyPage() {
     const [name, setName] = useState('');
     const [email, setEmail] = useState('');
     const [phone, setPhone] = useState('');
+    const [mailingAddress, setMailingAddress] = useState('');
     const [password, setPassword] = useState('');
     const [confirmPassword, setConfirmPassword] = useState('');
     const [paymentMethod, setPaymentMethod] = useState<'direct_pay' | 'monthly_invoice'>('direct_pay');
@@ -259,6 +260,7 @@ export default function RegisterCompanyPage() {
                 name,
                 email,
                 phone,
+                mailingAddress,
                 paymentMethod,
                 password,
                 signatureData: finalSignature,
@@ -450,6 +452,19 @@ export default function RegisterCompanyPage() {
                                                         placeholder="(406) 555-0199"
                                                         value={phone}
                                                         onChange={(e) => setPhone(e.target.value)}
+                                                        className="h-12 pl-11 rounded-xl border-gray-100 bg-gray-50/50 focus:bg-white font-medium transition-all text-sm placeholder:text-gray-400 placeholder:font-normal"
+                                                    />
+                                                </div>
+                                            </div>
+
+                                            <div className="space-y-2">
+                                                <Label className="text-[10px] font-black uppercase tracking-wider text-gray-400 ml-1">Mailing / Postal Address</Label>
+                                                <div className="relative">
+                                                    <MapPin className="absolute left-4 top-3.5 size-4 text-gray-400" />
+                                                    <Input
+                                                        placeholder="123 Main St, Suite A, Bozeman, MT 59715"
+                                                        value={mailingAddress}
+                                                        onChange={(e) => setMailingAddress(e.target.value)}
                                                         className="h-12 pl-11 rounded-xl border-gray-100 bg-gray-50/50 focus:bg-white font-medium transition-all text-sm placeholder:text-gray-400 placeholder:font-normal"
                                                     />
                                                 </div>
