@@ -6,6 +6,7 @@ import { sendEmail, sendInvitationEmail } from '@/lib/brevo';
 import fs from 'fs';
 import path from 'path';
 import crypto from 'crypto';
+import { formatTitleCase } from '@/lib/utils';
 
 // ---- Types ----
 interface OutreachLead {
@@ -230,22 +231,22 @@ export async function importLeadsFromCSV(headers: string[], rows: string[][]) {
         const finalNotes = notesParts.join('\n\n');
 
         const insertObj: Record<string, any> = {
-            company_name: lead.company_name,
+            company_name: formatTitleCase(lead.company_name),
             phone: lead.phone || null,
             email: normalizedEmail,
             website: lead.website || null,
-            home_base: lead.home_base || null,
-            state: lead.state || null,
-            mailing_address: lead.mailing_address || null,
+            home_base: lead.home_base ? formatTitleCase(lead.home_base) : null,
+            state: lead.state ? lead.state.toUpperCase().trim() : null,
+            mailing_address: lead.mailing_address ? formatTitleCase(lead.mailing_address) : null,
             primary_gate: lead.primary_gate || null,
-            tour_type: lead.tour_type || null,
+            tour_type: lead.tour_type ? formatTitleCase(lead.tour_type) : null,
             season: lead.season || null,
             notes: finalNotes || null,
             partnership_notes: lead.partnership_notes || null,
             outreach_tier: lead.outreach_tier || null,
             priority: lead.priority || null,
-            contact_name: lead.contact_name || null,
-            title: lead.title || null,
+            contact_name: lead.contact_name ? formatTitleCase(lead.contact_name) : null,
+            title: lead.title ? formatTitleCase(lead.title) : null,
             average_group_size: lead.average_group_size ? parseInt(lead.average_group_size, 10) : null,
             estimated_annual_yellowstone_guests: lead.estimated_annual_yellowstone_guests ? parseInt(lead.estimated_annual_yellowstone_guests, 10) : null,
             status: 'not_contacted',
@@ -331,22 +332,22 @@ export async function createOutreachLead(leadData: {
     }
 
     const insertPayload: Record<string, any> = {
-        company_name: leadData.company_name,
+        company_name: formatTitleCase(leadData.company_name),
         email: normalizedEmail,
         phone: leadData.phone || null,
         website: leadData.website || null,
-        home_base: leadData.home_base || null,
-        state: leadData.state || null,
-        mailing_address: leadData.mailing_address || null,
+        home_base: leadData.home_base ? formatTitleCase(leadData.home_base) : null,
+        state: leadData.state ? leadData.state.toUpperCase().trim() : null,
+        mailing_address: leadData.mailing_address ? formatTitleCase(leadData.mailing_address) : null,
         primary_gate: leadData.primary_gate || null,
-        tour_type: leadData.tour_type || null,
+        tour_type: leadData.tour_type ? formatTitleCase(leadData.tour_type) : null,
         season: leadData.season || null,
         notes: leadData.notes || null,
         partnership_notes: leadData.partnership_notes || null,
         outreach_tier: leadData.outreach_tier || null,
         priority: leadData.priority || null,
-        contact_name: leadData.contact_name || null,
-        title: leadData.title || null,
+        contact_name: leadData.contact_name ? formatTitleCase(leadData.contact_name) : null,
+        title: leadData.title ? formatTitleCase(leadData.title) : null,
         average_group_size: leadData.average_group_size || null,
         estimated_annual_yellowstone_guests: leadData.estimated_annual_yellowstone_guests || null,
         status: 'not_contacted',
@@ -417,22 +418,22 @@ export async function updateOutreachLead(leadId: string, leadData: {
 
     // Build update object, only including non-undefined fields
     const updates: Record<string, any> = {};
-    if (leadData.company_name !== undefined) updates.company_name = leadData.company_name;
+    if (leadData.company_name !== undefined) updates.company_name = formatTitleCase(leadData.company_name);
     if (leadData.email !== undefined) updates.email = leadData.email;
     if (leadData.phone !== undefined) updates.phone = leadData.phone || null;
     if (leadData.website !== undefined) updates.website = leadData.website || null;
-    if (leadData.home_base !== undefined) updates.home_base = leadData.home_base || null;
-    if (leadData.state !== undefined) updates.state = leadData.state || null;
-    if (leadData.mailing_address !== undefined) updates.mailing_address = leadData.mailing_address || null;
+    if (leadData.home_base !== undefined) updates.home_base = leadData.home_base ? formatTitleCase(leadData.home_base) : null;
+    if (leadData.state !== undefined) updates.state = leadData.state ? leadData.state.toUpperCase().trim() : null;
+    if (leadData.mailing_address !== undefined) updates.mailing_address = leadData.mailing_address ? formatTitleCase(leadData.mailing_address) : null;
     if (leadData.primary_gate !== undefined) updates.primary_gate = leadData.primary_gate || null;
-    if (leadData.tour_type !== undefined) updates.tour_type = leadData.tour_type || null;
+    if (leadData.tour_type !== undefined) updates.tour_type = leadData.tour_type ? formatTitleCase(leadData.tour_type) : null;
     if (leadData.season !== undefined) updates.season = leadData.season || null;
     if (leadData.notes !== undefined) updates.notes = leadData.notes || null;
     if (leadData.partnership_notes !== undefined) updates.partnership_notes = leadData.partnership_notes || null;
     if (leadData.outreach_tier !== undefined) updates.outreach_tier = leadData.outreach_tier || null;
     if (leadData.priority !== undefined) updates.priority = leadData.priority || null;
-    if (leadData.contact_name !== undefined) updates.contact_name = leadData.contact_name || null;
-    if (leadData.title !== undefined) updates.title = leadData.title || null;
+    if (leadData.contact_name !== undefined) updates.contact_name = leadData.contact_name ? formatTitleCase(leadData.contact_name) : null;
+    if (leadData.title !== undefined) updates.title = leadData.title ? formatTitleCase(leadData.title) : null;
     if (leadData.average_group_size !== undefined) updates.average_group_size = leadData.average_group_size || null;
     if (leadData.estimated_annual_yellowstone_guests !== undefined) updates.estimated_annual_yellowstone_guests = leadData.estimated_annual_yellowstone_guests || null;
 

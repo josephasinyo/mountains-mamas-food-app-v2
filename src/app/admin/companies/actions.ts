@@ -7,6 +7,7 @@ import fs from 'fs';
 import path from 'path';
 import { cookies } from 'next/headers';
 import crypto from 'crypto';
+import { formatTitleCase } from '@/lib/utils';
 
 
 function slugify(text: string): string {
@@ -38,7 +39,7 @@ export async function createCompany(formData: FormData) {
 
     const company = {
         id: companyId,
-        name,
+        name: formatTitleCase(name),
         slug: activeSlug,
         default_slug: defaultSlug,
         generic_slug: genericSlug,
@@ -46,9 +47,9 @@ export async function createCompany(formData: FormData) {
         email: company_email_val,
         phone: (formData.get('phone') as string) || null,
         payment_method: paymentMethod,
-        representative_name: representativeName,
-        representative_title: representativeTitle,
-        mailing_address: (formData.get('mailing_address') as string) || null,
+        representative_name: representativeName ? formatTitleCase(representativeName) : null,
+        representative_title: representativeTitle ? formatTitleCase(representativeTitle) : null,
+        mailing_address: formData.get('mailing_address') ? formatTitleCase(formData.get('mailing_address') as string) : null,
         discount_percentage: parseFloat(formData.get('discount_percentage') as string) || 0,
         prep_instructions: prepInstructions,
         status: 'active' as const,
@@ -251,7 +252,7 @@ export async function updateCompany(id: string, formData: FormData) {
     const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
     
     const updates = {
-        name,
+        name: formatTitleCase(name),
         slug: activeSlug,
         default_slug: defaultSlug,
         generic_slug: genericSlug,
@@ -259,9 +260,9 @@ export async function updateCompany(id: string, formData: FormData) {
         email: formData.get('email') as string,
         phone: (formData.get('phone') as string) || null,
         payment_method: formData.get('payment_method') as string,
-        representative_name: formData.get('representative_name') as string || null,
-        representative_title: formData.get('representative_title') as string || null,
-        mailing_address: (formData.get('mailing_address') as string) || null,
+        representative_name: formData.get('representative_name') ? formatTitleCase(formData.get('representative_name') as string) : null,
+        representative_title: formData.get('representative_title') ? formatTitleCase(formData.get('representative_title') as string) : null,
+        mailing_address: formData.get('mailing_address') ? formatTitleCase(formData.get('mailing_address') as string) : null,
         discount_percentage: parseFloat(formData.get('discount_percentage') as string) || 0,
         prep_instructions: formData.get('prep_instructions') as string || null,
     };

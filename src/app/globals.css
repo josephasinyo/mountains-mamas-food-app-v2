@@ -304,6 +304,7 @@
         color: #000000 !important;
         margin-bottom: 10px !important;
         text-align: center !important;
+        text-transform: capitalize !important;
         word-wrap: break-word !important;
     }
 
@@ -314,6 +315,7 @@
         line-height: 1.25 !important;
         margin-bottom: 10px !important;
         text-align: center !important;
+        text-transform: capitalize !important;
     }
 
     body.print-labels-mode .sticky-label-address {
@@ -322,6 +324,7 @@
         color: #000000 !important;
         line-height: 1.35 !important;
         text-align: center !important;
+        text-transform: capitalize !important;
         white-space: pre-line !important;
         word-wrap: break-word !important;
     }

@@ -32,7 +32,7 @@ import {
     Building2, CreditCard, FileText, Copy, ChevronRight, ChevronDown,
     Phone, Mail, Globe, ExternalLink, Clock, Send, User, Percent, Settings, MapPin
 } from 'lucide-react';
-import { cn, formatDateUS } from '@/lib/utils';
+import { cn, formatDateUS, formatTitleCase } from '@/lib/utils';
 
 
 interface CompaniesClientProps {
@@ -360,7 +360,7 @@ export function CompaniesClient({ initialCompanies }: CompaniesClientProps) {
                                                     </div>
                                                     <div>
                                                         <div className="font-bold text-gray-900 flex items-center gap-2">
-                                                            {company.name}
+                                                            {formatTitleCase(company.name)}
                                                             {company.discount_percentage > 0 && (
                                                                 <Badge variant="secondary" className="bg-emerald-50 text-emerald-700 text-[10px] font-black border-none px-1.5 py-0">
                                                                     {company.discount_percentage}% OFF
@@ -510,7 +510,7 @@ export function CompaniesClient({ initialCompanies }: CompaniesClientProps) {
                                                                         </div>
                                                                         <div className="min-w-0">
                                                                             <p className="text-[10px] text-gray-400 font-bold uppercase tracking-wider">Legal Representative</p>
-                                                                            <p className="text-xs font-bold text-gray-900">{company.representative_name || 'Not provided'}{company.representative_title ? ` (${company.representative_title})` : ''}</p>
+                                                                            <p className="text-xs font-bold text-gray-900">{company.representative_name ? formatTitleCase(company.representative_name) : 'Not provided'}{company.representative_title ? ` (${formatTitleCase(company.representative_title)})` : ''}</p>
                                                                         </div>
                                                                     </div>
                                                                     <div className="flex items-start gap-3">
@@ -519,7 +519,7 @@ export function CompaniesClient({ initialCompanies }: CompaniesClientProps) {
                                                                         </div>
                                                                         <div className="min-w-0">
                                                                             <p className="text-[10px] text-gray-400 font-bold uppercase tracking-wider">Mailing Address</p>
-                                                                            <p className="text-xs font-bold text-gray-900 whitespace-pre-line">{company.mailing_address || 'Not provided'}</p>
+                                                                            <p className="text-xs font-bold text-gray-900 whitespace-pre-line">{company.mailing_address ? formatTitleCase(company.mailing_address) : 'Not provided'}</p>
                                                                         </div>
                                                                     </div>
                                                                     <div className="flex items-start gap-3">

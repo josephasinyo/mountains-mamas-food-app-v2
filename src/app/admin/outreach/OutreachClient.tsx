@@ -11,7 +11,7 @@ import {
 import { motion, AnimatePresence } from 'framer-motion';
 import { toast } from 'sonner';
 import Papa from 'papaparse';
-import { safePrint } from '@/lib/utils';
+import { safePrint, formatTitleCase } from '@/lib/utils';
 import {
     importLeadsFromCSV,
     deleteOutreachLead,
@@ -715,7 +715,7 @@ export function OutreachClient({ initialLeads }: { initialLeads: Lead[] }) {
                                                 <div className="flex flex-col gap-0.5">
                                                     <div className="flex flex-wrap items-center gap-2">
                                                         <span className="font-bold text-gray-900 text-[14px] leading-tight">
-                                                            {lead.company_name}
+                                                            {formatTitleCase(lead.company_name)}
                                                         </span>
                                                         {lead.priority && (
                                                             <span className="px-1.5 py-0.5 text-[9px] font-black uppercase rounded bg-rose-50 text-rose-600 border border-rose-100">
@@ -729,7 +729,7 @@ export function OutreachClient({ initialLeads }: { initialLeads: Lead[] }) {
                                                         )}
                                                     </div>
                                                     {lead.tour_type && (
-                                                        <span className="text-[11px] text-gray-400 font-medium">{lead.tour_type}</span>
+                                                        <span className="text-[11px] text-gray-400 font-medium">{formatTitleCase(lead.tour_type)}</span>
                                                     )}
                                                     {lead.notes && (
                                                         <span className="text-[11px] text-violet-500 font-medium flex items-center gap-1 mt-0.5">
@@ -745,7 +745,7 @@ export function OutreachClient({ initialLeads }: { initialLeads: Lead[] }) {
                                                 <div className="flex flex-col gap-1">
                                                     {lead.contact_name && (
                                                         <span className="text-[12px] font-bold text-gray-800">
-                                                            {lead.contact_name}{lead.title ? ` (${lead.title})` : ''}
+                                                            {formatTitleCase(lead.contact_name)}{lead.title ? ` (${formatTitleCase(lead.title)})` : ''}
                                                         </span>
                                                     )}
                                                     <a
@@ -781,13 +781,13 @@ export function OutreachClient({ initialLeads }: { initialLeads: Lead[] }) {
                                                     {lead.home_base && (
                                                         <span className="text-[13px] text-gray-600 font-medium flex items-center gap-1">
                                                             <MapPin className="size-3 text-gray-400" />
-                                                            {lead.home_base}{lead.state ? `, ${lead.state}` : ''}
+                                                            {formatTitleCase(lead.home_base)}{lead.state ? `, ${lead.state.toUpperCase()}` : ''}
                                                         </span>
                                                     )}
                                                     {lead.mailing_address && (
                                                         <div className="flex items-center gap-1.5 mt-0.5">
                                                             <span className="text-[11px] text-gray-500 font-medium truncate max-w-[180px]" title={lead.mailing_address}>
-                                                                {lead.mailing_address}
+                                                                {formatTitleCase(lead.mailing_address)}
                                                             </span>
                                                             <button
                                                                 onClick={(e) => {
@@ -1763,23 +1763,23 @@ export function OutreachClient({ initialLeads }: { initialLeads: Lead[] }) {
                                     <div className="sticky-label-to-tag">DELIVER TO:</div>
                                     
                                     <div className="sticky-label-company-name">
-                                        {pageLeads[0].company_name}
+                                        {formatTitleCase(pageLeads[0].company_name)}
                                     </div>
 
                                     {(pageLeads[0].contact_name || pageLeads[0].title) && (
                                         <div className="sticky-label-contact">
-                                            Attn: {pageLeads[0].contact_name}{pageLeads[0].title ? ` (${pageLeads[0].title})` : ''}
+                                            Attn: {formatTitleCase(pageLeads[0].contact_name)}{pageLeads[0].title ? ` (${formatTitleCase(pageLeads[0].title)})` : ''}
                                         </div>
                                     )}
 
                                     <div className="sticky-label-address">
                                         {pageLeads[0].mailing_address ? (
                                             pageLeads[0].mailing_address.split('\n').map((line, lIdx) => (
-                                                <div key={lIdx}>{line}</div>
+                                                <div key={lIdx}>{formatTitleCase(line)}</div>
                                             ))
                                         ) : (
                                             <div>
-                                                {pageLeads[0].home_base ? `${pageLeads[0].home_base}${pageLeads[0].state ? `, ${pageLeads[0].state}` : ''}` : ''}
+                                                {pageLeads[0].home_base ? `${formatTitleCase(pageLeads[0].home_base)}${pageLeads[0].state ? `, ${pageLeads[0].state.toUpperCase()}` : ''}` : ''}
                                             </div>
                                         )}
                                     </div>
@@ -1803,23 +1803,23 @@ export function OutreachClient({ initialLeads }: { initialLeads: Lead[] }) {
                                         <div className="sticky-label-to-tag">DELIVER TO:</div>
                                         
                                         <div className="sticky-label-company-name">
-                                            {pageLeads[1].company_name}
+                                            {formatTitleCase(pageLeads[1].company_name)}
                                         </div>
 
                                         {(pageLeads[1].contact_name || pageLeads[1].title) && (
                                             <div className="sticky-label-contact">
-                                                Attn: {pageLeads[1].contact_name}{pageLeads[1].title ? ` (${pageLeads[1].title})` : ''}
+                                                Attn: {formatTitleCase(pageLeads[1].contact_name)}{pageLeads[1].title ? ` (${formatTitleCase(pageLeads[1].title)})` : ''}
                                             </div>
                                         )}
 
                                         <div className="sticky-label-address">
                                             {pageLeads[1].mailing_address ? (
                                                 pageLeads[1].mailing_address.split('\n').map((line, lIdx) => (
-                                                    <div key={lIdx}>{line}</div>
+                                                    <div key={lIdx}>{formatTitleCase(line)}</div>
                                                 ))
                                             ) : (
                                                 <div>
-                                                    {pageLeads[1].home_base ? `${pageLeads[1].home_base}${pageLeads[1].state ? `, ${pageLeads[1].state}` : ''}` : ''}
+                                                    {pageLeads[1].home_base ? `${formatTitleCase(pageLeads[1].home_base)}${pageLeads[1].state ? `, ${pageLeads[1].state.toUpperCase()}` : ''}` : ''}
                                                 </div>
                                             )}
                                         </div>
@@ -1990,6 +1990,7 @@ export function OutreachClient({ initialLeads }: { initialLeads: Lead[] }) {
                         color: #000000 !important;
                         margin-bottom: 10px !important;
                         text-align: center !important;
+                        text-transform: capitalize !important;
                         word-wrap: break-word !important;
                     }
 
@@ -2000,6 +2001,7 @@ export function OutreachClient({ initialLeads }: { initialLeads: Lead[] }) {
                         line-height: 1.25 !important;
                         margin-bottom: 10px !important;
                         text-align: center !important;
+                        text-transform: capitalize !important;
                     }
 
                     body.print-labels-mode .sticky-label-address {
@@ -2008,6 +2010,7 @@ export function OutreachClient({ initialLeads }: { initialLeads: Lead[] }) {
                         color: #000000 !important;
                         line-height: 1.35 !important;
                         text-align: center !important;
+                        text-transform: capitalize !important;
                         white-space: pre-line !important;
                         word-wrap: break-word !important;
                     }

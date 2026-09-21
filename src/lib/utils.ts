@@ -182,3 +182,54 @@ export function formatCurrency(value: number | string | undefined | null): strin
         maximumFractionDigits: 2,
     }).format(num);
 }
+
+/**
+ * Capitalizes the first letter of every word in a string (Title Case).
+ * Handles multi-line addresses, punctuation, and common uppercase abbreviations (states, PO Box, USA).
+ */
+export function formatTitleCase(str: string | undefined | null): string {
+    if (!str) return '';
+    
+    const UPPERCASE_TOKENS = new Set([
+        'AL', 'AK', 'AZ', 'AR', 'CA', 'CO', 'CT', 'DE', 'FL', 'GA',
+        'HI', 'ID', 'IL', 'IN', 'IA', 'KS', 'KY', 'LA', 'ME', 'MD',
+        'MA', 'MI', 'MN', 'MS', 'MO', 'MT', 'NE', 'NV', 'NH', 'NJ',
+        'NM', 'NY', 'NC', 'ND', 'OH', 'OK', 'OR', 'PA', 'RI', 'SC',
+        'SD', 'TN', 'TX', 'UT', 'VT', 'VA', 'WA', 'WV', 'WI', 'WY',
+        'DC', 'US', 'USA', 'PO', 'P.O.', 'NW', 'NE', 'SW', 'SE', 'LLC', 'INC', 'LTD'
+    ]);
+
+    return str
+        .split('\n')
+        .map(line => {
+            return line
+                .split(' ')
+                .map(word => {
+                    if (!word) return '';
+                    
+                    const cleanWord = word.replace(/^[^\w]+|[^\w]+$/g, '').toUpperCase();
+                    
+                    if (UPPERCASE_TOKENS.has(cleanWord)) {
+                        return word.replace(new RegExp(cleanWord, 'i'), cleanWord);
+                    }
+                    
+                    if (word.includes('-')) {
+                        return word
+                            .split('-')
+                            .map(part => part ? part.charAt(0).toUpperCase() + part.slice(1).toLowerCase() : '')
+                            .join('-');
+                    }
+                    
+                    const firstCharIdx = word.search(/[a-zA-Z]/);
+                    if (firstCharIdx === -1) return word;
+                    
+                    const prefix = word.slice(0, firstCharIdx);
+                    const letter = word.charAt(firstCharIdx).toUpperCase();
+                    const remainder = word.slice(firstCharIdx + 1).toLowerCase();
+                    return prefix + letter + remainder;
+                })
+                .join(' ');
+        })
+        .join('\n');
+}
+
