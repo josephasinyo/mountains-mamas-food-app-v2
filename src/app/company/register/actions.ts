@@ -36,10 +36,10 @@ export async function getActiveMealTypes(): Promise<string[]> {
 
         if (error || !activeMeals) return ['lunch'];
 
-        const activeTypes = Array.from(
+        const activeTypes = Array.from<string>(
             new Set(
                 activeMeals
-                    .map((m: any) => m.meal_type || 'lunch')
+                    .map((m: any) => (m.meal_type || 'lunch') as string)
                     .filter(Boolean)
             )
         );
