@@ -92,24 +92,24 @@ export async function createCompany(formData: FormData) {
 
     // --- Onboarding Initialization ---
     try {
-        // 1. Initialize Menu Selections (Default to ALL active meals)
+        // 1. Initialize Menu Selections (Default to Lunch meals only, other meal types deactivated)
         const { data: allMeals } = await supabase
             .from('meals')
-            .select('id, sort_order')
+            .select('id, sort_order, meal_type')
             .eq('is_active', true);
             
         if (allMeals && allMeals.length > 0) {
-            const selections = allMeals.map((meal: { id: string; sort_order: number }) => ({
+            const selections = allMeals.map((meal: { id: string; sort_order: number; meal_type?: string }) => ({
                 company_id: data.id,
                 meal_id: meal.id,
-                is_selected: true,
+                is_selected: (!meal.meal_type || meal.meal_type === 'lunch'),
                 sort_order: meal.sort_order
             }));
             await supabase.from('company_menu_selections').insert(selections);
             log(`Initialized menu selections for ${allMeals.length} meals.`);
         }
 
-        // 2. Initialize App Config with Global Defaults (Bread & Cookies) and Branding Settings
+        // 2. Initialize App Config with Global Defaults (Bread & Cookies), Branding Settings, and Allowed Meal Types
         const { data: globalSettings } = await supabase
             .from('app_settings')
             .select('*')
@@ -118,16 +118,28 @@ export async function createCompany(formData: FormData) {
 
         const useMountainMamasBranding = formData.get('use_mountain_mamas_branding') === 'true';
         const customWelcomeMessage = formData.get('custom_welcome_message') as string || null;
+        
+        const rawAllowedMealTypes = formData.get('allowed_meal_types');
+        let allowedMealTypes: string[] = ['lunch'];
+        if (rawAllowedMealTypes) {
+            try {
+                allowedMealTypes = JSON.parse(rawAllowedMealTypes as string);
+            } catch {
+                allowedMealTypes = (rawAllowedMealTypes as string).split(',').map(s => s.trim()).filter(Boolean);
+            }
+        }
+        if (!allowedMealTypes.length) allowedMealTypes = ['lunch'];
 
         await supabase.from('company_app_config').update({
             use_mountain_mamas_branding: useMountainMamasBranding,
             custom_welcome_message: customWelcomeMessage,
+            allowed_meal_types: allowedMealTypes,
             meal_page_options: {
                 breads: globalSettings?.bread_options || [],
                 cookies: globalSettings?.cookie_options || []
             }
         }).eq('company_id', data.id);
-        log(`Synced global defaults and custom branding to company config.`);
+        log(`Synced global defaults, allowed meal types (${allowedMealTypes.join(', ')}), and custom branding to company config.`);
 
         // 3. Initialize core or auto-add form fields for the company
         const { data: eligibleFields } = await supabase
@@ -291,18 +303,33 @@ export async function updateCompany(id: string, formData: FormData) {
         return { success: false, error: error?.message || 'Failed to update company' };
     }
 
-    // Update app config based on payment method and custom branding settings
+    // Update app config based on payment method, custom branding settings, and allowed meal types
     const showPrices = updates.payment_method === 'direct_pay';
     const customWelcomeMessage = formData.get('custom_welcome_message') as string || null;
 
+    const rawAllowedMealTypes = formData.get('allowed_meal_types');
+    let allowedMealTypes: string[] | undefined = undefined;
+    if (rawAllowedMealTypes) {
+        try {
+            allowedMealTypes = JSON.parse(rawAllowedMealTypes as string);
+        } catch {
+            allowedMealTypes = (rawAllowedMealTypes as string).split(',').map(s => s.trim()).filter(Boolean);
+        }
+    }
+
+    const configUpdates: any = {
+        show_prices: showPrices,
+        show_stripe_checkout: showPrices,
+        use_mountain_mamas_branding: useMountainMamasBranding,
+        custom_welcome_message: customWelcomeMessage,
+    };
+    if (allowedMealTypes && allowedMealTypes.length > 0) {
+        configUpdates.allowed_meal_types = allowedMealTypes;
+    }
+
     await supabase
         .from('company_app_config')
-        .update({
-            show_prices: showPrices,
-            show_stripe_checkout: showPrices,
-            use_mountain_mamas_branding: useMountainMamasBranding,
-            custom_welcome_message: customWelcomeMessage,
-        })
+        .update(configUpdates)
         .eq('company_id', id);
 
     await logActivity({
@@ -310,7 +337,7 @@ export async function updateCompany(id: string, formData: FormData) {
         action: 'company_updated',
         entityType: 'company',
         entityId: id,
-        details: { name: updates.name },
+        details: { name: updates.name, allowed_meal_types: allowedMealTypes },
     });
 
     return { success: true, data };
@@ -585,6 +612,61 @@ export async function stopImpersonating() {
     } catch (e: any) {
         console.error('[stopImpersonating] Error:', e);
         return { success: false, error: e.message || String(e) };
+    }
+}
+
+export async function updateCompanyAllowedMealTypes(companyId: string, allowedMealTypes: string[]) {
+    try {
+        if (!allowedMealTypes || allowedMealTypes.length === 0) {
+            return { success: false, error: 'At least one meal type must remain selected.' };
+        }
+        const supabase = createAdminClient();
+        const { error } = await supabase
+            .from('company_app_config')
+            .update({ allowed_meal_types: allowedMealTypes })
+            .eq('company_id', companyId);
+
+        if (error) throw error;
+
+        // Ensure non-lunch meals are explicitly deactivated by default if missing from selections
+        if (allowedMealTypes && Array.isArray(allowedMealTypes)) {
+            const { data: nonLunchMeals } = await supabase
+                .from('meals')
+                .select('id, meal_type, sort_order')
+                .neq('meal_type', 'lunch');
+
+            if (nonLunchMeals && nonLunchMeals.length > 0) {
+                const { data: existingSelections } = await supabase
+                    .from('company_menu_selections')
+                    .select('meal_id')
+                    .eq('company_id', companyId);
+
+                const existingMealIds = new Set((existingSelections || []).map((s: any) => s.meal_id));
+                const missingSelections = nonLunchMeals
+                    .filter((m: any) => !existingMealIds.has(m.id))
+                    .map((m: any) => ({
+                        company_id: companyId,
+                        meal_id: m.id,
+                        is_selected: false,
+                        sort_order: m.sort_order || 0
+                    }));
+
+                if (missingSelections.length > 0) {
+                    await supabase.from('company_menu_selections').insert(missingSelections);
+                }
+            }
+        }
+
+        await logActivity({
+            action: 'app_config_updated',
+            entityType: 'company',
+            entityId: companyId,
+            details: { allowed_meal_types: allowedMealTypes }
+        });
+
+        return { success: true };
+    } catch (err: any) {
+        return { success: false, error: err.message };
     }
 }
 

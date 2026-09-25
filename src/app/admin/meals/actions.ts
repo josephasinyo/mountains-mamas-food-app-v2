@@ -37,7 +37,8 @@ export async function createMeal(formData: FormData) {
     const juniorPrice = formData.get('junior_price') as string;
     const juniorBoxIncludes = formData.get('junior_box_includes') as string;
     
-    const category = formData.get('category') as string;
+    const meal_type = (formData.get('meal_type') as string) || 'lunch';
+    const category = (formData.get('category') as string) || (meal_type !== 'lunch' ? meal_type : 'sandwich');
     const lunch_package = formData.get('lunch_package') as any;
     const allow_split_box = formData.get('allow_split_box') === 'true';
     const is_active = formData.get('is_active') === 'true';
@@ -57,7 +58,7 @@ export async function createMeal(formData: FormData) {
         junior: juniorImageFile ? { name: juniorImageFile.name, size: juniorImageFile.size, type: juniorImageFile.type } : 'none',
     });
 
-    if (category === 'sandwich' && (!sandwichPrice || isNaN(parseFloat(sandwichPrice)))) {
+    if (meal_type === 'lunch' && category === 'sandwich' && (!sandwichPrice || isNaN(parseFloat(sandwichPrice)))) {
         return { success: false, error: 'Sandwich only price is required.' };
     }
 
@@ -103,25 +104,28 @@ export async function createMeal(formData: FormData) {
 
         // Sandwich uses main image_url directly
 
+        const insertPayload: any = {
+            name,
+            description,
+            price: parseFloat(price),
+            box_includes: meal_type === 'lunch' ? box_includes : null,
+            category,
+            meal_type,
+            lunch_package: meal_type === 'lunch' ? lunch_package : null,
+            allow_split_box: meal_type === 'lunch' ? allow_split_box : false,
+            is_active,
+            image_url,
+            box_lunch_image_url: meal_type === 'lunch' ? box_lunch_image_url : null,
+            junior_price: (meal_type === 'lunch' && juniorPrice) ? parseFloat(juniorPrice) : null,
+            junior_box_includes: meal_type === 'lunch' ? juniorBoxIncludes : null,
+            junior_box_lunch_image_url: meal_type === 'lunch' ? junior_box_lunch_image_url : null,
+            sandwich_price: (meal_type === 'lunch' && sandwichPrice) ? parseFloat(sandwichPrice) : null,
+            sandwich_image_url: null
+        };
+
         const { data, error } = await supabase
             .from('meals')
-            .insert({
-                name,
-                description,
-                price: parseFloat(price),
-                box_includes: box_includes,
-                category,
-                lunch_package,
-                allow_split_box,
-                is_active,
-                image_url,
-                box_lunch_image_url,
-                junior_price: juniorPrice ? parseFloat(juniorPrice) : null,
-                junior_box_includes: juniorBoxIncludes,
-                junior_box_lunch_image_url,
-                sandwich_price: sandwichPrice ? parseFloat(sandwichPrice) : null,
-                sandwich_image_url: null
-            })
+            .insert(insertPayload)
             .select()
             .single();
 
@@ -134,7 +138,7 @@ export async function createMeal(formData: FormData) {
             action: 'meal_created',
             entityType: 'meal',
             entityId: data.id,
-            details: { name: name, price: price },
+            details: { name: name, price: price, meal_type: meal_type },
         });
 
         return { success: true, data };
@@ -154,7 +158,8 @@ export async function updateMeal(id: string, formData: FormData) {
     const juniorPrice = formData.get('junior_price') as string;
     const juniorBoxIncludes = formData.get('junior_box_includes') as string;
     
-    const category = formData.get('category') as string;
+    const meal_type = (formData.get('meal_type') as string) || 'lunch';
+    const category = (formData.get('category') as string) || (meal_type !== 'lunch' ? meal_type : 'sandwich');
     const lunch_package = formData.get('lunch_package') as any;
     const allow_split_box = formData.get('allow_split_box') === 'true';
     const is_active = formData.get('is_active') === 'true';
@@ -175,7 +180,7 @@ export async function updateMeal(id: string, formData: FormData) {
     });
     console.log('[updateMeal] Existing URLs:', { image_url, box_lunch_image_url, junior_box_lunch_image_url });
 
-    if (category === 'sandwich' && (!sandwichPrice || isNaN(parseFloat(sandwichPrice)))) {
+    if (meal_type === 'lunch' && category === 'sandwich' && (!sandwichPrice || isNaN(parseFloat(sandwichPrice)))) {
         return { success: false, error: 'Sandwich only price is required.' };
     }
 
@@ -224,21 +229,22 @@ export async function updateMeal(id: string, formData: FormData) {
 
         console.log('[updateMeal] Final URLs being saved:', { image_url, box_lunch_image_url, junior_box_lunch_image_url });
 
-        const updates = {
+        const updates: any = {
             name,
             description,
             price: parseFloat(price),
-            box_includes: box_includes,
+            box_includes: meal_type === 'lunch' ? box_includes : null,
             category,
-            lunch_package,
-            allow_split_box,
+            meal_type,
+            lunch_package: meal_type === 'lunch' ? lunch_package : null,
+            allow_split_box: meal_type === 'lunch' ? allow_split_box : false,
             is_active,
             image_url,
-            box_lunch_image_url,
-            junior_price: juniorPrice ? parseFloat(juniorPrice) : null,
-            junior_box_includes: juniorBoxIncludes,
-            junior_box_lunch_image_url,
-            sandwich_price: sandwichPrice ? parseFloat(sandwichPrice) : null,
+            box_lunch_image_url: meal_type === 'lunch' ? box_lunch_image_url : null,
+            junior_price: (meal_type === 'lunch' && juniorPrice) ? parseFloat(juniorPrice) : null,
+            junior_box_includes: meal_type === 'lunch' ? juniorBoxIncludes : null,
+            junior_box_lunch_image_url: meal_type === 'lunch' ? junior_box_lunch_image_url : null,
+            sandwich_price: (meal_type === 'lunch' && sandwichPrice) ? parseFloat(sandwichPrice) : null,
             sandwich_image_url: null
         };
 

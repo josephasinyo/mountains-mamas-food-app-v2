@@ -11,7 +11,7 @@ import {
     Settings, Layout, 
     Save, Loader2, Smartphone, CheckCircle2,
     Cookie, Utensils, FileText, ArrowUp, ArrowDown,
-    Copy, ExternalLink
+    Copy, ExternalLink, Sun, Coffee, Moon, Sparkles, UtensilsCrossed
 } from 'lucide-react';
 import { updateAppConfig, updateCompanyFormField } from '../actions';
 import { toast } from 'sonner';
@@ -25,9 +25,10 @@ interface AppSettingsClientProps {
         globalFields: any[];
         companyFields: any[];
     };
+    activeMasterMealTypes?: string[];
 }
 
-export default function AppSettingsClient({ initialData, globalSettings, formFieldsData }: AppSettingsClientProps) {
+export default function AppSettingsClient({ initialData, globalSettings, formFieldsData, activeMasterMealTypes }: AppSettingsClientProps) {
     const { config } = initialData;
     const [savedConfig, setSavedConfig] = useState(config);
     const [isPending, startTransition] = useTransition();
@@ -38,7 +39,7 @@ export default function AppSettingsClient({ initialData, globalSettings, formFie
     
     // Baseline/initial list of form fields
     const [initialFormFields, setInitialFormFields] = useState(() => {
-        const { globalFields, companyFields } = formFieldsData;
+        const { globalFields = [], companyFields = [] } = formFieldsData || {};
         return globalFields.map(gf => {
             const override = companyFields.find(cf => cf.field_id === gf.id);
             return {
@@ -46,7 +47,7 @@ export default function AppSettingsClient({ initialData, globalSettings, formFie
                 is_enabled: override ? override.is_enabled : (!!gf.is_system_core || !!gf.auto_add),
                 sort_order: override ? override.sort_order : 0
             };
-        }).sort((a, b) => {
+        }).sort((a: any, b: any) => {
             if (a.location !== b.location) return a.location.localeCompare(b.location);
             return (a.sort_order || 0) - (b.sort_order || 0);
         });
@@ -56,6 +57,9 @@ export default function AppSettingsClient({ initialData, globalSettings, formFie
     const [companyFormFields, setCompanyFormFields] = useState(initialFormFields);
     
     const initialFormData = {
+        allowed_meal_types: (savedConfig?.allowed_meal_types && savedConfig.allowed_meal_types.length > 0)
+            ? savedConfig.allowed_meal_types
+            : ['lunch'],
         show_box_lunch_category: savedConfig?.show_box_lunch_category ?? true,
         show_junior_box_lunch_category: savedConfig?.show_junior_box_lunch_category ?? true,
         use_split_box_types: savedConfig?.use_split_box_types ?? false,
@@ -71,6 +75,9 @@ export default function AppSettingsClient({ initialData, globalSettings, formFie
     // Sync formData when savedConfig changes
     React.useEffect(() => {
         setFormData({
+            allowed_meal_types: (savedConfig?.allowed_meal_types && savedConfig.allowed_meal_types.length > 0)
+                ? savedConfig.allowed_meal_types
+                : ['lunch'],
             show_box_lunch_category: savedConfig?.show_box_lunch_category ?? true,
             show_junior_box_lunch_category: savedConfig?.show_junior_box_lunch_category ?? true,
             use_split_box_types: savedConfig?.use_split_box_types ?? false,
@@ -276,6 +283,25 @@ export default function AppSettingsClient({ initialData, globalSettings, formFie
         setCompanyFormFields(sortedFields);
     };
 
+    const toggleMealType = (mealType: string) => {
+        const current = formData.allowed_meal_types || ['lunch'];
+        if (current.includes(mealType)) {
+            if (current.length === 1) {
+                toast.error('At least one meal type must remain active');
+                return;
+            }
+            setFormData({
+                ...formData,
+                allowed_meal_types: current.filter((t: string) => t !== mealType)
+            });
+        } else {
+            setFormData({
+                ...formData,
+                allowed_meal_types: [...current, mealType]
+            });
+        }
+    };
+
     return (
         <div className="space-y-8 max-w-4xl pb-12">
             <div>
@@ -284,7 +310,69 @@ export default function AppSettingsClient({ initialData, globalSettings, formFie
             </div>
 
             <div className="grid grid-cols-1 gap-8">
-                {/* Meal Options */}
+                {/* Active Meal Types */}
+                <Card className="rounded-[32px] border-none shadow-xl shadow-gray-200/50 overflow-hidden bg-white">
+                    <CardHeader className="p-8 border-b border-gray-50">
+                        <div className="flex items-center gap-4">
+                            <div className="size-10 rounded-xl bg-violet-50 flex items-center justify-center text-violet-600">
+                                <UtensilsCrossed className="size-5" />
+                            </div>
+                            <div>
+                                <CardTitle className="text-xl font-bold">Active Meal Types</CardTitle>
+                                <CardDescription>Select which types of meals you want to offer to your customers on your ordering app.</CardDescription>
+                            </div>
+                        </div>
+                    </CardHeader>
+                    <CardContent className="p-8 space-y-4">
+                        {[
+                            { id: 'lunch', label: 'Lunch', icon: Sun, desc: 'Box lunches, bag lunches, sandwiches & fresh salads' },
+                            { id: 'breakfast', label: 'Breakfast', icon: Coffee, desc: 'Breakfast burritos, fresh yogurt parfaits & pastry platters' },
+                            { id: 'dinner', label: 'Dinner', icon: Moon, desc: 'Wild salmon plates, beef tenderloin medallions & savory entrees' },
+                            { id: 'charcuterie', label: 'Charcuterie', icon: Sparkles, desc: 'Artisan boards, cheeses, cured meats & grazing platters' },
+                        ]
+                        .filter((type) => !activeMasterMealTypes || activeMasterMealTypes.length === 0 || activeMasterMealTypes.includes(type.id))
+                        .map((type) => {
+                            const Icon = type.icon;
+                            const isEnabled = (formData.allowed_meal_types || ['lunch']).includes(type.id);
+                            return (
+                                <div 
+                                    key={type.id} 
+                                    className={`flex items-center justify-between p-4 rounded-2xl border transition-all ${
+                                        isEnabled ? 'border-violet-100 bg-violet-50/20' : 'border-gray-100 bg-gray-50/40'
+                                    }`}
+                                >
+                                    <div className="flex items-center gap-3.5">
+                                        <div className={`size-9 rounded-xl flex items-center justify-center shrink-0 ${
+                                            isEnabled ? 'bg-violet-600 text-white' : 'bg-gray-200 text-gray-400'
+                                        }`}>
+                                            <Icon className="size-4.5" />
+                                        </div>
+                                        <div className="space-y-0.5">
+                                            <div className="flex items-center gap-2">
+                                                <Label className={`text-sm font-bold ${isEnabled ? 'text-gray-900' : 'text-gray-500'}`}>
+                                                    {type.label}
+                                                </Label>
+                                                <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wider ${
+                                                    isEnabled ? 'bg-emerald-100 text-emerald-800' : 'bg-gray-100 text-gray-500'
+                                                }`}>
+                                                    {isEnabled ? 'Active' : 'Disabled'}
+                                                </span>
+                                            </div>
+                                            <p className="text-xs text-gray-500 font-medium">{type.desc}</p>
+                                        </div>
+                                    </div>
+                                    <Switch 
+                                        checked={isEnabled} 
+                                        onCheckedChange={() => toggleMealType(type.id)}
+                                        className="data-[state=checked]:bg-violet-600"
+                                    />
+                                </div>
+                            );
+                        })}
+                    </CardContent>
+                </Card>
+
+                {/* Lunch Meal Options */}
                 <Card className="rounded-[32px] border-none shadow-xl shadow-gray-200/50 overflow-hidden bg-white">
                     <CardHeader className="p-8 border-b border-gray-50">
                         <div className="flex items-center gap-4">
@@ -292,8 +380,8 @@ export default function AppSettingsClient({ initialData, globalSettings, formFie
                                 <Layout className="size-5" />
                             </div>
                             <div>
-                                <CardTitle className="text-xl font-bold">Meal Options</CardTitle>
-                                <CardDescription>Configure how meals are presented in your ordering app.</CardDescription>
+                                <CardTitle className="text-xl font-bold">Lunch Packaging Options</CardTitle>
+                                <CardDescription>Configure how lunch items are presented in your ordering app.</CardDescription>
                             </div>
                         </div>
                     </CardHeader>

@@ -21,6 +21,11 @@ interface MenuManagementClientProps {
 
 export default function MenuManagementClient({ initialData }: MenuManagementClientProps) {
     const { meals, selections, config } = initialData;
+    const allowedMealTypes: string[] = (config?.allowed_meal_types && config.allowed_meal_types.length > 0)
+        ? config.allowed_meal_types
+        : ['lunch'];
+
+    const [selectedMealType, setSelectedMealType] = useState<string>('all');
     const [search, setSearch] = useState('');
     const [pendingId, setPendingId] = useState<string | null>(null);
     const [isPending, startTransition] = useTransition();
@@ -32,24 +37,67 @@ export default function MenuManagementClient({ initialData }: MenuManagementClie
         setMounted(true);
     }, []);
     
+    // Only include meals whose meal_type is allowed for this company
+    const availableMeals = meals.filter((m: any) => allowedMealTypes.includes(m.meal_type || 'lunch'));
+
     // Map sort orders and selection status from selections
     const selectionSortMap = new Map<string, number>(
         selections.map((s: any) => [s.meal_id, s.sort_order || 0])
     );
-    const selectionMap = new Map<string, boolean>(
-        selections.map((s: any) => [s.meal_id, !!s.is_selected])
-    );
+    
+    const [selectedMealMap, setSelectedMealMap] = useState<Record<string, boolean>>(() => {
+        const map: Record<string, boolean> = {};
+        // Default: lunch meals default to true if never saved; all other meal types default to false
+        meals.forEach((m: any) => {
+            map[m.id] = (!m.meal_type || m.meal_type === 'lunch');
+        });
+        // Override with explicit saved values from DB selections
+        selections.forEach((s: any) => {
+            map[s.meal_id] = Boolean(s.is_selected);
+        });
+        return map;
+    });
 
-    const [localMeals, setLocalMeals] = useState([...meals].sort((a, b) => {
-        const orderA = selectionSortMap.get(a.id) || 0;
-        const orderB = selectionSortMap.get(b.id) || 0;
-        return orderA - orderB;
-    }));
+    const MEAL_TYPE_ORDER: Record<string, number> = {
+        lunch: 1,
+        breakfast: 2,
+        dinner: 3,
+        charcuterie: 4,
+    };
 
-    const filteredMeals = localMeals.filter((meal: any) => 
-        meal.name.toLowerCase().includes(search.toLowerCase()) ||
-        meal.category.toLowerCase().includes(search.toLowerCase())
-    );
+    const sortCompanyMeals = (list: any[]) => {
+        return [...list].sort((a, b) => {
+            const typeA = MEAL_TYPE_ORDER[a.meal_type || 'lunch'] || 99;
+            const typeB = MEAL_TYPE_ORDER[b.meal_type || 'lunch'] || 99;
+            if (typeA !== typeB) return typeA - typeB;
+            const orderA = selectionSortMap.get(a.id) || 0;
+            const orderB = selectionSortMap.get(b.id) || 0;
+            return orderA - orderB;
+        });
+    };
+
+    const [localMeals, setLocalMeals] = useState(sortCompanyMeals(availableMeals));
+
+    const filteredMeals = localMeals.filter((meal: any) => {
+        const matchesType = selectedMealType === 'all' || (meal.meal_type || 'lunch') === selectedMealType;
+        const matchesSearch = meal.name.toLowerCase().includes(search.toLowerCase()) ||
+            (meal.category && meal.category.toLowerCase().includes(search.toLowerCase()));
+        return matchesType && matchesSearch;
+    });
+
+    const mealTypeLabels: Record<string, string> = {
+        lunch: 'Lunch',
+        breakfast: 'Breakfast',
+        dinner: 'Dinner',
+        charcuterie: 'Charcuterie',
+    };
+
+    const mealTypeColors: Record<string, string> = {
+        lunch: 'bg-amber-50 text-amber-700 border-amber-200',
+        breakfast: 'bg-orange-50 text-orange-700 border-orange-200',
+        dinner: 'bg-indigo-50 text-indigo-700 border-indigo-200',
+        charcuterie: 'bg-rose-50 text-rose-700 border-rose-200',
+    };
 
     const handleMove = async (mealId: string, direction: 'up' | 'down') => {
         const currentIndex = localMeals.findIndex(m => m.id === mealId);
@@ -82,19 +130,20 @@ export default function MenuManagementClient({ initialData }: MenuManagementClie
     };
 
     const handleToggle = async (mealId: string, currentStatus: boolean) => {
+        const nextStatus = !currentStatus;
+        setSelectedMealMap(prev => ({ ...prev, [mealId]: nextStatus }));
         setPendingId(mealId);
         startTransition(async () => {
-            const result = await toggleMenuSelection(mealId, !currentStatus);
+            const result = await toggleMenuSelection(mealId, nextStatus);
             if (result.success) {
                 toast.success(`Menu updated: ${meals.find((m: any) => m.id === mealId)?.name}`);
             } else {
+                setSelectedMealMap(prev => ({ ...prev, [mealId]: currentStatus }));
                 toast.error('Failed to update menu selection');
             }
             setPendingId(null);
         });
     };
-
-    const categories = Array.from(new Set(meals.map((m: any) => m.category)));
 
     return (
         <div className="space-y-8">
@@ -139,47 +188,91 @@ export default function MenuManagementClient({ initialData }: MenuManagementClie
                 </div>
             </div>
 
+            {/* Meal Type Tabs (if company has multiple or to filter cleanly) */}
+            {allowedMealTypes.length > 1 && (
+                <div className="flex flex-wrap items-center gap-2 p-1.5 bg-gray-100/80 rounded-2xl w-fit">
+                    <button
+                        onClick={() => setSelectedMealType('all')}
+                        className={`px-4 py-2 rounded-xl text-xs font-bold transition-all ${
+                            selectedMealType === 'all'
+                                ? 'bg-white text-gray-900 shadow-sm'
+                                : 'text-gray-500 hover:text-gray-900'
+                        }`}
+                    >
+                        All Meals ({localMeals.length})
+                    </button>
+                    {allowedMealTypes
+                        .filter(type => localMeals.some(m => (m.meal_type || 'lunch') === type))
+                        .map(type => {
+                        const count = localMeals.filter(m => (m.meal_type || 'lunch') === type).length;
+                        return (
+                            <button
+                                key={type}
+                                onClick={() => setSelectedMealType(type)}
+                                className={`px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 ${
+                                    selectedMealType === type
+                                        ? 'bg-white text-violet-700 shadow-sm'
+                                        : 'text-gray-500 hover:text-gray-900'
+                                }`}
+                            >
+                                <span>{mealTypeLabels[type] || type}</span>
+                                <span className={`text-[10px] px-1.5 py-0.5 rounded-full ${
+                                    selectedMealType === type ? 'bg-violet-100 text-violet-700' : 'bg-gray-200 text-gray-600'
+                                }`}>
+                                    {count}
+                                </span>
+                            </button>
+                        );
+                    })}
+                </div>
+            )}
+
             {viewMode === 'cards' ? (
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                     {filteredMeals.map((meal: any) => {
-                        const isSelected = selectionMap.get(meal.id) ?? true;
+                        const isSelected = selectedMealMap[meal.id] ?? (!meal.meal_type || meal.meal_type === 'lunch');
+                        const isLunch = !meal.meal_type || meal.meal_type === 'lunch';
+
                         // 1. Filter images based on App Settings configurations
-                        const availableImages = [
+                        const availableImages = isLunch ? [
                             { label: 'Main', url: meal.image_url },
                             ...(config?.show_box_lunch_category !== false ? [{ label: 'Standard Box', url: meal.box_lunch_image_url }] : []),
                             ...(config?.show_junior_box_lunch_category ? [{ label: 'Junior Box', url: meal.junior_box_lunch_image_url }] : []),
                             ...(config?.use_sandwich_only ? [{ label: 'Sandwich Only', url: meal.sandwich_image_url }] : []),
+                        ].filter(img => !!img.url) : [
+                            { label: 'Main', url: meal.image_url }
                         ].filter(img => !!img.url);
 
                         const activeIndex = activeImgIndexes[meal.id] ?? 0;
                         const activeImg = availableImages[activeIndex]?.url || meal.image_url;
 
                         // 2. Determine price and label dynamically based on active slideshow slide
-                        const currentSlideLabel = availableImages[activeIndex]?.label || 'Main';
                         let displayPrice = meal.price;
-                        let displayLabel = 'Standard Box';
+                        let displayLabel = isLunch ? 'Standard Box' : (mealTypeLabels[meal.meal_type] || 'Item');
 
-                        if (currentSlideLabel === 'Junior Box') {
-                            displayPrice = meal.junior_price || meal.price;
-                            displayLabel = 'Junior Box';
-                        } else if (currentSlideLabel === 'Sandwich Only') {
-                            displayPrice = meal.sandwich_price || meal.price;
-                            displayLabel = 'Sandwich Only';
-                        } else if (currentSlideLabel === 'Main') {
-                            // If Main slide is shown, default to Standard Box if enabled, otherwise Junior, otherwise Sandwich
-                            const showStandardPrice = config?.show_box_lunch_category !== false;
-                            const showJuniorPrice = !!config?.show_junior_box_lunch_category && meal.junior_price > 0;
-                            const showSandwichPrice = !!config?.use_sandwich_only && meal.sandwich_price > 0;
-                            
-                            if (showStandardPrice) {
-                                displayPrice = meal.price;
-                                displayLabel = 'Standard Box';
-                            } else if (showJuniorPrice) {
-                                displayPrice = meal.junior_price;
+                        if (isLunch) {
+                            const currentSlideLabel = availableImages[activeIndex]?.label || 'Main';
+                            if (currentSlideLabel === 'Junior Box') {
+                                displayPrice = meal.junior_price || meal.price;
                                 displayLabel = 'Junior Box';
-                            } else if (showSandwichPrice) {
-                                displayPrice = meal.sandwich_price;
+                            } else if (currentSlideLabel === 'Sandwich Only') {
+                                displayPrice = meal.sandwich_price || meal.price;
                                 displayLabel = 'Sandwich Only';
+                            } else if (currentSlideLabel === 'Main') {
+                                const showStandardPrice = config?.show_box_lunch_category !== false;
+                                const showJuniorPrice = !!config?.show_junior_box_lunch_category && meal.junior_price > 0;
+                                const showSandwichPrice = !!config?.use_sandwich_only && meal.sandwich_price > 0;
+                                
+                                if (showStandardPrice) {
+                                    displayPrice = meal.price;
+                                    displayLabel = 'Standard Box';
+                                } else if (showJuniorPrice) {
+                                    displayPrice = meal.junior_price;
+                                    displayLabel = 'Junior Box';
+                                } else if (showSandwichPrice) {
+                                    displayPrice = meal.sandwich_price;
+                                    displayLabel = 'Sandwich Only';
+                                }
                             }
                         }
                         
@@ -265,11 +358,18 @@ export default function MenuManagementClient({ initialData }: MenuManagementClie
                                     </div>
 
                                     <div className="space-y-1 mb-4">
-                                        <div className="flex items-center justify-between">
-                                            <h3 className="font-bold text-[17px] text-gray-900 tracking-tight">{meal.name}</h3>
-                                            <Badge variant="outline" className="text-[9px] font-black uppercase tracking-widest rounded-lg border-gray-100 text-gray-400 px-2">
-                                                {meal.category}
-                                            </Badge>
+                                        <div className="flex items-center justify-between gap-2">
+                                            <h3 className="font-bold text-[17px] text-gray-900 tracking-tight truncate">{meal.name}</h3>
+                                            <div className="flex items-center gap-1 shrink-0">
+                                                <Badge variant="outline" className={`text-[9px] font-bold uppercase tracking-wider rounded-md border ${mealTypeColors[meal.meal_type || 'lunch'] || 'bg-gray-50 text-gray-700'}`}>
+                                                    {mealTypeLabels[meal.meal_type || 'lunch'] || meal.meal_type}
+                                                </Badge>
+                                                {meal.category && (
+                                                    <Badge variant="outline" className="text-[9px] font-black uppercase tracking-widest rounded-lg border-gray-100 text-gray-400 px-2">
+                                                        {meal.category}
+                                                    </Badge>
+                                                )}
+                                            </div>
                                         </div>
                                         <p className="text-xs text-gray-500 font-medium line-clamp-2 leading-relaxed min-h-[32px]">
                                             {meal.description || 'No description available for this item.'}
@@ -316,6 +416,7 @@ export default function MenuManagementClient({ initialData }: MenuManagementClie
                             <TableRow className="hover:bg-transparent border-gray-100">
                                 <TableHead className="w-[100px] font-bold text-gray-900 py-4 pl-6 text-center">Image</TableHead>
                                 <TableHead className="font-bold text-gray-900 py-4">Name</TableHead>
+                                <TableHead className="font-bold text-gray-900 py-4">Meal Type</TableHead>
                                 <TableHead className="font-bold text-gray-900 py-4">Category</TableHead>
                                 <TableHead className="font-bold text-gray-900 py-4">Price</TableHead>
                                 <TableHead className="font-bold text-gray-900 py-4">Status</TableHead>
@@ -325,41 +426,48 @@ export default function MenuManagementClient({ initialData }: MenuManagementClie
                         </TableHeader>
                         <TableBody>
                             {filteredMeals.map((meal: any, idx) => {
-                                const isSelected = selectionMap.get(meal.id) ?? true;
-                                const availableImages = [
+                                const isSelected = selectedMealMap[meal.id] ?? (!meal.meal_type || meal.meal_type === 'lunch');
+                                const isLunch = !meal.meal_type || meal.meal_type === 'lunch';
+
+                                const availableImages = isLunch ? [
                                     { label: 'Main', url: meal.image_url },
                                     ...(config?.show_box_lunch_category !== false ? [{ label: 'Standard Box', url: meal.box_lunch_image_url }] : []),
                                     ...(config?.show_junior_box_lunch_category ? [{ label: 'Junior Box', url: meal.junior_box_lunch_image_url }] : []),
                                     ...(config?.use_sandwich_only ? [{ label: 'Sandwich Only', url: meal.sandwich_image_url }] : []),
+                                ].filter(img => !!img.url) : [
+                                    { label: 'Main', url: meal.image_url }
                                 ].filter(img => !!img.url);
 
                                 const activeIndex = activeImgIndexes[meal.id] ?? 0;
                                 const activeImg = availableImages[activeIndex]?.url || meal.image_url;
 
-                                const showStandardPrice = config?.show_box_lunch_category !== false;
-                                const showJuniorPrice = !!config?.show_junior_box_lunch_category && meal.junior_price > 0;
-                                const showSandwichPrice = !!config?.use_sandwich_only && meal.sandwich_price > 0;
-
-                                const currentSlideLabel = availableImages[activeIndex]?.label || 'Main';
                                 let displayPrice = meal.price;
-                                let displayLabel = 'Standard Box';
+                                let displayLabel = isLunch ? 'Standard Box' : (mealTypeLabels[meal.meal_type] || 'Item');
 
-                                if (currentSlideLabel === 'Junior Box') {
-                                    displayPrice = meal.junior_price || meal.price;
-                                    displayLabel = 'Junior Box';
-                                } else if (currentSlideLabel === 'Sandwich Only') {
-                                    displayPrice = meal.sandwich_price || meal.price;
-                                    displayLabel = 'Sandwich Only';
-                                } else if (currentSlideLabel === 'Main') {
-                                    if (showStandardPrice) {
-                                        displayPrice = meal.price;
-                                        displayLabel = 'Standard Box';
-                                    } else if (showJuniorPrice) {
-                                        displayPrice = meal.junior_price;
+                                if (isLunch) {
+                                    const showStandardPrice = config?.show_box_lunch_category !== false;
+                                    const showJuniorPrice = !!config?.show_junior_box_lunch_category && meal.junior_price > 0;
+                                    const showSandwichPrice = !!config?.use_sandwich_only && meal.sandwich_price > 0;
+
+                                    const currentSlideLabel = availableImages[activeIndex]?.label || 'Main';
+
+                                    if (currentSlideLabel === 'Junior Box') {
+                                        displayPrice = meal.junior_price || meal.price;
                                         displayLabel = 'Junior Box';
-                                    } else if (showSandwichPrice) {
-                                        displayPrice = meal.sandwich_price;
+                                    } else if (currentSlideLabel === 'Sandwich Only') {
+                                        displayPrice = meal.sandwich_price || meal.price;
                                         displayLabel = 'Sandwich Only';
+                                    } else if (currentSlideLabel === 'Main') {
+                                        if (showStandardPrice) {
+                                            displayPrice = meal.price;
+                                            displayLabel = 'Standard Box';
+                                        } else if (showJuniorPrice) {
+                                            displayPrice = meal.junior_price;
+                                            displayLabel = 'Junior Box';
+                                        } else if (showSandwichPrice) {
+                                            displayPrice = meal.sandwich_price;
+                                            displayLabel = 'Sandwich Only';
+                                        }
                                     }
                                 }
 
@@ -396,6 +504,11 @@ export default function MenuManagementClient({ initialData }: MenuManagementClie
                                         <TableCell>
                                             <p className="font-bold text-[15px] text-gray-900">{meal.name}</p>
                                             <p className="text-xs text-gray-500 font-medium line-clamp-1">{meal.description}</p>
+                                        </TableCell>
+                                        <TableCell>
+                                            <Badge variant="outline" className={`text-[10px] font-bold rounded-lg px-2.5 py-0.5 uppercase tracking-wider border ${mealTypeColors[meal.meal_type || 'lunch'] || 'bg-gray-50 text-gray-700'}`}>
+                                                {mealTypeLabels[meal.meal_type || 'lunch'] || meal.meal_type}
+                                            </Badge>
                                         </TableCell>
                                         <TableCell>
                                             <Badge variant="outline" className="capitalize text-[10px] font-bold rounded-lg px-2.5 py-0.5 border-gray-200 text-gray-500 bg-gray-50/50">{meal.category}</Badge>
@@ -477,7 +590,7 @@ export default function MenuManagementClient({ initialData }: MenuManagementClie
             </div>
 
             {(() => {
-                const activeMeals = localMeals.filter(m => m.is_active && (selectionMap.get(m.id) ?? true));
+                const activeMeals = localMeals.filter(m => m.is_active && (selectedMealMap[m.id] ?? (!m.meal_type || m.meal_type === 'lunch')));
                 const mealChunks = [];
                 const chunkSize = 4;
                 for (let i = 0; i < activeMeals.length; i += chunkSize) {

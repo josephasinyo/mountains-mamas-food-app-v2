@@ -1,6 +1,9 @@
+export type MealType = 'lunch' | 'breakfast' | 'dinner' | 'charcuterie';
+
 export interface FoodItem {
     id: string;
     name: string;
+    name_es?: string | null;
     description: string | null;
     image_url: string | null;
     price: number;
@@ -9,6 +12,7 @@ export interface FoodItem {
     box_includes: string | null;
     junior_box_includes?: string | null;
     category: string;
+    meal_type?: MealType;
     is_active: boolean;
     sort_order: number;
     box_lunch_image_url?: string | null;
@@ -30,11 +34,13 @@ export interface CartItem {
     bread_type?: string;
     cookie_choice?: string;
     dynamic_fields?: any;
+    meal_type?: MealType;
 }
 
 export interface CompanyConfig {
     id: string;
     company_id: string;
+    allowed_meal_types?: MealType[];
     show_box_lunch_category: boolean;
     show_junior_box_lunch_category: boolean;
     use_split_box_types?: boolean;

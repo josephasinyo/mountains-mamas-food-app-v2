@@ -32,16 +32,20 @@ export default function AddToCartForm({ item }: Props) {
   const { addToCart } = useCart();
   const { company, config, globalSettings, formFields, isLoading } = useCompany();
 
-  const isSalad = item.category === 'salad' && !item.name.toLowerCase().includes('sandwich');
+  const isLunch = !item.meal_type || item.meal_type === 'lunch';
+  const isSalad = isLunch && item.category === 'salad' && !item.name.toLowerCase().includes('sandwich');
 
-  const isSandwichAllowed = !!config?.use_sandwich_only && item.category === 'sandwich';
-  const isBoxAllowed = !!config?.show_box_lunch_category;
-  const isJuniorAllowed = !!config?.show_junior_box_lunch_category && 
+  const isSandwichAllowed = isLunch && !!config?.use_sandwich_only && item.category === 'sandwich';
+  const isBoxAllowed = isLunch && !!config?.show_box_lunch_category;
+  const isJuniorAllowed = isLunch && !!config?.show_junior_box_lunch_category && 
     (item.allow_split_box || item.category === 'sandwich' || item.category === 'salad' || item.name.toLowerCase().includes('sandwich'));
 
-  const enabledOptionsCount = (isSandwichAllowed ? 1 : 0) + (isBoxAllowed ? 1 : 0) + (isJuniorAllowed ? 1 : 0);
+  const enabledOptionsCount = isLunch 
+    ? (isSandwichAllowed ? 1 : 0) + (isBoxAllowed ? 1 : 0) + (isJuniorAllowed ? 1 : 0)
+    : 1;
 
   const defaultVariant = useMemo(() => {
+    if (!isLunch) return 'standard';
     if (isSalad) {
       return isBoxAllowed ? 'standard' : 'junior';
     }
@@ -49,12 +53,13 @@ export default function AddToCartForm({ item }: Props) {
     if (isJuniorAllowed) return 'junior';
     if (isSandwichAllowed) return 'sandwich';
     return 'standard';
-  }, [isBoxAllowed, isJuniorAllowed, isSandwichAllowed, isSalad]);
+  }, [isLunch, isBoxAllowed, isJuniorAllowed, isSandwichAllowed, isSalad]);
 
   const [selectedVariant, setSelectedVariant] = useState<'standard' | 'junior' | 'sandwich'>(defaultVariant);
   
   // Sync selected variant when config or allowed statuses change
   useEffect(() => {
+    if (!isLunch) return;
     if (selectedVariant === 'standard' && !isBoxAllowed) {
       setSelectedVariant(defaultVariant);
     } else if (selectedVariant === 'junior' && !isJuniorAllowed) {
@@ -62,21 +67,25 @@ export default function AddToCartForm({ item }: Props) {
     } else if (selectedVariant === 'sandwich' && !isSandwichAllowed) {
       setSelectedVariant(defaultVariant);
     }
-  }, [selectedVariant, isBoxAllowed, isJuniorAllowed, isSandwichAllowed, defaultVariant]);
+  }, [isLunch, selectedVariant, isBoxAllowed, isJuniorAllowed, isSandwichAllowed, defaultVariant]);
 
-  const showSplitOptions = enabledOptionsCount >= 2 && !isSalad;
+  const showSplitOptions = isLunch && enabledOptionsCount >= 2 && !isSalad;
 
-  const activeImage = selectedVariant === 'sandwich'
-    ? (item.sandwich_image_url || item.image_url || '/placeholder.png')
-    : (selectedVariant === 'junior'
-        ? (item.junior_box_lunch_image_url || item.image_url || '/placeholder.png')
-        : (item.box_lunch_image_url || item.image_url || '/placeholder.png'));
+  const activeImage = !isLunch
+    ? (item.image_url || '/placeholder.png')
+    : (selectedVariant === 'sandwich'
+        ? (item.sandwich_image_url || item.image_url || '/placeholder.png')
+        : (selectedVariant === 'junior'
+            ? (item.junior_box_lunch_image_url || item.image_url || '/placeholder.png')
+            : (item.box_lunch_image_url || item.image_url || '/placeholder.png')));
 
-  const price = selectedVariant === 'sandwich'
-    ? (item.sandwich_price || 0)
-    : (selectedVariant === 'junior'
-        ? (item.junior_price || item.price || 0)
-        : (item.price || 0));
+  const price = !isLunch
+    ? (item.price || 0)
+    : (selectedVariant === 'sandwich'
+        ? (item.sandwich_price || 0)
+        : (selectedVariant === 'junior'
+            ? (item.junior_price || item.price || 0)
+            : (item.price || 0)));
 
   // Compute dynamic options with useMemo for stable references
   const dynamicBreadOptions = useMemo(() => {
@@ -228,13 +237,15 @@ export default function AddToCartForm({ item }: Props) {
 
     const pkgLabel = item.lunch_package === 'bag' ? 'Bag' : 'Box';
     let launchTypeStr = `${pkgLabel} Lunch`;
-    if (selectedVariant === 'junior') {
+    if (!isLunch) {
+      launchTypeStr = item.meal_type ? (item.meal_type.charAt(0).toUpperCase() + item.meal_type.slice(1)) : 'Item';
+    } else if (selectedVariant === 'junior') {
       launchTypeStr = `Junior ${pkgLabel} Lunch`;
     } else if (selectedVariant === 'sandwich') {
       launchTypeStr = 'Sandwich only';
     }
 
-    if (enabledOptionsCount === 1 && !isSalad) {
+    if (isLunch && enabledOptionsCount === 1 && !isSalad) {
       if (selectedVariant === 'standard') {
         launchTypeStr = `This is a ${item.lunch_package === 'bag' ? 'bag' : 'box'} lunch`;
       } else if (selectedVariant === 'junior') {
@@ -253,8 +264,8 @@ export default function AddToCartForm({ item }: Props) {
         unitPrice: price,
         guest_name: fieldValues['guest_name'] || '',
         customizations: fieldValues['customizations'] || '',
-        bread_type: isSalad ? undefined : fieldValues['bread_type'],
-        cookie_choice: selectedVariant === 'sandwich' ? undefined : fieldValues['cookie_choice'],
+        bread_type: (!isLunch || isSalad) ? undefined : fieldValues['bread_type'],
+        cookie_choice: (!isLunch || selectedVariant === 'sandwich') ? undefined : fieldValues['cookie_choice'],
         dynamic_fields: fieldValues // Store all field values
       } as any, 
       finalQuantity, 
@@ -401,7 +412,7 @@ export default function AddToCartForm({ item }: Props) {
               <span className={styles.priceTag}>${price.toFixed(2)}</span>
             )}
         </div>
-        {enabledOptionsCount === 1 && !isSalad && (
+        {isLunch && enabledOptionsCount === 1 && !isSalad && (
           <div className={styles.singleOptionBanner}>
             <svg 
               viewBox="0 0 24 24" 
@@ -423,22 +434,32 @@ export default function AddToCartForm({ item }: Props) {
             </span>
           </div>
         )}
-        {(item.description || !isSalad) && (
-          <div className={styles.ingredientsBox}>
-            {item.description && (
-              <div style={{ marginBottom: (!isSalad ? '12px' : '0') }}>
-                <strong>{isSalad ? 'Salad' : 'Sandwich'} includes:</strong> {item.description}
-              </div>
-            )}
-            {!isSalad && selectedVariant !== 'sandwich' && (
-              <div>
-                <strong>{item.lunch_package === 'bag' ? 'Bag includes:' : 'Box includes:'}</strong> {selectedVariant === 'junior'
-                  ? (item.junior_box_includes || 'Sandwich, chips, cookie')
-                  : (item.box_includes || 'Sandwich, fruit, water, chips, cookie')
-                }
-              </div>
-            )}
-          </div>
+        
+        {/* Item Description / Box Contents */}
+        {!isLunch ? (
+          item.description ? (
+            <div className={styles.ingredientsBox}>
+              <p className="text-sm text-gray-700 leading-relaxed m-0">{item.description}</p>
+            </div>
+          ) : null
+        ) : (
+          (item.description || !isSalad) && (
+            <div className={styles.ingredientsBox}>
+              {item.description && (
+                <div style={{ marginBottom: (!isSalad ? '12px' : '0') }}>
+                  <strong>{isSalad ? 'Salad' : 'Sandwich'} includes:</strong> {item.description}
+                </div>
+              )}
+              {!isSalad && selectedVariant !== 'sandwich' && (
+                <div>
+                  <strong>{item.lunch_package === 'bag' ? 'Bag includes:' : 'Box includes:'}</strong> {selectedVariant === 'junior'
+                    ? (item.junior_box_includes || 'Sandwich, chips, cookie')
+                    : (item.box_includes || 'Sandwich, fruit, water, chips, cookie')
+                  }
+                </div>
+              )}
+            </div>
+          )
         )}
 
         {/* Meal Options Selector */}
@@ -491,7 +512,10 @@ export default function AddToCartForm({ item }: Props) {
         {formFields
           .filter(f => f.location === 'meal_page' && f.is_enabled)
           .map(field => {
-            // Special logic for core fields
+            // Special logic for core lunch-only fields
+            if (!isLunch && ['sandwich_options', 'bread_type', 'bread_options', 'cookie_choice', 'dressing_options'].includes(field.name)) {
+              return null;
+            }
             if (field.name === 'sandwich_options' && isSalad) return null;
             if (field.name === 'bread_options' && isSalad) return null;
             if (field.name === 'dressing_options' && !isSalad) return null;

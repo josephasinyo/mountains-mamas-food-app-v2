@@ -5,7 +5,7 @@ import { createPortal } from 'react-dom';
 import { toast } from 'sonner';
 import { ConfirmDialog } from '@/components/ConfirmDialog';
 import { createMeal, updateMeal, deleteMeal, toggleMealActive, updateMealSortOrder } from './actions';
-import type { Meal } from '@/lib/supabase/types';
+import type { Meal, MealType } from '@/lib/supabase/types';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
@@ -30,8 +30,16 @@ import {
 import { 
     Plus, MoreHorizontal, Pencil, Trash2, Eye, EyeOff, 
     UtensilsCrossed, Upload, X, ImageIcon, LayoutGrid, List, Search,
-    ChevronLeft, ChevronRight, ArrowUp, ArrowDown, Printer
+    ChevronLeft, ChevronRight, ArrowUp, ArrowDown, Printer, Coffee, Moon, Sparkles, Sun
 } from 'lucide-react';
+
+const MEAL_TYPE_TABS: { key: 'all' | MealType; label: string; icon?: any }[] = [
+    { key: 'all', label: 'All Meals' },
+    { key: 'lunch', label: 'Lunch', icon: Sun },
+    { key: 'breakfast', label: 'Breakfast', icon: Coffee },
+    { key: 'dinner', label: 'Dinner', icon: Moon },
+    { key: 'charcuterie', label: 'Charcuterie', icon: Sparkles },
+];
 
 interface MealsClientProps {
     initialMeals: Meal[];
@@ -39,6 +47,7 @@ interface MealsClientProps {
 
 export function MealsClient({ initialMeals }: MealsClientProps) {
     const [meals, setMeals] = useState<Meal[]>(initialMeals);
+    const [activeMealTypeTab, setActiveMealTypeTab] = useState<'all' | MealType>('all');
     const [open, setOpen] = useState(false);
     const [editingMeal, setEditingMeal] = useState<Meal | null>(null);
     const [loading, setLoading] = useState(false);
@@ -61,6 +70,7 @@ export function MealsClient({ initialMeals }: MealsClientProps) {
 
     // Form States
     const [name, setName] = useState('');
+    const [mealType, setMealType] = useState<MealType>('lunch');
     const [description, setDescription] = useState('');
     const [price, setPrice] = useState('');
     const [sandwichPrice, setSandwichPrice] = useState('');
@@ -75,6 +85,7 @@ export function MealsClient({ initialMeals }: MealsClientProps) {
 
     const hasChanges = editingMeal ? (
         name !== (editingMeal.name || '') ||
+        mealType !== (editingMeal.meal_type || 'lunch') ||
         description !== (editingMeal.description || '') ||
         price !== (editingMeal.price?.toString() || '') ||
         category !== (editingMeal.category || 'sandwich') ||
@@ -131,6 +142,7 @@ export function MealsClient({ initialMeals }: MealsClientProps) {
         setOpen(false);
         setEditingMeal(null);
         setName('');
+        setMealType('lunch');
         setDescription('');
         setPrice('');
         setCategory('sandwich');
@@ -152,12 +164,17 @@ export function MealsClient({ initialMeals }: MealsClientProps) {
 
     function openCreate() {
         closeDialog();
+        if (activeMealTypeTab !== 'all') {
+            setMealType(activeMealTypeTab);
+            setCategory(activeMealTypeTab === 'lunch' ? 'sandwich' : activeMealTypeTab);
+        }
         setOpen(true);
     }
 
     function openEdit(meal: Meal) {
         setEditingMeal(meal);
         setName(meal.name || '');
+        setMealType(meal.meal_type || 'lunch');
         setDescription(meal.description || '');
         setPrice(meal.price?.toString() || '');
         setCategory(meal.category);
@@ -189,8 +206,8 @@ export function MealsClient({ initialMeals }: MealsClientProps) {
                 return;
             }
 
-            // Validate sandwich price if category is sandwich
-            if (category === 'sandwich' && (!sandwichPrice || isNaN(parseFloat(sandwichPrice)))) {
+            // Validate sandwich price if category is sandwich and meal_type is lunch
+            if (mealType === 'lunch' && category === 'sandwich' && (!sandwichPrice || isNaN(parseFloat(sandwichPrice)))) {
                 toast.error('Sandwich only price is required.');
                 setLoading(false);
                 return;
@@ -199,33 +216,34 @@ export function MealsClient({ initialMeals }: MealsClientProps) {
             // Build FormData manually from state to avoid DOM file input issues
             const formData = new FormData();
             formData.set('name', name);
+            formData.set('meal_type', mealType);
             formData.set('description', description);
             formData.set('price', price);
-            formData.set('category', category);
-            formData.set('lunch_package', lunchPackage);
-            formData.set('allow_split_box', allowSplitBox ? 'true' : 'false');
+            formData.set('category', mealType === 'lunch' ? category : mealType);
+            formData.set('lunch_package', mealType === 'lunch' ? lunchPackage : 'box');
+            formData.set('allow_split_box', (mealType === 'lunch' && allowSplitBox) ? 'true' : 'false');
             formData.set('is_active', isActive ? 'true' : 'false');
-            formData.set('box_includes', boxIncludes);
-            formData.set('junior_price', juniorPrice);
-            formData.set('junior_box_includes', juniorBoxIncludes);
+            formData.set('box_includes', mealType === 'lunch' ? boxIncludes : '');
+            formData.set('junior_price', (mealType === 'lunch' && juniorPrice) ? juniorPrice : '');
+            formData.set('junior_box_includes', mealType === 'lunch' ? juniorBoxIncludes : '');
 
             // Append file objects from state (not from DOM)
             if (mainImageFile) {
                 formData.set('image_file', mainImageFile);
             }
-            if (standardImageFile) {
+            if (standardImageFile && mealType === 'lunch') {
                 formData.set('standard_image_file', standardImageFile);
             }
-            if (juniorImageFile) {
+            if (juniorImageFile && mealType === 'lunch') {
                 formData.set('junior_image_file', juniorImageFile);
             }
 
             // Pass existing URLs for images that weren't changed
             formData.set('image_url', (!mainImageFile && imagePreview?.startsWith('http')) ? imagePreview : '');
-            formData.set('standard_image_url', (!standardImageFile && standardImagePreview?.startsWith('http')) ? standardImagePreview : '');
-            formData.set('junior_image_url', (!juniorImageFile && juniorImagePreview?.startsWith('http')) ? juniorImagePreview : '');
+            formData.set('standard_image_url', (mealType === 'lunch' && !standardImageFile && standardImagePreview?.startsWith('http')) ? standardImagePreview : '');
+            formData.set('junior_image_url', (mealType === 'lunch' && !juniorImageFile && juniorImagePreview?.startsWith('http')) ? juniorImagePreview : '');
             
-            formData.set('sandwich_price', sandwichPrice);
+            formData.set('sandwich_price', (mealType === 'lunch' && sandwichPrice) ? sandwichPrice : '');
 
             const result = editingMeal
                 ? await updateMeal(editingMeal.id, formData)
@@ -279,24 +297,45 @@ export function MealsClient({ initialMeals }: MealsClientProps) {
         }
     }
 
-    const filteredMeals = meals
-        .filter(meal => 
-            meal.name.toLowerCase().includes(search.toLowerCase()) ||
-            meal.category.toLowerCase().includes(search.toLowerCase()) ||
-            (meal.description && meal.description.toLowerCase().includes(search.toLowerCase()))
-        )
-        .sort((a, b) => (a.sort_order || 0) - (b.sort_order || 0));
+    const MEAL_TYPE_ORDER: Record<string, number> = {
+        lunch: 1,
+        breakfast: 2,
+        dinner: 3,
+        charcuterie: 4,
+    };
+
+    const sortMealsList = (list: Meal[]) => {
+        return [...list].sort((a, b) => {
+            const typeA = MEAL_TYPE_ORDER[a.meal_type || 'lunch'] || 99;
+            const typeB = MEAL_TYPE_ORDER[b.meal_type || 'lunch'] || 99;
+            if (typeA !== typeB) return typeA - typeB;
+            return (a.sort_order || 0) - (b.sort_order || 0);
+        });
+    };
+
+    const filteredMeals = sortMealsList(
+        meals.filter(meal => {
+            const itemMealType = meal.meal_type || 'lunch';
+            if (activeMealTypeTab !== 'all' && itemMealType !== activeMealTypeTab) return false;
+            return (
+                meal.name.toLowerCase().includes(search.toLowerCase()) ||
+                meal.category.toLowerCase().includes(search.toLowerCase()) ||
+                itemMealType.toLowerCase().includes(search.toLowerCase()) ||
+                (meal.description && meal.description.toLowerCase().includes(search.toLowerCase()))
+            );
+        })
+    );
 
     async function handleMove(id: string, direction: 'up' | 'down') {
-        const currentIndex = meals.findIndex(m => m.id === id);
+        const currentIndex = filteredMeals.findIndex(m => m.id === id);
         if (currentIndex === -1) return;
         
         if (direction === 'up' && currentIndex === 0) return;
-        if (direction === 'down' && currentIndex === meals.length - 1) return;
+        if (direction === 'down' && currentIndex === filteredMeals.length - 1) return;
 
         const neighborIndex = direction === 'up' ? currentIndex - 1 : currentIndex + 1;
-        const currentMeal = meals[currentIndex];
-        const neighborMeal = meals[neighborIndex];
+        const currentMeal = filteredMeals[currentIndex];
+        const neighborMeal = filteredMeals[neighborIndex];
 
         // Swap sort orders
         const currentOrder = currentMeal.sort_order || 0;
@@ -306,9 +345,8 @@ export function MealsClient({ initialMeals }: MealsClientProps) {
         const newCurrentOrder = direction === 'up' ? neighborOrder - 1 : neighborOrder + 1;
 
         // Update local state first
-        const updatedMeals = [...meals];
-        updatedMeals[currentIndex] = { ...currentMeal, sort_order: newCurrentOrder };
-        setMeals(updatedMeals.sort((a, b) => (a.sort_order || 0) - (b.sort_order || 0)));
+        const updatedMeals = meals.map(m => m.id === currentMeal.id ? { ...m, sort_order: newCurrentOrder } : m);
+        setMeals(sortMealsList(updatedMeals));
 
         // Update DB
         await updateMealSortOrder(currentMeal.id, newCurrentOrder);
@@ -363,6 +401,37 @@ export function MealsClient({ initialMeals }: MealsClientProps) {
                 </div>
             </div>
 
+            {/* Meal Type Filter Tabs */}
+            <div className="flex items-center gap-2 mb-6 overflow-x-auto pb-1">
+                {MEAL_TYPE_TABS.map((tab) => {
+                    const Icon = tab.icon;
+                    const count = tab.key === 'all' 
+                        ? meals.length 
+                        : meals.filter(m => (m.meal_type || 'lunch') === tab.key).length;
+                    const isSelected = activeMealTypeTab === tab.key;
+                    return (
+                        <button
+                            key={tab.key}
+                            type="button"
+                            onClick={() => setActiveMealTypeTab(tab.key)}
+                            className={`flex items-center gap-2 px-4 py-2 rounded-2xl text-xs font-bold transition-all whitespace-nowrap cursor-pointer ${
+                                isSelected
+                                    ? 'bg-violet-600 text-white shadow-md shadow-violet-200 scale-[1.02]'
+                                    : 'bg-white text-gray-600 hover:bg-gray-100/80 border border-gray-200/60'
+                            }`}
+                        >
+                            {Icon && <Icon className={`size-3.5 ${isSelected ? 'text-white' : 'text-gray-400'}`} />}
+                            <span>{tab.label}</span>
+                            <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold ${
+                                isSelected ? 'bg-white/20 text-white' : 'bg-gray-100 text-gray-500'
+                            }`}>
+                                {count}
+                            </span>
+                        </button>
+                    );
+                })}
+            </div>
+
             {/* Table */}
             {filteredMeals.length === 0 ? (
                 <Card className="rounded-[32px] border-none shadow-xl shadow-gray-200/50">
@@ -390,6 +459,7 @@ export function MealsClient({ initialMeals }: MealsClientProps) {
                             <TableRow className="hover:bg-transparent border-gray-100">
                                 <TableHead className="w-[100px] font-bold text-gray-900 py-4 pl-6 text-center">Image</TableHead>
                                 <TableHead className="font-bold text-gray-900 py-4">Name</TableHead>
+                                <TableHead className="font-bold text-gray-900 py-4">Type</TableHead>
                                 <TableHead className="max-w-[300px] font-bold text-gray-900 py-4">Description</TableHead>
                                 <TableHead className="font-bold text-gray-900 py-4">Category</TableHead>
                                 <TableHead className="font-bold text-gray-900 py-4">Price</TableHead>
@@ -415,6 +485,16 @@ export function MealsClient({ initialMeals }: MealsClientProps) {
                                     </TableCell>
                                     <TableCell>
                                         <p className="font-bold text-[15px] text-gray-900">{meal.name}</p>
+                                    </TableCell>
+                                    <TableCell>
+                                        <Badge variant="outline" className={`text-[10px] font-bold rounded-lg px-2.5 py-0.5 border capitalize ${
+                                            (meal.meal_type || 'lunch') === 'breakfast' ? 'bg-amber-50 text-amber-700 border-amber-200' :
+                                            (meal.meal_type || 'lunch') === 'dinner' ? 'bg-purple-50 text-purple-700 border-purple-200' :
+                                            (meal.meal_type || 'lunch') === 'charcuterie' ? 'bg-rose-50 text-rose-700 border-rose-200' :
+                                            'bg-blue-50 text-blue-700 border-blue-200'
+                                        }`}>
+                                            {meal.meal_type || 'lunch'}
+                                        </Badge>
                                     </TableCell>
                                     <TableCell className="max-w-[300px]">
                                         <p className="text-sm text-gray-500 font-medium line-clamp-2 leading-relaxed">
@@ -544,8 +624,18 @@ export function MealsClient({ initialMeals }: MealsClientProps) {
                                 </div>
 
                                 <div className="space-y-1 mb-4">
-                                    <div className="flex items-center justify-between">
+                                    <div className="flex items-center justify-between mb-1">
                                         <h3 className="font-bold text-[17px] text-gray-900 tracking-tight">{meal.name}</h3>
+                                    </div>
+                                    <div className="flex items-center gap-1.5 mb-2">
+                                        <Badge variant="outline" className={`text-[9px] font-black uppercase tracking-wider rounded-lg px-2 border ${
+                                            (meal.meal_type || 'lunch') === 'breakfast' ? 'bg-amber-50 text-amber-700 border-amber-200' :
+                                            (meal.meal_type || 'lunch') === 'dinner' ? 'bg-purple-50 text-purple-700 border-purple-200' :
+                                            (meal.meal_type || 'lunch') === 'charcuterie' ? 'bg-rose-50 text-rose-700 border-rose-200' :
+                                            'bg-blue-50 text-blue-700 border-blue-200'
+                                        }`}>
+                                            {meal.meal_type || 'lunch'}
+                                        </Badge>
                                         <Badge variant="outline" className="text-[9px] font-black uppercase tracking-widest rounded-lg border-gray-100 text-gray-400 px-2">
                                             {meal.category}
                                         </Badge>
@@ -604,30 +694,64 @@ export function MealsClient({ initialMeals }: MealsClientProps) {
                                 value={name} onChange={(e) => setName(e.target.value)} />
                         </div>
 
-                        <div className="space-y-2">
-                            <Label htmlFor="description">Description *</Label>
-                            <Textarea id="description" name="description" rows={5} required
-                                placeholder="Oven roasted turkey with havarti cheese..."
-                                value={description} onChange={(e) => setDescription(e.target.value)} />
-                        </div>
-
                         <div className="grid grid-cols-2 gap-4">
                             <div className="space-y-2">
-                                <Label>Category</Label>
-                                <Select value={category} onValueChange={(v) => setCategory(v || '')}>
+                                <Label>Meal Type *</Label>
+                                <Select value={mealType} onValueChange={(v) => {
+                                    if (v) {
+                                        setMealType(v as MealType);
+                                        if (v !== 'lunch') setCategory(v);
+                                    }
+                                }}>
                                     <SelectTrigger className="w-full">
                                         <SelectValue>
-                                            {category.charAt(0).toUpperCase() + category.slice(1)}
+                                            {mealType.charAt(0).toUpperCase() + mealType.slice(1)}
                                         </SelectValue>
                                     </SelectTrigger>
                                     <SelectContent>
-                                        <SelectItem value="sandwich">Sandwich</SelectItem>
-                                        <SelectItem value="salad">Salad</SelectItem>
-                                        <SelectItem value="cookie">Cookie</SelectItem>
-                                        <SelectItem value="other">Other</SelectItem>
+                                        <SelectItem value="lunch">Lunch</SelectItem>
+                                        <SelectItem value="breakfast">Breakfast</SelectItem>
+                                        <SelectItem value="dinner">Dinner</SelectItem>
+                                        <SelectItem value="charcuterie">Charcuterie</SelectItem>
                                     </SelectContent>
                                 </Select>
                             </div>
+
+                            {mealType === 'lunch' ? (
+                                <div className="space-y-2">
+                                    <Label>Category</Label>
+                                    <Select value={category} onValueChange={(v) => setCategory(v || '')}>
+                                        <SelectTrigger className="w-full">
+                                            <SelectValue>
+                                                {category.charAt(0).toUpperCase() + category.slice(1)}
+                                            </SelectValue>
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                            <SelectItem value="sandwich">Sandwich</SelectItem>
+                                            <SelectItem value="salad">Salad</SelectItem>
+                                            <SelectItem value="cookie">Cookie</SelectItem>
+                                            <SelectItem value="other">Other</SelectItem>
+                                        </SelectContent>
+                                    </Select>
+                                </div>
+                            ) : (
+                                <div className="space-y-2">
+                                    <Label htmlFor="price">Price ($) *</Label>
+                                    <Input id="price" name="price" type="number" step="0.01" required
+                                        value={price} onChange={(e) => setPrice(e.target.value)}
+                                        placeholder="14.00" />
+                                </div>
+                            )}
+                        </div>
+
+                        <div className="space-y-2">
+                            <Label htmlFor="description">Description *</Label>
+                            <Textarea id="description" name="description" rows={4} required
+                                placeholder="Describe the meal ingredients and flavors..."
+                                value={description} onChange={(e) => setDescription(e.target.value)} />
+                        </div>
+
+                        {mealType === 'lunch' && (
                             <div className="space-y-2">
                                 <Label htmlFor="lunch_package">Lunch Package</Label>
                                 <Select value={lunchPackage} onValueChange={(val: any) => setLunchPackage(val)}>
@@ -640,12 +764,10 @@ export function MealsClient({ initialMeals }: MealsClientProps) {
                                     </SelectContent>
                                 </Select>
                             </div>
-                        </div>
-
-
+                        )}
 
                         <div className="space-y-2">
-                            <Label>Main Meal Image (Homepage) *</Label>
+                            <Label>Main Meal Image (App & Display) *</Label>
                             <div className="flex flex-col gap-3">
                                 {imagePreview ? (
                                     <div className="relative aspect-video w-full rounded-lg overflow-hidden border bg-muted group">
@@ -672,7 +794,7 @@ export function MealsClient({ initialMeals }: MealsClientProps) {
                                             <div className="size-10 rounded-full bg-muted flex items-center justify-center mb-2 group-hover:scale-110 transition-transform">
                                                 <Upload className="size-5 text-muted-foreground" />
                                             </div>
-                                            <p className="text-sm font-medium">Click to upload main image</p>
+                                            <p className="text-sm font-medium">Click to upload image</p>
                                         </div>
                                     </label>
                                 )}
@@ -686,75 +808,77 @@ export function MealsClient({ initialMeals }: MealsClientProps) {
                             </div>
                         </div>
 
-                        {/* Standard Box Section - ALWAYS VISIBLE */}
-                        <div className="space-y-4 p-4 rounded-2xl bg-gray-50/50 border border-gray-100">
-                            <div className="flex items-center gap-2">
-                                <Badge className="bg-blue-100 text-blue-700 hover:bg-blue-100 border-none px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider">Standard Version</Badge>
-                                <h3 className="text-sm font-bold text-gray-900">Standard {lunchPackage === 'box' ? 'Box' : 'Bag'} Details</h3>
-                            </div>
+                        {/* Standard Box Section - ONLY FOR LUNCH */}
+                        {mealType === 'lunch' && (
+                            <div className="space-y-4 p-4 rounded-2xl bg-gray-50/50 border border-gray-100">
+                                <div className="flex items-center gap-2">
+                                    <Badge className="bg-blue-100 text-blue-700 hover:bg-blue-100 border-none px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider">Standard Version</Badge>
+                                    <h3 className="text-sm font-bold text-gray-900">Standard {lunchPackage === 'box' ? 'Box' : 'Bag'} Details</h3>
+                                </div>
 
-                            <div className="grid grid-cols-2 gap-4">
+                                <div className="grid grid-cols-2 gap-4">
+                                    <div className="space-y-2">
+                                        <Label htmlFor="price">Price ($) *</Label>
+                                        <Input id="price" name="price" type="number" step="0.01" required
+                                            value={price} onChange={(e) => setPrice(e.target.value)}
+                                            placeholder="14.00" />
+                                    </div>
+                                </div>
+
                                 <div className="space-y-2">
-                                    <Label htmlFor="price">Price ($) *</Label>
-                                    <Input id="price" name="price" type="number" step="0.01" required
-                                        value={price} onChange={(e) => setPrice(e.target.value)}
-                                        placeholder="14.00" />
+                                    <Label htmlFor="box_includes">
+                                        Standard {lunchPackage === 'box' ? 'Box' : 'Bag'} Includes *
+                                    </Label>
+                                    <Textarea id="box_includes" name="box_includes" rows={4} required
+                                        placeholder={`List everything that goes into the ${lunchPackage}...`}
+                                        value={boxIncludes} onChange={(e) => setBoxIncludes(e.target.value)} />
                                 </div>
-                            </div>
-
-                            <div className="space-y-2">
-                                <Label htmlFor="box_includes">
-                                    Standard {lunchPackage === 'box' ? 'Box' : 'Bag'} Includes *
-                                </Label>
-                                <Textarea id="box_includes" name="box_includes" rows={4} required
-                                    placeholder={`List everything that goes into the ${lunchPackage}...`}
-                                    value={boxIncludes} onChange={(e) => setBoxIncludes(e.target.value)} />
-                            </div>
-                            
-                            <div className="space-y-2">
-                                <Label>Standard Meal Image</Label>
-                                <div className="flex flex-col gap-3">
-                                    {standardImagePreview ? (
-                                        <div className="relative aspect-video w-full rounded-lg overflow-hidden border bg-muted group">
-                                            <img src={standardImagePreview} alt="Standard Preview" className="size-full object-cover" />
-                                            <button 
-                                                type="button"
-                                                onClick={() => {
-                                                    setStandardImagePreview(null);
-                                                    setStandardImageFile(null);
-                                                    const input = document.getElementById('standard_image_file') as HTMLInputElement;
-                                                    if (input) input.value = '';
-                                                }}
-                                                className="absolute top-2 right-2 size-8 rounded-full bg-black/50 text-white flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity hover:bg-black/70"
-                                            >
-                                                <X className="size-4" />
-                                            </button>
-                                        </div>
-                                    ) : (
-                                        <label 
-                                            htmlFor="standard_image_file" 
-                                            className="flex flex-col items-center justify-center aspect-video w-full rounded-lg border-2 border-dashed border-muted-foreground/20 hover:border-primary/50 hover:bg-primary/5 transition-all cursor-pointer group"
-                                        >
-                                            <div className="flex flex-col items-center justify-center py-4">
-                                                <div className="size-10 rounded-full bg-muted flex items-center justify-center mb-2 group-hover:scale-110 transition-transform">
-                                                    <Upload className="size-5 text-muted-foreground" />
-                                                </div>
-                                                <p className="text-sm font-medium text-gray-500">Click to upload standard image</p>
+                                
+                                <div className="space-y-2">
+                                    <Label>Standard Meal Image</Label>
+                                    <div className="flex flex-col gap-3">
+                                        {standardImagePreview ? (
+                                            <div className="relative aspect-video w-full rounded-lg overflow-hidden border bg-muted group">
+                                                <img src={standardImagePreview} alt="Standard Preview" className="size-full object-cover" />
+                                                <button 
+                                                    type="button"
+                                                    onClick={() => {
+                                                        setStandardImagePreview(null);
+                                                        setStandardImageFile(null);
+                                                        const input = document.getElementById('standard_image_file') as HTMLInputElement;
+                                                        if (input) input.value = '';
+                                                    }}
+                                                    className="absolute top-2 right-2 size-8 rounded-full bg-black/50 text-white flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity hover:bg-black/70"
+                                                >
+                                                    <X className="size-4" />
+                                                </button>
                                             </div>
-                                        </label>
-                                    )}
-                                    <input 
-                                        id="standard_image_file" 
-                                        type="file" 
-                                        accept="image/*" 
-                                        className="hidden" 
-                                        onChange={(e) => handleImageChange(e, 'standard')}
-                                    />
+                                        ) : (
+                                            <label 
+                                                htmlFor="standard_image_file" 
+                                                className="flex flex-col items-center justify-center aspect-video w-full rounded-lg border-2 border-dashed border-muted-foreground/20 hover:border-primary/50 hover:bg-primary/5 transition-all cursor-pointer group"
+                                            >
+                                                <div className="flex flex-col items-center justify-center py-4">
+                                                    <div className="size-10 rounded-full bg-muted flex items-center justify-center mb-2 group-hover:scale-110 transition-transform">
+                                                        <Upload className="size-5 text-muted-foreground" />
+                                                    </div>
+                                                    <p className="text-sm font-medium text-gray-500">Click to upload standard image</p>
+                                                </div>
+                                            </label>
+                                        )}
+                                        <input 
+                                            id="standard_image_file" 
+                                            type="file" 
+                                            accept="image/*" 
+                                            className="hidden" 
+                                            onChange={(e) => handleImageChange(e, 'standard')}
+                                        />
+                                    </div>
                                 </div>
                             </div>
-                        </div>
+                        )}
 
-                        {category === 'sandwich' && (
+                        {mealType === 'lunch' && category === 'sandwich' && (
                             <div className="space-y-4 p-4 rounded-2xl bg-amber-50/20 border border-amber-100 mt-4 animate-in fade-in slide-in-from-top-2 duration-300">
                                 <div className="flex items-center gap-2">
                                     <Badge className="bg-amber-100 text-amber-700 hover:bg-amber-100 border-none px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider">Sandwich Only Version</Badge>
@@ -773,16 +897,16 @@ export function MealsClient({ initialMeals }: MealsClientProps) {
                             </div>
                         )}
 
-                        <div className="flex items-center gap-3 py-4 border-y border-gray-100">
-                            <Switch checked={allowSplitBox} onCheckedChange={setAllowSplitBox} id="split_box" />
-                            <Label htmlFor="split_box" className="cursor-pointer font-bold text-violet-700">
-                                Enable Junior Box
-                            </Label>
-                        </div>
+                        {mealType === 'lunch' && (
+                            <div className="flex items-center gap-3 py-4 border-y border-gray-100">
+                                <Switch checked={allowSplitBox} onCheckedChange={setAllowSplitBox} id="split_box" />
+                                <Label htmlFor="split_box" className="cursor-pointer font-bold text-violet-700">
+                                    Enable Junior Box
+                                </Label>
+                            </div>
+                        )}
 
-
-
-                        {allowSplitBox && (
+                        {mealType === 'lunch' && allowSplitBox && (
                             <div className="space-y-6 pt-2 animate-in fade-in slide-in-from-top-2 duration-300">
                                 <div className="space-y-4 p-4 rounded-2xl bg-violet-50/30 border border-violet-100">
                                     <div className="flex items-center gap-2">

@@ -30,9 +30,12 @@ export interface TourCompany {
     updated_at: string;
 }
 
+export type MealType = 'lunch' | 'breakfast' | 'dinner' | 'charcuterie';
+
 export interface CompanyAppConfig {
     id: string;
     company_id: string;
+    allowed_meal_types?: MealType[];
     show_box_lunch_category: boolean;
     show_junior_box_lunch_category: boolean;
     use_split_box_types: boolean;
@@ -50,6 +53,7 @@ export interface CompanyAppConfig {
 export interface Meal {
     id: string;
     name: string;
+    name_es?: string | null;
     description: string | null;
     image_url: string | null;
     box_lunch_image_url: string | null;
@@ -60,7 +64,8 @@ export interface Meal {
     sandwich_price: number | null;
     box_includes: string | null;
     junior_box_includes: string | null;
-    category: 'sandwich' | 'salad' | 'cookie' | 'other';
+    category: 'sandwich' | 'salad' | 'cookie' | 'other' | string;
+    meal_type?: MealType;
     lunch_package: 'box' | 'bag';
     allow_split_box: boolean;
     is_active: boolean;

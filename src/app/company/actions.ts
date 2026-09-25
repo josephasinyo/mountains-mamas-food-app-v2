@@ -280,6 +280,30 @@ export async function getCompanyAppConfig() {
     }
 }
 
+export async function getActiveMasterMealTypes(): Promise<string[]> {
+    try {
+        const supabase = await createClient();
+        const { data: activeMeals, error } = await supabase
+            .from('meals')
+            .select('meal_type')
+            .eq('is_active', true);
+
+        if (error || !activeMeals) return ['lunch'];
+
+        const activeTypes = Array.from(
+            new Set(
+                activeMeals
+                    .map((m: any) => m.meal_type || 'lunch')
+                    .filter(Boolean)
+            )
+        );
+
+        return activeTypes.length > 0 ? activeTypes : ['lunch'];
+    } catch {
+        return ['lunch'];
+    }
+}
+
 export async function updateAppConfig(updates: any) {
     try {
         const companyId = await getCompanyId();
@@ -317,6 +341,35 @@ export async function updateAppConfig(updates: any) {
             }
         }
 
+        // Ensure non-lunch meals are explicitly deactivated by default if missing from selections
+        if (updates.allowed_meal_types && Array.isArray(updates.allowed_meal_types)) {
+            const { data: nonLunchMeals } = await supabase
+                .from('meals')
+                .select('id, meal_type, sort_order')
+                .neq('meal_type', 'lunch');
+
+            if (nonLunchMeals && nonLunchMeals.length > 0) {
+                const { data: existingSelections } = await supabase
+                    .from('company_menu_selections')
+                    .select('meal_id')
+                    .eq('company_id', companyId);
+
+                const existingMealIds = new Set((existingSelections || []).map((s: any) => s.meal_id));
+                const missingSelections = nonLunchMeals
+                    .filter((m: any) => !existingMealIds.has(m.id))
+                    .map((m: any) => ({
+                        company_id: companyId,
+                        meal_id: m.id,
+                        is_selected: false,
+                        sort_order: m.sort_order || 0
+                    }));
+
+                if (missingSelections.length > 0) {
+                    await supabase.from('company_menu_selections').insert(missingSelections);
+                }
+            }
+        }
+
         await logActivity({
             action: 'app_config_updated',
             entityType: 'config',
@@ -325,6 +378,7 @@ export async function updateAppConfig(updates: any) {
         });
 
         revalidatePath('/company/settings');
+        revalidatePath('/company/menu');
         revalidatePath('/', 'layout');
         return { success: true };
     } catch (error: any) {

@@ -26,6 +26,30 @@ export async function checkSlugAvailability(name: string) {
     return { available: !data, slug };
 }
 
+export async function getActiveMealTypes(): Promise<string[]> {
+    try {
+        const supabase = createAdminClient();
+        const { data: activeMeals, error } = await supabase
+            .from('meals')
+            .select('meal_type')
+            .eq('is_active', true);
+
+        if (error || !activeMeals) return ['lunch'];
+
+        const activeTypes = Array.from(
+            new Set(
+                activeMeals
+                    .map((m: any) => m.meal_type || 'lunch')
+                    .filter(Boolean)
+            )
+        );
+
+        return activeTypes.length > 0 ? activeTypes : ['lunch'];
+    } catch {
+        return ['lunch'];
+    }
+}
+
 export async function registerCompany(formData: any) {
     const supabase = createAdminClient();
     const headersList = await headers();
@@ -123,17 +147,17 @@ export async function registerCompany(formData: any) {
 
     // 3. Onboarding Initialization
     try {
-        // A. Menu selections (Default to ALL active meals)
+        // A. Menu selections (Default to Lunch meals only, other meal types deactivated)
         const { data: allMeals } = await supabase
             .from('meals')
-            .select('id, sort_order')
+            .select('id, sort_order, meal_type')
             .eq('is_active', true);
 
         if (allMeals && allMeals.length > 0) {
-            const selections = allMeals.map((meal: { id: string; sort_order: number }) => ({
+            const selections = allMeals.map((meal: { id: string; sort_order: number; meal_type?: string }) => ({
                 company_id: newCompany.id,
                 meal_id: meal.id,
-                is_selected: true,
+                is_selected: (!meal.meal_type || meal.meal_type === 'lunch'),
                 sort_order: meal.sort_order
             }));
             await supabase.from('company_menu_selections').insert(selections);
@@ -146,12 +170,21 @@ export async function registerCompany(formData: any) {
             .eq('id', '00000000-0000-0000-0000-000000000001')
             .single();
 
+        const allowedMealTypes = formData.allowedMealTypes || ['lunch'];
+
         if (globalSettings) {
             await supabase.from('company_app_config').update({
+                allowed_meal_types: allowedMealTypes,
                 meal_page_options: {
                     breads: globalSettings.bread_options || [],
                     cookies: globalSettings.cookie_options || []
                 },
+                show_prices: paymentMethod === 'direct_pay',
+                show_stripe_checkout: paymentMethod === 'direct_pay',
+            }).eq('company_id', newCompany.id);
+        } else {
+            await supabase.from('company_app_config').update({
+                allowed_meal_types: allowedMealTypes,
                 show_prices: paymentMethod === 'direct_pay',
                 show_stripe_checkout: paymentMethod === 'direct_pay',
             }).eq('company_id', newCompany.id);

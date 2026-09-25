@@ -1,11 +1,12 @@
-import { getCompanyAppConfig, getGlobalSettings, getCompanyFormFields } from '../actions';
+import { getCompanyAppConfig, getGlobalSettings, getCompanyFormFields, getActiveMasterMealTypes } from '../actions';
 import AppSettingsClient from './AppSettingsClient';
 
 export default async function CompanySettingsPage() {
-    const [configResult, globalResult, fieldsResult] = await Promise.all([
+    const [configResult, globalResult, fieldsResult, activeMasterMealTypes] = await Promise.all([
         getCompanyAppConfig(),
         getGlobalSettings(),
-        getCompanyFormFields()
+        getCompanyFormFields(),
+        getActiveMasterMealTypes()
     ]);
     
     return <AppSettingsClient 
@@ -15,5 +16,6 @@ export default async function CompanySettingsPage() {
             globalFields: (fieldsResult.success ? fieldsResult.globalFields : []) ?? [],
             companyFields: (fieldsResult.success ? fieldsResult.companyFields : []) ?? []
         }}
+        activeMasterMealTypes={activeMasterMealTypes}
     />;
 }

@@ -3,8 +3,8 @@
 import React, { useState } from 'react';
 import { toast } from 'sonner';
 import { ConfirmDialog } from '@/components/ConfirmDialog';
-import { createCompany, updateCompany, updateCompanyStatus, deleteCompany, resendInvitation, deleteInvoice, impersonateCompany } from './actions';
-import type { TourCompany } from '@/lib/supabase/types';
+import { createCompany, updateCompany, updateCompanyStatus, deleteCompany, resendInvitation, deleteInvoice, impersonateCompany, updateCompanyAllowedMealTypes } from './actions';
+import type { TourCompany, MealType } from '@/lib/supabase/types';
 import { Button, buttonVariants } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { Switch } from '@/components/ui/switch';
@@ -30,16 +30,17 @@ import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import {
     Plus, MoreHorizontal, Pencil, CheckCircle, XCircle, Trash2,
     Building2, CreditCard, FileText, Copy, ChevronRight, ChevronDown,
-    Phone, Mail, Globe, ExternalLink, Clock, Send, User, Percent, Settings, MapPin
+    Phone, Mail, Globe, ExternalLink, Clock, Send, User, Percent, Settings, MapPin,
+    UtensilsCrossed, Check
 } from 'lucide-react';
 import { cn, formatDateUS, formatTitleCase } from '@/lib/utils';
 
 
 interface CompaniesClientProps {
     initialCompanies: (TourCompany & { 
-        company_app_config: any;
-        contracts: any[];
-        invoices: any[];
+        contracts?: any[];
+        invoices?: any[];
+        company_app_config?: any;
     })[];
 }
 
@@ -65,6 +66,7 @@ export function CompaniesClient({ initialCompanies }: CompaniesClientProps) {
     const [prepInstructions, setPrepInstructions] = useState('');
     const [useMountainMamasBranding, setUseMountainMamasBranding] = useState(false);
     const [customWelcomeMessage, setCustomWelcomeMessage] = useState('');
+    const [allowedMealTypes, setAllowedMealTypes] = useState<MealType[]>(['lunch']);
 
     const filtered = filter === 'all' ? companies : companies.filter(c => c.status === filter);
 
@@ -79,9 +81,10 @@ export function CompaniesClient({ initialCompanies }: CompaniesClientProps) {
         discountPercentage !== String(editingCompany.discount_percentage ?? 0) ||
         prepInstructions !== (editingCompany.prep_instructions || '') ||
         useMountainMamasBranding !== (editingCompany.company_app_config?.use_mountain_mamas_branding ?? false) ||
-        customWelcomeMessage !== (editingCompany.company_app_config?.custom_welcome_message || '')
+        customWelcomeMessage !== (editingCompany.company_app_config?.custom_welcome_message || '') ||
+        JSON.stringify(allowedMealTypes.sort()) !== JSON.stringify((editingCompany.company_app_config?.allowed_meal_types || ['lunch']).slice().sort())
     ) : (
-        name.length > 0 || email.length > 0 || mailingAddress.length > 0 || prepInstructions.length > 0 || useMountainMamasBranding || customWelcomeMessage.length > 0
+        name.length > 0 || email.length > 0 || mailingAddress.length > 0 || prepInstructions.length > 0 || useMountainMamasBranding || customWelcomeMessage.length > 0 || allowedMealTypes.length > 0
     );
 
     const [invoiceToDelete, setInvoiceToDelete] = useState<{ id: string; amount: number; companyId: string } | null>(null);
@@ -99,7 +102,7 @@ export function CompaniesClient({ initialCompanies }: CompaniesClientProps) {
                     if (c.id === invoiceToDelete.companyId) {
                         return {
                             ...c,
-                            invoices: c.invoices.filter((inv: any) => inv.id !== invoiceToDelete.id)
+                            invoices: (c.invoices || []).filter((inv: any) => inv.id !== invoiceToDelete.id)
                         };
                     }
                     return c;
@@ -112,6 +115,57 @@ export function CompaniesClient({ initialCompanies }: CompaniesClientProps) {
         } finally {
             setDeletingInvoice(false);
             setInvoiceToDelete(null);
+        }
+    };
+
+    const handleToggleMealTypeForCompany = async (company: any, mealType: string) => {
+        const currentMealTypes: string[] = (company.company_app_config?.allowed_meal_types && company.company_app_config.allowed_meal_types.length > 0)
+            ? company.company_app_config.allowed_meal_types
+            : ['lunch'];
+
+        let updatedMealTypes: string[];
+        if (currentMealTypes.includes(mealType)) {
+            if (currentMealTypes.length === 1) {
+                toast.error('At least one meal type must remain active for this company.');
+                return;
+            }
+            updatedMealTypes = currentMealTypes.filter((t: string) => t !== mealType);
+        } else {
+            updatedMealTypes = [...currentMealTypes, mealType];
+        }
+
+        // Optimistic UI update
+        setCompanies(prev => prev.map(c => {
+            if (c.id === company.id) {
+                return {
+                    ...c,
+                    company_app_config: {
+                        ...c.company_app_config,
+                        allowed_meal_types: updatedMealTypes
+                    }
+                };
+            }
+            return c;
+        }));
+
+        const res = await updateCompanyAllowedMealTypes(company.id, updatedMealTypes);
+        if (res.success) {
+            toast.success(`Updated allowed meal types for ${company.name}`);
+        } else {
+            toast.error(res.error || 'Failed to update meal types');
+            // Revert on error
+            setCompanies(prev => prev.map(c => {
+                if (c.id === company.id) {
+                    return {
+                        ...c,
+                        company_app_config: {
+                            ...c.company_app_config,
+                            allowed_meal_types: currentMealTypes
+                        }
+                    };
+                }
+                return c;
+            }));
         }
     };
 
@@ -139,6 +193,7 @@ export function CompaniesClient({ initialCompanies }: CompaniesClientProps) {
         setPrepInstructions('');
         setUseMountainMamasBranding(false);
         setCustomWelcomeMessage('');
+        setAllowedMealTypes(['lunch']);
         setOpen(true);
     }
 
@@ -155,6 +210,7 @@ export function CompaniesClient({ initialCompanies }: CompaniesClientProps) {
         setPrepInstructions(company.prep_instructions || '');
         setUseMountainMamasBranding(company.company_app_config?.use_mountain_mamas_branding ?? false);
         setCustomWelcomeMessage(company.company_app_config?.custom_welcome_message || '');
+        setAllowedMealTypes(company.company_app_config?.allowed_meal_types || ['lunch']);
         setOpen(true);
     }
 
@@ -174,6 +230,7 @@ export function CompaniesClient({ initialCompanies }: CompaniesClientProps) {
             formData.set('prep_instructions', prepInstructions);
             formData.set('use_mountain_mamas_branding', String(useMountainMamasBranding));
             formData.set('custom_welcome_message', customWelcomeMessage);
+            formData.set('allowed_meal_types', JSON.stringify(allowedMealTypes));
 
             const result = editingCompany
                 ? await updateCompany(editingCompany.id, formData)
@@ -185,6 +242,11 @@ export function CompaniesClient({ initialCompanies }: CompaniesClientProps) {
                     setCompanies(prev => prev.map(c => c.id === editingCompany.id ? { 
                         ...c, 
                         ...result.data,
+                        company_app_config: {
+                            ...(c.company_app_config || {}),
+                            ...(result.data.company_app_config || {}),
+                            allowed_meal_types: allowedMealTypes
+                        },
                         contracts: c.contracts || [],
                         invoices: c.invoices || []
                     } : c));
@@ -192,6 +254,10 @@ export function CompaniesClient({ initialCompanies }: CompaniesClientProps) {
                 } else {
                     setCompanies(prev => [{
                         ...result.data,
+                        company_app_config: {
+                            ...(result.data.company_app_config || {}),
+                            allowed_meal_types: allowedMealTypes
+                        },
                         contracts: [],
                         invoices: []
                     }, ...prev]);
@@ -538,6 +604,44 @@ export function CompaniesClient({ initialCompanies }: CompaniesClientProps) {
                                                                             )}
                                                                         </div>
                                                                     </div>
+                                                                    <div className="flex items-start gap-3">
+                                                                        <div className="size-7 rounded-lg bg-violet-50 flex items-center justify-center text-violet-600 shrink-0 mt-0.5">
+                                                                            <UtensilsCrossed className="size-3.5" />
+                                                                        </div>
+                                                                        <div className="min-w-0 flex-1">
+                                                                            <div className="flex items-center justify-between gap-2 mb-1.5">
+                                                                                <p className="text-[10px] text-gray-400 font-bold uppercase tracking-wider">Allowed Meal Types</p>
+                                                                                <span className="text-[10px] text-gray-400">Click to toggle</span>
+                                                                            </div>
+                                                                            <div className="flex flex-wrap gap-1.5">
+                                                                                {[
+                                                                                    { id: 'lunch', label: 'Lunch', activeBg: 'bg-blue-50 text-blue-700 border-blue-200 hover:bg-blue-100', icon: '🥪' },
+                                                                                    { id: 'breakfast', label: 'Breakfast', activeBg: 'bg-amber-50 text-amber-700 border-amber-200 hover:bg-amber-100', icon: '🍳' },
+                                                                                    { id: 'dinner', label: 'Dinner', activeBg: 'bg-purple-50 text-purple-700 border-purple-200 hover:bg-purple-100', icon: '🍽️' },
+                                                                                    { id: 'charcuterie', label: 'Charcuterie', activeBg: 'bg-rose-50 text-rose-700 border-rose-200 hover:bg-rose-100', icon: '🧀' },
+                                                                                ].map((mt) => {
+                                                                                    const isAllowed = (company.company_app_config?.allowed_meal_types || ['lunch']).includes(mt.id);
+                                                                                    return (
+                                                                                        <button
+                                                                                            key={mt.id}
+                                                                                            type="button"
+                                                                                            onClick={() => handleToggleMealTypeForCompany(company, mt.id)}
+                                                                                            className={`inline-flex items-center gap-1.5 text-xs font-semibold rounded-lg px-2.5 py-1 border transition-all cursor-pointer ${
+                                                                                                isAllowed
+                                                                                                    ? `${mt.activeBg} font-bold shadow-xs ring-1 ring-black/5`
+                                                                                                    : 'bg-gray-50 text-gray-400 border-gray-200/60 line-through opacity-60 hover:opacity-100 hover:bg-gray-100'
+                                                                                            }`}
+                                                                                            title={isAllowed ? `Click to disable ${mt.label}` : `Click to enable ${mt.label}`}
+                                                                                        >
+                                                                                            <span>{mt.icon}</span>
+                                                                                            <span>{mt.label}</span>
+                                                                                            {isAllowed && <Check className="size-3 stroke-[3]" />}
+                                                                                        </button>
+                                                                                    );
+                                                                                })}
+                                                                            </div>
+                                                                        </div>
+                                                                    </div>
                                                                     <div className="flex items-start gap-3 pt-1 border-t border-gray-100">
                                                                         <div className="size-7 rounded-lg bg-blue-50 flex items-center justify-center text-blue-600 shrink-0">
                                                                             <FileText className="size-3.5" />
@@ -816,6 +920,56 @@ export function CompaniesClient({ initialCompanies }: CompaniesClientProps) {
                                 <Globe className="size-3.5" /> App Portal Settings
                             </h4>
                             <div className="space-y-3">
+                                {/* Allowed Meal Types */}
+                                <div className="space-y-2 p-3.5 rounded-2xl border border-gray-200 bg-gray-50/50">
+                                    <div className="space-y-0.5">
+                                        <Label className="text-xs font-bold text-gray-800">Allowed Meal Types *</Label>
+                                        <p className="text-[10px] text-gray-500 font-medium">Select which meal types this company can view, activate, and show on their ordering app.</p>
+                                    </div>
+                                    <div className="grid grid-cols-2 gap-2 pt-1">
+                                        {[
+                                            { id: 'lunch', label: 'Lunch', desc: 'Box & Bag lunches' },
+                                            { id: 'breakfast', label: 'Breakfast', desc: 'Burritos & Pastries' },
+                                            { id: 'dinner', label: 'Dinner', desc: 'Plates & Entrees' },
+                                            { id: 'charcuterie', label: 'Charcuterie', desc: 'Boards & Platters' },
+                                        ].map((t) => {
+                                            const isChecked = allowedMealTypes.includes(t.id as MealType);
+                                            return (
+                                                <button
+                                                    key={t.id}
+                                                    type="button"
+                                                    onClick={() => {
+                                                        if (isChecked) {
+                                                            if (allowedMealTypes.length === 1) {
+                                                                toast.error('At least one meal type must remain selected.');
+                                                                return;
+                                                            }
+                                                            setAllowedMealTypes(allowedMealTypes.filter(x => x !== t.id));
+                                                        } else {
+                                                            setAllowedMealTypes([...allowedMealTypes, t.id as MealType]);
+                                                        }
+                                                    }}
+                                                    className={`flex items-start gap-2 p-2.5 rounded-xl border text-left transition-all cursor-pointer ${
+                                                        isChecked 
+                                                            ? 'border-violet-500 bg-violet-50/50 shadow-sm' 
+                                                            : 'border-gray-200 bg-white hover:border-gray-300'
+                                                    }`}
+                                                >
+                                                    <div className={`size-4 rounded border mt-0.5 flex items-center justify-center shrink-0 transition-colors ${
+                                                        isChecked ? 'bg-violet-600 border-violet-600 text-white' : 'border-gray-300 bg-white'
+                                                    }`}>
+                                                        {isChecked && <Check className="size-3 stroke-[3]" />}
+                                                    </div>
+                                                    <div className="min-w-0">
+                                                        <div className="font-bold text-xs text-gray-900 leading-tight">{t.label}</div>
+                                                        <div className="text-[10px] text-gray-500 font-medium truncate">{t.desc}</div>
+                                                    </div>
+                                                </button>
+                                            );
+                                        })}
+                                    </div>
+                                </div>
+
                                 <div className="flex items-center justify-between p-3.5 rounded-2xl border border-violet-100/60 bg-violet-50/20">
                                     <div className="space-y-0.5">
                                         <Label htmlFor="use_mountain_mamas_branding" className="text-xs font-bold text-violet-900">Use Mountain Mama's Café Branding</Label>

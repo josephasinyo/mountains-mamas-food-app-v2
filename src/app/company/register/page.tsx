@@ -14,7 +14,8 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent } from '@/components/ui/card';
 import { toast } from 'sonner';
-import { checkSlugAvailability, registerCompany } from './actions';
+import { checkSlugAvailability, registerCompany, getActiveMealTypes } from './actions';
+import type { MealType } from '@/lib/supabase/types';
 
 export default function RegisterCompanyPage() {
     const router = useRouter();
@@ -29,9 +30,19 @@ export default function RegisterCompanyPage() {
     const [email, setEmail] = useState('');
     const [phone, setPhone] = useState('');
     const [mailingAddress, setMailingAddress] = useState('');
+    const [allowedMealTypes, setAllowedMealTypes] = useState<MealType[]>(['lunch']);
+    const [activeMasterMealTypes, setActiveMasterMealTypes] = useState<string[]>(['lunch']);
     const [password, setPassword] = useState('');
     const [confirmPassword, setConfirmPassword] = useState('');
     const [paymentMethod, setPaymentMethod] = useState<'direct_pay' | 'monthly_invoice'>('direct_pay');
+
+    useEffect(() => {
+        getActiveMealTypes().then(types => {
+            if (types && types.length > 0) {
+                setActiveMasterMealTypes(types);
+            }
+        }).catch(() => {});
+    }, []);
     
     // Contract details
     const [signerName, setSignerName] = useState('');
@@ -261,6 +272,7 @@ export default function RegisterCompanyPage() {
                 email,
                 phone,
                 mailingAddress,
+                allowedMealTypes,
                 paymentMethod,
                 password,
                 signatureData: finalSignature,
@@ -469,6 +481,62 @@ export default function RegisterCompanyPage() {
                                                     />
                                                 </div>
                                             </div>
+                                        </div>
+                                    </div>
+
+                                    {/* Meal Offerings Selection */}
+                                    <div className="pt-6 border-t border-gray-100 space-y-3">
+                                        <div>
+                                            <h3 className="text-sm font-black uppercase tracking-wider text-gray-900">Desired Meal Types</h3>
+                                            <p className="text-xs text-gray-500 mt-0.5">Select the meal categories you plan to offer to your guests & tours (Lunch is pre-selected).</p>
+                                        </div>
+
+                                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                                            {[
+                                                { id: 'lunch', label: 'Lunch', desc: 'Customizable Box & Bag Lunches', icon: '🥪' },
+                                                { id: 'breakfast', label: 'Breakfast', desc: 'Hearty Burritos & Pastry Platters', icon: '🍳' },
+                                                { id: 'dinner', label: 'Dinner', desc: 'Campfire Grilled Salmon & Steak Plates', icon: '🥩' },
+                                                { id: 'charcuterie', label: 'Charcuterie', desc: 'Artisan Cheeses & Cured Meats', icon: '🧀' },
+                                            ]
+                                            .filter(t => !activeMasterMealTypes || activeMasterMealTypes.length === 0 || activeMasterMealTypes.includes(t.id))
+                                            .map((t) => {
+                                                const isChecked = allowedMealTypes.includes(t.id as MealType);
+                                                return (
+                                                    <button
+                                                        key={t.id}
+                                                        type="button"
+                                                        onClick={() => {
+                                                            if (isChecked) {
+                                                                if (allowedMealTypes.length === 1) {
+                                                                    toast.error('At least one meal type must remain selected.');
+                                                                    return;
+                                                                }
+                                                                setAllowedMealTypes(allowedMealTypes.filter(x => x !== t.id));
+                                                            } else {
+                                                                setAllowedMealTypes([...allowedMealTypes, t.id as MealType]);
+                                                            }
+                                                        }}
+                                                        className={`flex items-start gap-3 p-3.5 rounded-2xl border text-left transition-all cursor-pointer ${
+                                                            isChecked
+                                                                ? 'border-violet-500 bg-violet-50/40 shadow-sm'
+                                                                : 'border-gray-100 bg-white hover:border-gray-200'
+                                                        }`}
+                                                    >
+                                                        <div className={`size-5 rounded-lg border mt-0.5 flex items-center justify-center shrink-0 transition-colors ${
+                                                            isChecked ? 'bg-violet-600 border-violet-600 text-white' : 'border-gray-200 bg-gray-50'
+                                                        }`}>
+                                                            {isChecked && <Check className="size-3.5 stroke-[3]" />}
+                                                        </div>
+                                                        <div className="min-w-0">
+                                                            <div className="flex items-center gap-1.5 font-bold text-xs text-gray-900">
+                                                                <span>{t.icon}</span>
+                                                                <span>{t.label}</span>
+                                                            </div>
+                                                            <div className="text-[11px] text-gray-500 font-medium mt-0.5">{t.desc}</div>
+                                                        </div>
+                                                    </button>
+                                                );
+                                            })}
                                         </div>
                                     </div>
 
