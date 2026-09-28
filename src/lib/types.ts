@@ -20,6 +20,7 @@ export interface FoodItem {
     sandwich_image_url?: string | null;
     lunch_package?: 'box' | 'bag';
     allow_split_box: boolean;
+    allergens?: string[] | null;
 }
 
 export interface CartItem {

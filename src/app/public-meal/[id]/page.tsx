@@ -1,6 +1,7 @@
 import Link from 'next/link';
 import { Card, CardContent } from '@/components/ui/card';
 import { ArrowLeft, Sparkles, UtensilsCrossed, ShieldCheck, Compass, HelpCircle } from 'lucide-react';
+import AllergenBadges from '@/components/allergens/AllergenBadges';
 import { createClient } from '@/lib/supabase/server';
 import { notFound } from 'next/navigation';
 
@@ -87,6 +88,7 @@ export default async function PublicMealDetail({ params }: PageProps) {
                             <h2 className="text-3xl sm:text-4xl font-black text-gray-900 tracking-tight">
                                 {meal.name}
                             </h2>
+                            <AllergenBadges allergens={meal.allergens} size="sm" showLabels={true} className="mt-1" />
                         </div>
 
                         <div className="space-y-4 text-gray-600">

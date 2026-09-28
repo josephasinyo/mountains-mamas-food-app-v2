@@ -68,6 +68,7 @@ export interface Meal {
     meal_type?: MealType;
     lunch_package: 'box' | 'bag';
     allow_split_box: boolean;
+    allergens?: string[] | null;
     is_active: boolean;
     sort_order: number;
     created_at: string;

@@ -7,6 +7,8 @@ import { FoodItem } from '@/lib/types';
 import { useCart } from '@/hooks/useCart';
 import { findGfCookieOption } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
+import AllergenBadges from '@/components/allergens/AllergenBadges';
+import { parseOptionItem } from '@/lib/allergens';
 import styles from './AddToCartForm.module.css';
 
 interface Props {
@@ -313,16 +315,22 @@ export default function AddToCartForm({ item }: Props) {
     options: { label: string; onClick: () => void }[]
   ) => {
     const isOpen = openDropdown === id;
+    const parsedSelected = parseOptionItem(selectedValue);
+    const itemType = id === 'bread_type' || id === 'bread_options' ? 'bread' : id === 'cookie_choice' ? 'cookie' : 'item';
+
     return (
       <div className={styles.section} key={id}>
         <label className={styles.label}>{label}</label>
         <div className={styles.dropdown}>
           <div className={styles.selected} onClick={() => toggleDropdown(id)}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flex: 1, paddingRight: '12px' }}>
-              {selectedValue.toLowerCase().includes('gluten') ? (
-                <span className={styles.badge}>{selectedValue}</span>
-              ) : (
-                <span style={{fontSize: '15px'}}>{selectedValue}</span>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '2px', flex: 1, paddingRight: '8px', minWidth: 0 }}>
+              <span style={{ fontSize: '15px', fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                {parsedSelected.name || selectedValue}
+              </span>
+              {parsedSelected.allergens.length > 0 && (
+                <div style={{ width: '100%' }}>
+                  <AllergenBadges allergens={parsedSelected.allergens} size="xs" showLabels={true} itemType={itemType} className="my-0.5" />
+                </div>
               )}
             </div>
             <svg 
@@ -339,24 +347,30 @@ export default function AddToCartForm({ item }: Props) {
           </div>
           {isOpen && (
             <div className={styles.options}>
-              {options.map((opt, i) => (
-                <div 
-                  key={i} 
-                  className={styles.option}
-                  onClick={() => {
-                    opt.onClick();
-                    setOpenDropdown(null);
-                  }}
-                >
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flex: 1 }}>
-                    {opt.label.toLowerCase().includes('gluten') ? (
-                      <span className={styles.badge}>{opt.label}</span>
-                    ) : (
-                      <span style={{fontSize: '15px'}}>{opt.label}</span>
-                    )}
+              {options.map((opt, i) => {
+                const parsedOpt = parseOptionItem(opt.label);
+                return (
+                  <div 
+                    key={i} 
+                    className={styles.option}
+                    onClick={() => {
+                      opt.onClick();
+                      setOpenDropdown(null);
+                    }}
+                  >
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '3px', width: '100%', minWidth: 0 }}>
+                      <span style={{ fontSize: '15px', fontWeight: 500, color: '#1f2937' }}>
+                        {parsedOpt.name}
+                      </span>
+                      {parsedOpt.allergens.length > 0 && (
+                        <div style={{ width: '100%' }} onClick={(e) => e.stopPropagation()}>
+                          <AllergenBadges allergens={parsedOpt.allergens} size="xs" showLabels={true} itemType={itemType} className="my-0.5" />
+                        </div>
+                      )}
+                    </div>
                   </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           )}
         </div>
@@ -412,6 +426,7 @@ export default function AddToCartForm({ item }: Props) {
               <span className={styles.priceTag}>${price.toFixed(2)}</span>
             )}
         </div>
+        <AllergenBadges allergens={item.allergens} size="sm" showLabels={true} className="mt-1 mb-3" />
         {isLunch && enabledOptionsCount === 1 && !isSalad && (
           <div className={styles.singleOptionBanner}>
             <svg 

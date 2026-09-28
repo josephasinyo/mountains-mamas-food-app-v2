@@ -17,6 +17,8 @@ import { updateAppConfig, updateCompanyFormField } from '../actions';
 import { toast } from 'sonner';
 import { motion } from 'framer-motion';
 import { cn } from '@/lib/utils';
+import AllergenBadges from '@/components/allergens/AllergenBadges';
+import { parseOptionItem } from '@/lib/allergens';
 
 interface AppSettingsClientProps {
     initialData: any;
@@ -145,14 +147,36 @@ export default function AppSettingsClient({ initialData, globalSettings, formFie
         });
     };
 
+    // Helper to check if bread or cookie is selected
+    const isBreadSelected = (bread: string) => {
+        const currentBreads = formData.meal_page_options.breads || [];
+        const targetName = parseOptionItem(bread).name.toLowerCase();
+        return currentBreads.some((b: string) => b === bread || parseOptionItem(b).name.toLowerCase() === targetName);
+    };
+
+    const isCookieSelected = (cookie: string) => {
+        const currentCookies = formData.meal_page_options.cookies || [];
+        const targetName = parseOptionItem(cookie).name.toLowerCase();
+        return currentCookies.some((c: string) => c === cookie || parseOptionItem(c).name.toLowerCase() === targetName);
+    };
+
     // Helper to get ordered list of breads
     const orderedBreads = React.useMemo(() => {
         const selectedBreads = formData.meal_page_options.breads || [];
         const globalBreads = globalSettings?.bread_options || [];
+        
         // Active selected ones in their configured order
-        const active = selectedBreads.filter((b: string) => globalBreads.includes(b));
+        const active: string[] = [];
+        selectedBreads.forEach((b: string) => {
+            const foundInGlobal = globalBreads.find((gb: string) => gb === b || parseOptionItem(gb).name.toLowerCase() === parseOptionItem(b).name.toLowerCase());
+            const itemToPush = foundInGlobal || b;
+            if (!active.some(a => a === itemToPush || parseOptionItem(a).name.toLowerCase() === parseOptionItem(itemToPush).name.toLowerCase())) {
+                active.push(itemToPush);
+            }
+        });
+
         // Remaining unselected ones in global order
-        const inactive = globalBreads.filter((b: string) => !selectedBreads.includes(b));
+        const inactive = globalBreads.filter((gb: string) => !active.some(a => a === gb || parseOptionItem(a).name.toLowerCase() === parseOptionItem(gb).name.toLowerCase()));
         return [...active, ...inactive];
     }, [formData.meal_page_options.breads, globalSettings?.bread_options]);
 
@@ -160,17 +184,29 @@ export default function AppSettingsClient({ initialData, globalSettings, formFie
     const orderedCookies = React.useMemo(() => {
         const selectedCookies = formData.meal_page_options.cookies || [];
         const globalCookies = globalSettings?.cookie_options || [];
+        
         // Active selected ones in their configured order
-        const active = selectedCookies.filter((c: string) => globalCookies.includes(c));
+        const active: string[] = [];
+        selectedCookies.forEach((c: string) => {
+            const foundInGlobal = globalCookies.find((gc: string) => gc === c || parseOptionItem(gc).name.toLowerCase() === parseOptionItem(c).name.toLowerCase());
+            const itemToPush = foundInGlobal || c;
+            if (!active.some(a => a === itemToPush || parseOptionItem(a).name.toLowerCase() === parseOptionItem(itemToPush).name.toLowerCase())) {
+                active.push(itemToPush);
+            }
+        });
+
         // Remaining unselected ones in global order
-        const inactive = globalCookies.filter((c: string) => !selectedCookies.includes(c));
+        const inactive = globalCookies.filter((gc: string) => !active.some(a => a === gc || parseOptionItem(a).name.toLowerCase() === parseOptionItem(gc).name.toLowerCase()));
         return [...active, ...inactive];
     }, [formData.meal_page_options.cookies, globalSettings?.cookie_options]);
 
     const toggleBread = (bread: string) => {
         const currentBreads = formData.meal_page_options.breads || [];
-        const newBreads = currentBreads.includes(bread)
-            ? currentBreads.filter((b: string) => b !== bread)
+        const targetName = parseOptionItem(bread).name.toLowerCase();
+        const isCurrentlySelected = currentBreads.some((b: string) => b === bread || parseOptionItem(b).name.toLowerCase() === targetName);
+        
+        const newBreads = isCurrentlySelected
+            ? currentBreads.filter((b: string) => b !== bread && parseOptionItem(b).name.toLowerCase() !== targetName)
             : [...currentBreads, bread];
         
         setFormData({
@@ -184,8 +220,11 @@ export default function AppSettingsClient({ initialData, globalSettings, formFie
 
     const toggleCookie = (cookie: string) => {
         const currentCookies = formData.meal_page_options.cookies || [];
-        const newCookies = currentCookies.includes(cookie)
-            ? currentCookies.filter((c: string) => c !== cookie)
+        const targetName = parseOptionItem(cookie).name.toLowerCase();
+        const isCurrentlySelected = currentCookies.some((c: string) => c === cookie || parseOptionItem(c).name.toLowerCase() === targetName);
+        
+        const newCookies = isCurrentlySelected
+            ? currentCookies.filter((c: string) => c !== cookie && parseOptionItem(c).name.toLowerCase() !== targetName)
             : [...currentCookies, cookie];
         
         setFormData({
@@ -199,7 +238,8 @@ export default function AppSettingsClient({ initialData, globalSettings, formFie
 
     const moveBread = (bread: string, direction: 'up' | 'down') => {
         const currentBreads = [...(formData.meal_page_options.breads || [])];
-        const idx = currentBreads.indexOf(bread);
+        const targetName = parseOptionItem(bread).name.toLowerCase();
+        const idx = currentBreads.findIndex((b: string) => b === bread || parseOptionItem(b).name.toLowerCase() === targetName);
         if (idx === -1) return;
         if (direction === 'up' && idx === 0) return;
         if (direction === 'down' && idx === currentBreads.length - 1) return;
@@ -220,7 +260,8 @@ export default function AppSettingsClient({ initialData, globalSettings, formFie
 
     const moveCookie = (cookie: string, direction: 'up' | 'down') => {
         const currentCookies = [...(formData.meal_page_options.cookies || [])];
-        const idx = currentCookies.indexOf(cookie);
+        const targetName = parseOptionItem(cookie).name.toLowerCase();
+        const idx = currentCookies.findIndex((c: string) => c === cookie || parseOptionItem(c).name.toLowerCase() === targetName);
         if (idx === -1) return;
         if (direction === 'up' && idx === 0) return;
         if (direction === 'down' && idx === currentCookies.length - 1) return;
@@ -567,52 +608,58 @@ export default function AppSettingsClient({ initialData, globalSettings, formFie
                                 {/* Left Column */}
                                 <div className="flex flex-col gap-4">
                                     {orderedBreads.slice(0, Math.ceil(orderedBreads.length / 2)).map((bread: string) => {
-                                        const isSelected = formData.meal_page_options.breads?.includes(bread);
+                                        const parsed = parseOptionItem(bread);
+                                        const isSelected = isBreadSelected(bread);
                                         const currentSelectedBreads = formData.meal_page_options.breads || [];
-                                        const idxInSelected = currentSelectedBreads.indexOf(bread);
+                                        const idxInSelected = currentSelectedBreads.findIndex((b: string) => b === bread || parseOptionItem(b).name.toLowerCase() === parsed.name.toLowerCase());
                                         return (
                                             <div 
                                                 key={bread}
                                                 className={cn(
-                                                    "flex items-center justify-between p-4 rounded-2xl border-2 transition-all",
+                                                    "flex flex-col justify-between p-4 rounded-2xl border-2 transition-all gap-2",
                                                     isSelected
                                                         ? "border-orange-200 bg-orange-50/30 shadow-sm"
-                                                        : "border-gray-50 bg-gray-50/50 opacity-60"
+                                                        : "border-gray-100 bg-gray-50/50 opacity-60 hover:opacity-100"
                                                 )}
                                             >
-                                                <div className="flex items-center gap-3">
-                                                    {isSelected && currentSelectedBreads.length > 1 && (
-                                                        <div className="flex flex-col gap-0.5">
-                                                            <button 
-                                                                onClick={(e) => { e.stopPropagation(); moveBread(bread, 'up'); }}
-                                                                disabled={idxInSelected === 0}
-                                                                className="p-1 hover:bg-orange-100 rounded disabled:opacity-30"
-                                                                title="Move Up"
-                                                            >
-                                                                <ArrowUp className="size-3 text-orange-800" />
-                                                            </button>
-                                                            <button 
-                                                                onClick={(e) => { e.stopPropagation(); moveBread(bread, 'down'); }}
-                                                                disabled={idxInSelected === currentSelectedBreads.length - 1}
-                                                                className="p-1 hover:bg-orange-100 rounded disabled:opacity-30"
-                                                                title="Move Down"
-                                                            >
-                                                                <ArrowDown className="size-3 text-orange-800" />
-                                                            </button>
-                                                        </div>
-                                                    )}
-                                                    <span className={cn(
-                                                        "text-sm font-bold",
-                                                        isSelected ? "text-orange-900" : "text-gray-600"
-                                                    )}>
-                                                        {isSelected ? `#${idxInSelected + 1}: ` : ''}{bread}
-                                                    </span>
+                                                <div className="flex items-center justify-between gap-3">
+                                                    <div className="flex items-center gap-2.5 min-w-0 flex-1">
+                                                        {isSelected && currentSelectedBreads.length > 1 && (
+                                                            <div className="flex flex-col gap-0.5 shrink-0">
+                                                                <button 
+                                                                    onClick={(e) => { e.stopPropagation(); moveBread(bread, 'up'); }}
+                                                                    disabled={idxInSelected === 0}
+                                                                    className="p-1 hover:bg-orange-100 rounded disabled:opacity-30 transition-opacity"
+                                                                    title="Move Up"
+                                                                >
+                                                                    <ArrowUp className="size-3 text-orange-800" />
+                                                                </button>
+                                                                <button 
+                                                                    onClick={(e) => { e.stopPropagation(); moveBread(bread, 'down'); }}
+                                                                    disabled={idxInSelected === currentSelectedBreads.length - 1}
+                                                                    className="p-1 hover:bg-orange-100 rounded disabled:opacity-30 transition-opacity"
+                                                                    title="Move Down"
+                                                                >
+                                                                    <ArrowDown className="size-3 text-orange-800" />
+                                                                </button>
+                                                            </div>
+                                                        )}
+                                                        <span className={cn(
+                                                            "text-sm font-bold break-words",
+                                                            isSelected ? "text-orange-950" : "text-gray-600"
+                                                        )}>
+                                                            {isSelected ? `#${idxInSelected + 1}: ` : ''}{parsed.name}
+                                                        </span>
+                                                    </div>
+                                                    <Switch 
+                                                        checked={isSelected} 
+                                                        onCheckedChange={() => toggleBread(bread)}
+                                                        className="data-[state=checked]:bg-orange-600 shrink-0"
+                                                    />
                                                 </div>
-                                                <Switch 
-                                                    checked={isSelected} 
-                                                    onCheckedChange={() => toggleBread(bread)}
-                                                    className="data-[state=checked]:bg-orange-600"
-                                                />
+                                                {parsed.allergens && parsed.allergens.length > 0 && (
+                                                    <AllergenBadges allergens={parsed.allergens} size="xs" showLabels={true} itemType="bread" className="mt-0.5" />
+                                                )}
                                             </div>
                                         );
                                     })}
@@ -621,52 +668,58 @@ export default function AppSettingsClient({ initialData, globalSettings, formFie
                                 {/* Right Column */}
                                 <div className="flex flex-col gap-4">
                                     {orderedBreads.slice(Math.ceil(orderedBreads.length / 2)).map((bread: string) => {
-                                        const isSelected = formData.meal_page_options.breads?.includes(bread);
+                                        const parsed = parseOptionItem(bread);
+                                        const isSelected = isBreadSelected(bread);
                                         const currentSelectedBreads = formData.meal_page_options.breads || [];
-                                        const idxInSelected = currentSelectedBreads.indexOf(bread);
+                                        const idxInSelected = currentSelectedBreads.findIndex((b: string) => b === bread || parseOptionItem(b).name.toLowerCase() === parsed.name.toLowerCase());
                                         return (
                                             <div 
                                                 key={bread}
                                                 className={cn(
-                                                    "flex items-center justify-between p-4 rounded-2xl border-2 transition-all",
+                                                    "flex flex-col justify-between p-4 rounded-2xl border-2 transition-all gap-2",
                                                     isSelected
                                                         ? "border-orange-200 bg-orange-50/30 shadow-sm"
-                                                        : "border-gray-50 bg-gray-50/50 opacity-60"
+                                                        : "border-gray-100 bg-gray-50/50 opacity-60 hover:opacity-100"
                                                 )}
                                             >
-                                                <div className="flex items-center gap-3">
-                                                    {isSelected && currentSelectedBreads.length > 1 && (
-                                                        <div className="flex flex-col gap-0.5">
-                                                            <button 
-                                                                onClick={(e) => { e.stopPropagation(); moveBread(bread, 'up'); }}
-                                                                disabled={idxInSelected === 0}
-                                                                className="p-1 hover:bg-orange-100 rounded disabled:opacity-30"
-                                                                title="Move Up"
-                                                            >
-                                                                <ArrowUp className="size-3 text-orange-800" />
-                                                            </button>
-                                                            <button 
-                                                                onClick={(e) => { e.stopPropagation(); moveBread(bread, 'down'); }}
-                                                                disabled={idxInSelected === currentSelectedBreads.length - 1}
-                                                                className="p-1 hover:bg-orange-100 rounded disabled:opacity-30"
-                                                                title="Move Down"
-                                                            >
-                                                                <ArrowDown className="size-3 text-orange-800" />
-                                                            </button>
-                                                        </div>
-                                                    )}
-                                                    <span className={cn(
-                                                        "text-sm font-bold",
-                                                        isSelected ? "text-orange-900" : "text-gray-600"
-                                                    )}>
-                                                        {isSelected ? `#${idxInSelected + 1}: ` : ''}{bread}
-                                                    </span>
+                                                <div className="flex items-center justify-between gap-3">
+                                                    <div className="flex items-center gap-2.5 min-w-0 flex-1">
+                                                        {isSelected && currentSelectedBreads.length > 1 && (
+                                                            <div className="flex flex-col gap-0.5 shrink-0">
+                                                                <button 
+                                                                    onClick={(e) => { e.stopPropagation(); moveBread(bread, 'up'); }}
+                                                                    disabled={idxInSelected === 0}
+                                                                    className="p-1 hover:bg-orange-100 rounded disabled:opacity-30 transition-opacity"
+                                                                    title="Move Up"
+                                                                >
+                                                                    <ArrowUp className="size-3 text-orange-800" />
+                                                                </button>
+                                                                <button 
+                                                                    onClick={(e) => { e.stopPropagation(); moveBread(bread, 'down'); }}
+                                                                    disabled={idxInSelected === currentSelectedBreads.length - 1}
+                                                                    className="p-1 hover:bg-orange-100 rounded disabled:opacity-30 transition-opacity"
+                                                                    title="Move Down"
+                                                                >
+                                                                    <ArrowDown className="size-3 text-orange-800" />
+                                                                </button>
+                                                            </div>
+                                                        )}
+                                                        <span className={cn(
+                                                            "text-sm font-bold break-words",
+                                                            isSelected ? "text-orange-950" : "text-gray-600"
+                                                        )}>
+                                                            {isSelected ? `#${idxInSelected + 1}: ` : ''}{parsed.name}
+                                                        </span>
+                                                    </div>
+                                                    <Switch 
+                                                        checked={isSelected} 
+                                                        onCheckedChange={() => toggleBread(bread)}
+                                                        className="data-[state=checked]:bg-orange-600 shrink-0"
+                                                    />
                                                 </div>
-                                                <Switch 
-                                                    checked={isSelected} 
-                                                    onCheckedChange={() => toggleBread(bread)}
-                                                    className="data-[state=checked]:bg-orange-600"
-                                                />
+                                                {parsed.allergens && parsed.allergens.length > 0 && (
+                                                    <AllergenBadges allergens={parsed.allergens} size="xs" showLabels={true} itemType="bread" className="mt-0.5" />
+                                                )}
                                             </div>
                                         );
                                     })}
@@ -697,52 +750,58 @@ export default function AppSettingsClient({ initialData, globalSettings, formFie
                                 {/* Left Column */}
                                 <div className="flex flex-col gap-4">
                                     {orderedCookies.slice(0, Math.ceil(orderedCookies.length / 2)).map((cookie: string) => {
-                                        const isSelected = formData.meal_page_options.cookies?.includes(cookie);
+                                        const parsed = parseOptionItem(cookie);
+                                        const isSelected = isCookieSelected(cookie);
                                         const currentSelectedCookies = formData.meal_page_options.cookies || [];
-                                        const idxInSelected = currentSelectedCookies.indexOf(cookie);
+                                        const idxInSelected = currentSelectedCookies.findIndex((c: string) => c === cookie || parseOptionItem(c).name.toLowerCase() === parsed.name.toLowerCase());
                                         return (
                                             <div 
                                                 key={cookie}
                                                 className={cn(
-                                                    "flex items-center justify-between p-4 rounded-2xl border-2 transition-all",
+                                                    "flex flex-col justify-between p-4 rounded-2xl border-2 transition-all gap-2",
                                                     isSelected
                                                         ? "border-amber-200 bg-amber-50/30 shadow-sm"
-                                                        : "border-gray-50 bg-gray-50/50 opacity-60"
+                                                        : "border-gray-100 bg-gray-50/50 opacity-60 hover:opacity-100"
                                                 )}
                                             >
-                                                <div className="flex items-center gap-3">
-                                                    {isSelected && currentSelectedCookies.length > 1 && (
-                                                        <div className="flex flex-col gap-0.5">
-                                                            <button 
-                                                                onClick={(e) => { e.stopPropagation(); moveCookie(cookie, 'up'); }}
-                                                                disabled={idxInSelected === 0}
-                                                                className="p-1 hover:bg-amber-100 rounded disabled:opacity-30"
-                                                                title="Move Up"
-                                                            >
-                                                                <ArrowUp className="size-3 text-amber-800" />
-                                                            </button>
-                                                            <button 
-                                                                onClick={(e) => { e.stopPropagation(); moveCookie(cookie, 'down'); }}
-                                                                disabled={idxInSelected === currentSelectedCookies.length - 1}
-                                                                className="p-1 hover:bg-amber-100 rounded disabled:opacity-30"
-                                                                title="Move Down"
-                                                            >
-                                                                <ArrowDown className="size-3 text-amber-800" />
-                                                            </button>
-                                                        </div>
-                                                    )}
-                                                    <span className={cn(
-                                                        "text-sm font-bold",
-                                                        isSelected ? "text-amber-900" : "text-gray-600"
-                                                    )}>
-                                                        {isSelected ? `#${idxInSelected + 1}: ` : ''}{cookie}
-                                                    </span>
+                                                <div className="flex items-center justify-between gap-3">
+                                                    <div className="flex items-center gap-2.5 min-w-0 flex-1">
+                                                        {isSelected && currentSelectedCookies.length > 1 && (
+                                                            <div className="flex flex-col gap-0.5 shrink-0">
+                                                                <button 
+                                                                    onClick={(e) => { e.stopPropagation(); moveCookie(cookie, 'up'); }}
+                                                                    disabled={idxInSelected === 0}
+                                                                    className="p-1 hover:bg-amber-100 rounded disabled:opacity-30 transition-opacity"
+                                                                    title="Move Up"
+                                                                >
+                                                                    <ArrowUp className="size-3 text-amber-800" />
+                                                                </button>
+                                                                <button 
+                                                                    onClick={(e) => { e.stopPropagation(); moveCookie(cookie, 'down'); }}
+                                                                    disabled={idxInSelected === currentSelectedCookies.length - 1}
+                                                                    className="p-1 hover:bg-amber-100 rounded disabled:opacity-30 transition-opacity"
+                                                                    title="Move Down"
+                                                                >
+                                                                    <ArrowDown className="size-3 text-amber-800" />
+                                                                </button>
+                                                            </div>
+                                                        )}
+                                                        <span className={cn(
+                                                            "text-sm font-bold break-words",
+                                                            isSelected ? "text-amber-950" : "text-gray-600"
+                                                        )}>
+                                                            {isSelected ? `#${idxInSelected + 1}: ` : ''}{parsed.name}
+                                                        </span>
+                                                    </div>
+                                                    <Switch 
+                                                        checked={isSelected} 
+                                                        onCheckedChange={() => toggleCookie(cookie)}
+                                                        className="data-[state=checked]:bg-amber-600 shrink-0"
+                                                    />
                                                 </div>
-                                                <Switch 
-                                                    checked={isSelected} 
-                                                    onCheckedChange={() => toggleCookie(cookie)}
-                                                    className="data-[state=checked]:bg-amber-600"
-                                                />
+                                                {parsed.allergens && parsed.allergens.length > 0 && (
+                                                    <AllergenBadges allergens={parsed.allergens} size="xs" showLabels={true} itemType="cookie" className="mt-0.5" />
+                                                )}
                                             </div>
                                         );
                                     })}
@@ -751,52 +810,58 @@ export default function AppSettingsClient({ initialData, globalSettings, formFie
                                 {/* Right Column */}
                                 <div className="flex flex-col gap-4">
                                     {orderedCookies.slice(Math.ceil(orderedCookies.length / 2)).map((cookie: string) => {
-                                        const isSelected = formData.meal_page_options.cookies?.includes(cookie);
+                                        const parsed = parseOptionItem(cookie);
+                                        const isSelected = isCookieSelected(cookie);
                                         const currentSelectedCookies = formData.meal_page_options.cookies || [];
-                                        const idxInSelected = currentSelectedCookies.indexOf(cookie);
+                                        const idxInSelected = currentSelectedCookies.findIndex((c: string) => c === cookie || parseOptionItem(c).name.toLowerCase() === parsed.name.toLowerCase());
                                         return (
                                             <div 
                                                 key={cookie}
                                                 className={cn(
-                                                    "flex items-center justify-between p-4 rounded-2xl border-2 transition-all",
+                                                    "flex flex-col justify-between p-4 rounded-2xl border-2 transition-all gap-2",
                                                     isSelected
                                                         ? "border-amber-200 bg-amber-50/30 shadow-sm"
-                                                        : "border-gray-50 bg-gray-50/50 opacity-60"
+                                                        : "border-gray-100 bg-gray-50/50 opacity-60 hover:opacity-100"
                                                 )}
                                             >
-                                                <div className="flex items-center gap-3">
-                                                    {isSelected && currentSelectedCookies.length > 1 && (
-                                                        <div className="flex flex-col gap-0.5">
-                                                            <button 
-                                                                onClick={(e) => { e.stopPropagation(); moveCookie(cookie, 'up'); }}
-                                                                disabled={idxInSelected === 0}
-                                                                className="p-1 hover:bg-amber-100 rounded disabled:opacity-30"
-                                                                title="Move Up"
-                                                            >
-                                                                <ArrowUp className="size-3 text-amber-800" />
-                                                            </button>
-                                                            <button 
-                                                                onClick={(e) => { e.stopPropagation(); moveCookie(cookie, 'down'); }}
-                                                                disabled={idxInSelected === currentSelectedCookies.length - 1}
-                                                                className="p-1 hover:bg-amber-100 rounded disabled:opacity-30"
-                                                                title="Move Down"
-                                                            >
-                                                                <ArrowDown className="size-3 text-amber-800" />
-                                                            </button>
-                                                        </div>
-                                                    )}
-                                                    <span className={cn(
-                                                        "text-sm font-bold",
-                                                        isSelected ? "text-amber-900" : "text-gray-600"
-                                                    )}>
-                                                        {isSelected ? `#${idxInSelected + 1}: ` : ''}{cookie}
-                                                    </span>
+                                                <div className="flex items-center justify-between gap-3">
+                                                    <div className="flex items-center gap-2.5 min-w-0 flex-1">
+                                                        {isSelected && currentSelectedCookies.length > 1 && (
+                                                            <div className="flex flex-col gap-0.5 shrink-0">
+                                                                <button 
+                                                                    onClick={(e) => { e.stopPropagation(); moveCookie(cookie, 'up'); }}
+                                                                    disabled={idxInSelected === 0}
+                                                                    className="p-1 hover:bg-amber-100 rounded disabled:opacity-30 transition-opacity"
+                                                                    title="Move Up"
+                                                                >
+                                                                    <ArrowUp className="size-3 text-amber-800" />
+                                                                </button>
+                                                                <button 
+                                                                    onClick={(e) => { e.stopPropagation(); moveCookie(cookie, 'down'); }}
+                                                                    disabled={idxInSelected === currentSelectedCookies.length - 1}
+                                                                    className="p-1 hover:bg-amber-100 rounded disabled:opacity-30 transition-opacity"
+                                                                    title="Move Down"
+                                                                >
+                                                                    <ArrowDown className="size-3 text-amber-800" />
+                                                                </button>
+                                                            </div>
+                                                        )}
+                                                        <span className={cn(
+                                                            "text-sm font-bold break-words",
+                                                            isSelected ? "text-amber-950" : "text-gray-600"
+                                                        )}>
+                                                            {isSelected ? `#${idxInSelected + 1}: ` : ''}{parsed.name}
+                                                        </span>
+                                                    </div>
+                                                    <Switch 
+                                                        checked={isSelected} 
+                                                        onCheckedChange={() => toggleCookie(cookie)}
+                                                        className="data-[state=checked]:bg-amber-600 shrink-0"
+                                                    />
                                                 </div>
-                                                <Switch 
-                                                    checked={isSelected} 
-                                                    onCheckedChange={() => toggleCookie(cookie)}
-                                                    className="data-[state=checked]:bg-amber-600"
-                                                />
+                                                {parsed.allergens && parsed.allergens.length > 0 && (
+                                                    <AllergenBadges allergens={parsed.allergens} size="xs" showLabels={true} itemType="cookie" className="mt-0.5" />
+                                                )}
                                             </div>
                                         );
                                     })}

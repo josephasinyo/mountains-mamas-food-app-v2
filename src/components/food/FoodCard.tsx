@@ -1,7 +1,7 @@
 import { FoodItem } from '@/lib/types';
 import styles from './FoodCard.module.css';
 import Link from 'next/link';
-
+import AllergenBadges from '@/components/allergens/AllergenBadges';
 import { useCompany } from '@/components/context/CompanyProvider';
 
 interface FoodCardProps {
@@ -18,11 +18,12 @@ export default function FoodCard({ item }: FoodCardProps) {
         <img 
           src={item.image_url || '/placeholder.png'} 
           alt={item.name} 
-          className={styles.image}
+          className={styles.image} 
           loading="lazy"
         />
       </div>
       <h3 className={styles.name}>{item.name}</h3>
+      <AllergenBadges allergens={item.allergens} size="xs" showLabels={false} className="mt-1 mb-1.5" />
       {config?.show_prices && item.price !== undefined && item.price > 0 && (
         <span className={styles.price}>${item.price.toFixed(2)}</span>
       )}

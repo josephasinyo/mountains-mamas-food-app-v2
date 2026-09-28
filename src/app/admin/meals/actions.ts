@@ -102,7 +102,17 @@ export async function createMeal(formData: FormData) {
             junior_box_lunch_image_url = publicUrl;
         }
 
-        // Sandwich uses main image_url directly
+        // Parse allergens
+        let allergens: string[] = [];
+        const allergensRaw = formData.get('allergens');
+        if (typeof allergensRaw === 'string' && allergensRaw.trim()) {
+            try {
+                const parsed = JSON.parse(allergensRaw);
+                if (Array.isArray(parsed)) allergens = parsed;
+            } catch {
+                allergens = allergensRaw.split(',').map(s => s.trim()).filter(Boolean);
+            }
+        }
 
         const insertPayload: any = {
             name,
@@ -113,6 +123,7 @@ export async function createMeal(formData: FormData) {
             meal_type,
             lunch_package: meal_type === 'lunch' ? lunch_package : null,
             allow_split_box: meal_type === 'lunch' ? allow_split_box : false,
+            allergens,
             is_active,
             image_url,
             box_lunch_image_url: meal_type === 'lunch' ? box_lunch_image_url : null,
@@ -229,6 +240,18 @@ export async function updateMeal(id: string, formData: FormData) {
 
         console.log('[updateMeal] Final URLs being saved:', { image_url, box_lunch_image_url, junior_box_lunch_image_url });
 
+        // Parse allergens
+        let allergens: string[] = [];
+        const allergensRaw = formData.get('allergens');
+        if (typeof allergensRaw === 'string' && allergensRaw.trim()) {
+            try {
+                const parsed = JSON.parse(allergensRaw);
+                if (Array.isArray(parsed)) allergens = parsed;
+            } catch {
+                allergens = allergensRaw.split(',').map(s => s.trim()).filter(Boolean);
+            }
+        }
+
         const updates: any = {
             name,
             description,
@@ -238,6 +261,7 @@ export async function updateMeal(id: string, formData: FormData) {
             meal_type,
             lunch_package: meal_type === 'lunch' ? lunch_package : null,
             allow_split_box: meal_type === 'lunch' ? allow_split_box : false,
+            allergens,
             is_active,
             image_url,
             box_lunch_image_url: meal_type === 'lunch' ? box_lunch_image_url : null,

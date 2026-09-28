@@ -13,6 +13,8 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Switch } from '@/components/ui/switch';
 import { Card, CardContent } from '@/components/ui/card';
+import AllergenPicker from '@/components/allergens/AllergenPicker';
+import AllergenBadges from '@/components/allergens/AllergenBadges';
 import {
     Dialog, DialogContent, DialogHeader, DialogTitle,
     DialogDescription, DialogFooter,
@@ -81,6 +83,7 @@ export function MealsClient({ initialMeals }: MealsClientProps) {
     const [juniorPrice, setJuniorPrice] = useState('');
     const [juniorBoxIncludes, setJuniorBoxIncludes] = useState('');
     const [allowSplitBox, setAllowSplitBox] = useState(false);
+    const [selectedAllergens, setSelectedAllergens] = useState<string[]>([]);
     const [isActive, setIsActive] = useState(true);
 
     const hasChanges = editingMeal ? (
@@ -99,9 +102,10 @@ export function MealsClient({ initialMeals }: MealsClientProps) {
         imagePreview !== editingMeal.image_url ||
         standardImagePreview !== editingMeal.box_lunch_image_url ||
         juniorImagePreview !== editingMeal.junior_box_lunch_image_url ||
-        sandwichPrice !== (editingMeal.sandwich_price?.toString() || '')
+        sandwichPrice !== (editingMeal.sandwich_price?.toString() || '') ||
+        JSON.stringify(selectedAllergens.slice().sort()) !== JSON.stringify(((editingMeal.allergens || []) as string[]).slice().sort())
     ) : (
-        name.length > 0 || description.length > 0 || price.length > 0
+        name.length > 0 || description.length > 0 || price.length > 0 || selectedAllergens.length > 0
     );
 
     function handleImageChange(e: React.ChangeEvent<HTMLInputElement>, type: 'main' | 'standard' | 'junior') {
@@ -152,6 +156,7 @@ export function MealsClient({ initialMeals }: MealsClientProps) {
         setJuniorPrice('');
         setJuniorBoxIncludes('');
         setAllowSplitBox(false);
+        setSelectedAllergens([]);
         setIsActive(true);
         setImagePreview(null);
         setStandardImagePreview(null);
@@ -168,6 +173,7 @@ export function MealsClient({ initialMeals }: MealsClientProps) {
             setMealType(activeMealTypeTab);
             setCategory(activeMealTypeTab === 'lunch' ? 'sandwich' : activeMealTypeTab);
         }
+        setSelectedAllergens([]);
         setOpen(true);
     }
 
@@ -184,6 +190,7 @@ export function MealsClient({ initialMeals }: MealsClientProps) {
         setJuniorPrice(meal.junior_price?.toString() || '');
         setJuniorBoxIncludes(meal.junior_box_includes || '');
         setAllowSplitBox(meal.allow_split_box || false);
+        setSelectedAllergens(Array.isArray(meal.allergens) ? meal.allergens : []);
         setIsActive(meal.is_active);
         
         // Correctly map image URLs from the meal object
@@ -222,6 +229,7 @@ export function MealsClient({ initialMeals }: MealsClientProps) {
             formData.set('category', mealType === 'lunch' ? category : mealType);
             formData.set('lunch_package', mealType === 'lunch' ? lunchPackage : 'box');
             formData.set('allow_split_box', (mealType === 'lunch' && allowSplitBox) ? 'true' : 'false');
+            formData.set('allergens', JSON.stringify(selectedAllergens));
             formData.set('is_active', isActive ? 'true' : 'false');
             formData.set('box_includes', mealType === 'lunch' ? boxIncludes : '');
             formData.set('junior_price', (mealType === 'lunch' && juniorPrice) ? juniorPrice : '');
@@ -485,6 +493,7 @@ export function MealsClient({ initialMeals }: MealsClientProps) {
                                     </TableCell>
                                     <TableCell>
                                         <p className="font-bold text-[15px] text-gray-900">{meal.name}</p>
+                                        <AllergenBadges allergens={meal.allergens} size="xs" showLabels={true} className="mt-1" />
                                     </TableCell>
                                     <TableCell>
                                         <Badge variant="outline" className={`text-[10px] font-bold rounded-lg px-2.5 py-0.5 border capitalize ${
@@ -643,6 +652,7 @@ export function MealsClient({ initialMeals }: MealsClientProps) {
                                     <p className="text-xs text-gray-500 font-medium line-clamp-2 leading-relaxed min-h-[32px]">
                                         {meal.description || 'No description available for this item.'}
                                     </p>
+                                    <AllergenBadges allergens={meal.allergens} size="xs" showLabels={true} className="mt-2" />
                                 </div>
 
                                 <div className="pt-4 border-t border-gray-50 flex items-center justify-between">
@@ -679,7 +689,7 @@ export function MealsClient({ initialMeals }: MealsClientProps) {
             {/* Add/Edit Dialog */}
             <Dialog open={open} onOpenChange={(val) => !val && closeDialog()}>
                 <DialogContent 
-                    className="sm:max-w-[520px] max-h-[90vh] overflow-y-auto"
+                    className="sm:max-w-[620px] max-h-[90vh] overflow-y-auto"
                 >
                     <DialogHeader>
                         <DialogTitle>{editingMeal ? 'Edit Meal' : 'Add New Meal'}</DialogTitle>
@@ -973,6 +983,14 @@ export function MealsClient({ initialMeals }: MealsClientProps) {
                                 </div>
                             </div>
                         )}
+
+                        {/* Allergen & Dietary Picker */}
+                        <div className="p-4 rounded-2xl bg-stone-50/80 border border-stone-200/80 space-y-2">
+                            <AllergenPicker
+                                selectedAllergens={selectedAllergens}
+                                onChange={setSelectedAllergens}
+                            />
+                        </div>
 
                         <div className="flex items-center gap-3 pt-2">
                             <Switch checked={isActive} onCheckedChange={setIsActive} id="active" />
