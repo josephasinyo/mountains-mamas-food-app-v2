@@ -8,6 +8,7 @@ import { useCart } from '@/hooks/useCart';
 import { findGfCookieOption } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import AllergenBadges from '@/components/allergens/AllergenBadges';
+import FormattedText from '@/components/ui/FormattedText';
 import { parseOptionItem } from '@/lib/allergens';
 import styles from './AddToCartForm.module.css';
 
@@ -454,7 +455,9 @@ export default function AddToCartForm({ item }: Props) {
         {!isLunch ? (
           item.description ? (
             <div className={styles.ingredientsBox}>
-              <p className="text-sm text-gray-700 leading-relaxed m-0">{item.description}</p>
+              <p className="text-sm text-gray-700 leading-relaxed m-0">
+                <FormattedText text={item.description} />
+              </p>
             </div>
           ) : null
         ) : (
@@ -462,7 +465,7 @@ export default function AddToCartForm({ item }: Props) {
             <div className={styles.ingredientsBox}>
               {item.description && (
                 <div style={{ marginBottom: (!isSalad ? '12px' : '0') }}>
-                  <strong>{isSalad ? 'Salad' : 'Sandwich'} includes:</strong> {item.description}
+                  <strong>{isSalad ? 'Salad' : 'Sandwich'} includes:</strong> <FormattedText text={item.description} />
                 </div>
               )}
               {!isSalad && selectedVariant !== 'sandwich' && (

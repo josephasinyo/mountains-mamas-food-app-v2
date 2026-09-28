@@ -14,6 +14,7 @@ import { Input } from '@/components/ui/input';
 import { toggleMenuSelection, updateMenuSortOrder } from '../actions';
 import { toast } from 'sonner';
 import { motion } from 'framer-motion';
+import FormattedText from '@/components/ui/FormattedText';
 
 interface MenuManagementClientProps {
     initialData: any;
@@ -371,9 +372,9 @@ export default function MenuManagementClient({ initialData }: MenuManagementClie
                                                 )}
                                             </div>
                                         </div>
-                                        <p className="text-xs text-gray-500 font-medium line-clamp-2 leading-relaxed min-h-[32px]">
-                                            {meal.description || 'No description available for this item.'}
-                                        </p>
+                                        <div className="text-xs text-gray-500 font-medium line-clamp-2 leading-relaxed min-h-[32px]">
+                                            {meal.description ? <FormattedText text={meal.description} /> : 'No description available for this item.'}
+                                        </div>
                                     </div>
 
                                     <div className="pt-4 border-t border-gray-50 flex items-center justify-between">
@@ -503,7 +504,9 @@ export default function MenuManagementClient({ initialData }: MenuManagementClie
                                         </TableCell>
                                         <TableCell>
                                             <p className="font-bold text-[15px] text-gray-900">{meal.name}</p>
-                                            <p className="text-xs text-gray-500 font-medium line-clamp-1">{meal.description}</p>
+                                            <div className="text-xs text-gray-500 font-medium line-clamp-1">
+                                                {meal.description ? <FormattedText text={meal.description} /> : null}
+                                            </div>
                                         </TableCell>
                                         <TableCell>
                                             <Badge variant="outline" className={`text-[10px] font-bold rounded-lg px-2.5 py-0.5 uppercase tracking-wider border ${mealTypeColors[meal.meal_type || 'lunch'] || 'bg-gray-50 text-gray-700'}`}>
@@ -676,7 +679,9 @@ export default function MenuManagementClient({ initialData }: MenuManagementClie
                                                         <h3 className="text-base font-bold text-gray-900 leading-tight">{meal.name}</h3>
                                                     </div>
                                                     <p className="text-xs text-gray-400 font-semibold uppercase tracking-wider mt-1">{meal.category}</p>
-                                                    <p className="text-xs text-gray-600 mt-2 leading-relaxed whitespace-pre-wrap">{meal.description || 'No description provided.'}</p>
+                                                    <div className="text-xs text-gray-600 mt-2 leading-relaxed whitespace-pre-wrap">
+                                                        {meal.description ? <FormattedText text={meal.description} /> : 'No description provided.'}
+                                                    </div>
                                                 </div>
                                             </div>
                                         );

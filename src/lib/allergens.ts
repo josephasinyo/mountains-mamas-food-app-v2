@@ -9,6 +9,7 @@ export interface AllergenTag {
 export const ALLERGEN_LIST: AllergenTag[] = [
   // Common Allergens
   { id: 'dairy', label: 'Dairy', iconUrl: '/images/allergens/dairy.jpeg', category: 'allergen' },
+  { id: 'gluten', label: 'Gluten', iconUrl: '/images/allergens/gluten.png', category: 'allergen' },
   { id: 'egg', label: 'Egg', iconUrl: '/images/allergens/egg.jpeg', category: 'allergen' },
   { id: 'wheat', label: 'Wheat', iconUrl: '/images/allergens/wheat.jpeg', category: 'allergen' },
   { id: 'peanut', label: 'Peanut', iconUrl: '/images/allergens/peanut.jpeg', category: 'allergen' },

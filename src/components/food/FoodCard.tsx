@@ -2,6 +2,7 @@ import { FoodItem } from '@/lib/types';
 import styles from './FoodCard.module.css';
 import Link from 'next/link';
 import AllergenBadges from '@/components/allergens/AllergenBadges';
+import FormattedText from '@/components/ui/FormattedText';
 import { useCompany } from '@/components/context/CompanyProvider';
 
 interface FoodCardProps {
@@ -23,11 +24,15 @@ export default function FoodCard({ item }: FoodCardProps) {
         />
       </div>
       <h3 className={styles.name}>{item.name}</h3>
-      <AllergenBadges allergens={item.allergens} size="xs" showLabels={false} className="mt-1 mb-1.5" />
+      <AllergenBadges allergens={item.allergens} size="xs" showLabels={true} className="mt-1 mb-1.5" />
       {config?.show_prices && item.price !== undefined && item.price > 0 && (
         <span className={styles.price}>${item.price.toFixed(2)}</span>
       )}
-      {item.description && <p className={styles.description}>{item.description}</p>}
+      {item.description && (
+        <p className={styles.description}>
+          <FormattedText text={item.description} />
+        </p>
+      )}
     </Link>
   );
 }

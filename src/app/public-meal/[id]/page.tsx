@@ -2,6 +2,7 @@ import Link from 'next/link';
 import { Card, CardContent } from '@/components/ui/card';
 import { ArrowLeft, Sparkles, UtensilsCrossed, ShieldCheck, Compass, HelpCircle } from 'lucide-react';
 import AllergenBadges from '@/components/allergens/AllergenBadges';
+import FormattedText from '@/components/ui/FormattedText';
 import { createClient } from '@/lib/supabase/server';
 import { notFound } from 'next/navigation';
 
@@ -93,9 +94,13 @@ export default async function PublicMealDetail({ params }: PageProps) {
 
                         <div className="space-y-4 text-gray-600">
                             <h4 className="text-xs font-black uppercase tracking-wider text-gray-400">Description & Ingredients</h4>
-                            <p className="leading-relaxed font-medium text-gray-600 text-base">
-                                {meal.description || 'Our signature box lunch is freshly prepared on the day of your tour using high-quality local ingredients. Tour guides can configure dynamic choices (e.g. customized artisan bread and bakery-fresh cookies) matching individual guest tastes.'}
-                            </p>
+                            <div className="leading-relaxed font-medium text-gray-600 text-base">
+                                {meal.description ? (
+                                    <FormattedText text={meal.description} />
+                                ) : (
+                                    'Our signature box lunch is freshly prepared on the day of your tour using high-quality local ingredients. Tour guides can configure dynamic choices (e.g. customized artisan bread and bakery-fresh cookies) matching individual guest tastes.'
+                                )}
+                            </div>
                         </div>
 
                         {meal.box_includes && (

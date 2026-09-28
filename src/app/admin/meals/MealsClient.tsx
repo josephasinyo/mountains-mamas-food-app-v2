@@ -15,6 +15,8 @@ import { Switch } from '@/components/ui/switch';
 import { Card, CardContent } from '@/components/ui/card';
 import AllergenPicker from '@/components/allergens/AllergenPicker';
 import AllergenBadges from '@/components/allergens/AllergenBadges';
+import FormattedText from '@/components/ui/FormattedText';
+import RichTextEditor from '@/components/ui/RichTextEditor';
 import {
     Dialog, DialogContent, DialogHeader, DialogTitle,
     DialogDescription, DialogFooter,
@@ -32,7 +34,8 @@ import {
 import { 
     Plus, MoreHorizontal, Pencil, Trash2, Eye, EyeOff, 
     UtensilsCrossed, Upload, X, ImageIcon, LayoutGrid, List, Search,
-    ChevronLeft, ChevronRight, ArrowUp, ArrowDown, Printer, Coffee, Moon, Sparkles, Sun
+    ChevronLeft, ChevronRight, ArrowUp, ArrowDown, Printer, Coffee, Moon, Sparkles, Sun,
+    Bold, Italic, Highlighter
 } from 'lucide-react';
 
 const MEAL_TYPE_TABS: { key: 'all' | MealType; label: string; icon?: any }[] = [
@@ -507,7 +510,7 @@ export function MealsClient({ initialMeals }: MealsClientProps) {
                                     </TableCell>
                                     <TableCell className="max-w-[300px]">
                                         <p className="text-sm text-gray-500 font-medium line-clamp-2 leading-relaxed">
-                                            {meal.description || <span className="italic opacity-50">No description provided.</span>}
+                                            {meal.description ? <FormattedText text={meal.description} /> : <span className="italic opacity-50">No description provided.</span>}
                                         </p>
                                     </TableCell>
                                     <TableCell>
@@ -649,9 +652,9 @@ export function MealsClient({ initialMeals }: MealsClientProps) {
                                             {meal.category}
                                         </Badge>
                                     </div>
-                                    <p className="text-xs text-gray-500 font-medium line-clamp-2 leading-relaxed min-h-[32px]">
-                                        {meal.description || 'No description available for this item.'}
-                                    </p>
+                                    <div className="text-xs text-gray-500 font-medium line-clamp-2 leading-relaxed min-h-[32px]">
+                                        {meal.description ? <FormattedText text={meal.description} /> : 'No description available for this item.'}
+                                    </div>
                                     <AllergenBadges allergens={meal.allergens} size="xs" showLabels={true} className="mt-2" />
                                 </div>
 
@@ -755,10 +758,15 @@ export function MealsClient({ initialMeals }: MealsClientProps) {
                         </div>
 
                         <div className="space-y-2">
-                            <Label htmlFor="description">Description *</Label>
-                            <Textarea id="description" name="description" rows={4} required
+                            <Label htmlFor="description" className="text-sm font-bold text-gray-800">
+                                Description *
+                            </Label>
+                            <RichTextEditor
+                                value={description}
+                                onChange={setDescription}
                                 placeholder="Describe the meal ingredients and flavors..."
-                                value={description} onChange={(e) => setDescription(e.target.value)} />
+                                minHeight="110px"
+                            />
                         </div>
 
                         {mealType === 'lunch' && (
@@ -1095,7 +1103,9 @@ export function MealsClient({ initialMeals }: MealsClientProps) {
                                                     <h3 className="text-base font-bold text-gray-900 leading-tight">{meal.name}</h3>
                                                 </div>
                                                 <p className="text-xs text-gray-400 font-semibold uppercase tracking-wider mt-1">{meal.category}</p>
-                                                <p className="text-xs text-gray-600 mt-2 leading-relaxed whitespace-pre-wrap">{meal.description || 'No description provided.'}</p>
+                                                <div className="text-xs text-gray-600 mt-2 leading-relaxed whitespace-pre-wrap">
+                                                    {meal.description ? <FormattedText text={meal.description} /> : 'No description provided.'}
+                                                </div>
                                             </div>
                                         </div>
                                     ))}
