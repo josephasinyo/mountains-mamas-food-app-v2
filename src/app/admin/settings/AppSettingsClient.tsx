@@ -784,6 +784,7 @@ export default function AppSettingsClient({ initialSettings, initialFields }: Ap
                                     <AllergenPicker 
                                         selectedAllergens={optionAllergens}
                                         onChange={setOptionAllergens}
+                                        itemType={optionDialogType}
                                     />
                                 </div>
                             </div>
