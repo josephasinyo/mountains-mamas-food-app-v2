@@ -18,11 +18,11 @@ export const ALLERGEN_LIST: AllergenTag[] = [
   { id: 'shellfish', label: 'Shellfish', iconUrl: '/images/allergens/shellfish.jpeg', category: 'allergen' },
   
   // Dietary Preferences
-  { id: 'gluten_free', label: 'Gluten Free (GF)', iconUrl: '/images/allergens/gluten_free.jpeg', category: 'dietary' },
-  { id: 'vegetarian', label: 'Vegetarian (V)', iconUrl: '/images/allergens/vegetarian.jpeg', category: 'dietary' },
-  { id: 'vegan', label: 'Vegan (VE)', iconUrl: '/images/allergens/vegan.jpeg', category: 'dietary' },
-  { id: 'halal', label: 'Halal (H)', iconUrl: '/images/allergens/halal.jpeg', category: 'dietary' },
-  { id: 'kosher', label: 'Kosher (K)', iconUrl: '/images/allergens/kosher.jpeg', category: 'dietary' },
+  { id: 'gluten_free', label: 'Gluten Free', iconUrl: '/images/allergens/gluten_free.jpeg', category: 'dietary' },
+  { id: 'vegetarian', label: 'Vegetarian', iconUrl: '/images/allergens/vegetarian.jpeg', category: 'dietary' },
+  { id: 'vegan', label: 'Vegan', iconUrl: '/images/allergens/vegan.jpeg', category: 'dietary' },
+  { id: 'halal', label: 'Halal', iconUrl: '/images/allergens/halal.jpeg', category: 'dietary' },
+  { id: 'kosher', label: 'Kosher', iconUrl: '/images/allergens/kosher.jpeg', category: 'dietary' },
 ];
 
 export const ALLERGEN_MAP = new Map<string, AllergenTag>(
