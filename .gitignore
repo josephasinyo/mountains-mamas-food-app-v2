@@ -32,7 +32,6 @@ yarn-error.log*
 
 # env files
 .env*.local
-.env.local
 
 # vercel
 .vercel
@@ -49,4 +48,3 @@ next-env.d.ts
 
 .vercel
 config.bat
-.env*

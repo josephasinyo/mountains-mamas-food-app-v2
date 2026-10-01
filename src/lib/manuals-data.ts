@@ -1715,15 +1715,16 @@ export const COMPANY_MANUAL_DATA: ManualData = {
             ],
             subsections: [
                 {
-                    title: "Step 1 (Manager): Click '+ Add Team Member'",
+                    title: "Step 1 (Manager): Log In & Open Staff Management",
                     steps: [
-                        "Click Staff in the left sidebar.",
+                        "Log in to your company dashboard at /company/login.",
+                        "Click Staff in the left sidebar under 'Company Team'.",
                         "Click the + Add Team Member button in the top-right corner."
                     ],
                     image: {
                         src: "/manuals/company_staff_1_add_member_button.png",
                         alt: "Staff Management page showing + Add Team Member button",
-                        caption: "Step 1 (Manager Action): Staff Management (/company/staff) - Click + Add Team Member"
+                        caption: "Step 1 (Manager Action): Log in to your portal, go to Staff in the sidebar, and click + Add Team Member"
                     }
                 },
                 {
