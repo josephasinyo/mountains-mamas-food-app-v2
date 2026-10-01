@@ -406,7 +406,7 @@ export default function AddToCartForm({ item, ingredients = [] }: Props) {
                         : 'bg-white border-gray-100 hover:border-violet-200 hover:bg-violet-50/20'
                     }`}
                   >
-                    <div className="w-20 h-16 sm:w-24 sm:h-18 rounded-xl bg-gray-100 border border-gray-100 overflow-hidden shrink-0 shadow-sm relative">
+                    <div className="w-20 h-16 sm:w-24 sm:h-18 rounded-xl bg-gray-100 border border-gray-100 overflow-hidden shrink-0 shadow-sm relative pointer-events-none">
                       {ingredient.image_url ? (
                         <img src={ingredient.image_url} alt={ingredient.name} className="size-full object-cover" />
                       ) : (
@@ -416,7 +416,7 @@ export default function AddToCartForm({ item, ingredients = [] }: Props) {
                       )}
                     </div>
                     
-                    <div className="flex-1 min-w-0 py-0.5">
+                    <div className="flex-1 min-w-0 py-0.5 pointer-events-none">
                       <div className="flex items-center justify-between gap-2 mb-1">
                         <h4 className="text-[14px] sm:text-[15px] font-extrabold text-gray-900 leading-tight">
                           {ingredient.name}
@@ -429,7 +429,7 @@ export default function AddToCartForm({ item, ingredients = [] }: Props) {
                       </div>
 
                       {ingredient.allergens && ingredient.allergens.length > 0 && (
-                        <div className="mb-1.5" onClick={e => e.stopPropagation()}>
+                        <div className="mb-1.5">
                           <AllergenBadges 
                             allergens={ingredient.allergens} 
                             size="xs" 
