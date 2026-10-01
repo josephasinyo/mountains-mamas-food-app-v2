@@ -1711,11 +1711,11 @@ export const COMPANY_MANUAL_DATA: ManualData = {
             title: "10. How to Create & Onboard Team Members",
             description: "Purpose: Invite staff members (guides, dispatchers, coordinators) and assign granular permissions for portal access.",
             paragraphs: [
-                "Follow this 6-step guide to invite a new team member, set up their credentials, and onboard them into your company portal."
+                "This workflow has two parts: Steps 1–2 are performed by you (the manager) to send the invite, and Steps 3–6 are completed by your team member to activate their account."
             ],
             subsections: [
                 {
-                    title: "Step 1: Click '+ Add Team Member'",
+                    title: "Step 1 (Manager): Click '+ Add Team Member'",
                     steps: [
                         "Click Staff in the left sidebar.",
                         "Click the + Add Team Member button in the top-right corner."
@@ -1723,74 +1723,77 @@ export const COMPANY_MANUAL_DATA: ManualData = {
                     image: {
                         src: "/manuals/company_staff_1_add_member_button.png",
                         alt: "Staff Management page showing + Add Team Member button",
-                        caption: "Step 1: Staff Management (/company/staff) - Click + Add Team Member"
+                        caption: "Step 1 (Manager Action): Staff Management (/company/staff) - Click + Add Team Member"
                     }
                 },
                 {
-                    title: "Step 2: Enter Details & Select Page Permissions",
+                    title: "Step 2 (Manager): Enter Details & Select Page Permissions",
                     paragraphs: [
                         "• Default Access: Dashboard, Orders, and User Manual are pre-selected for standard staff.",
                         "• Privacy: Invoices and billing details remain hidden unless explicitly granted."
                     ],
                     steps: [
-                        "Enter the member's Full Name and Email Address.",
+                        "Enter the team member's Full Name and Email Address.",
                         "Select the section permissions they should have access to.",
-                        "Click Send Invite to dispatch their credentials."
+                        "Click Send Invite. An automated onboarding email is dispatched to them immediately."
                     ],
                     image: {
                         src: "/manuals/company_staff_2_invite_modal_permissions.png",
                         alt: "Add Team Member modal with details and permissions checkboxes",
-                        caption: "Step 2: Member Details & Permissions - Fill in name, email, select sections, and click Send Invite"
+                        caption: "Step 2 (Manager Action): Member Details & Permissions - Fill in name, email, select sections, and click Send Invite"
                     }
                 },
                 {
-                    title: "Step 3: Receive Invitation Email",
+                    title: "Step 3 (Team Member): Open the Invitation Email",
+                    paragraphs: [
+                        "From this step forward, all actions are performed by the invited team member:"
+                    ],
                     steps: [
-                        "The team member receives a welcome email with their login Email and Temporary Password.",
-                        "Click the Login to Company Portal button in the email."
+                        "The team member opens their inbox and finds the welcome email with their login Email and Temporary Password.",
+                        "They click the Login to Company Portal button in the email."
                     ],
                     image: {
                         src: "/manuals/company_staff_3_invitation_email_credentials.png",
                         alt: "Welcome invitation email containing temporary login credentials",
-                        caption: "Step 3: Invitation Email - Temporary login credentials and portal access link"
+                        caption: "Step 3 (Team Member Action): The team member receives temporary credentials and a direct login link"
                     }
                 },
                 {
-                    title: "Step 4: Log In with Temporary Password",
+                    title: "Step 4 (Team Member): Sign In with Temporary Password",
                     steps: [
-                        "Go to /company/login (or follow the link in the email).",
-                        "Enter the invited Email Address and Temporary Password.",
+                        "The team member navigates to /company/login (via the email link).",
+                        "They enter their Email Address and paste the Temporary Password.",
                         "Click Sign In to Portal."
                     ],
                     image: {
                         src: "/manuals/company_staff_4_portal_login_temporary_password.png",
                         alt: "Partner Portal sign in page with email and temporary password",
-                        caption: "Step 4: Sign In (/company/login) - Enter credentials from the invitation email"
+                        caption: "Step 4 (Team Member Action): The team member signs in using their temporary password"
                     }
                 },
                 {
-                    title: "Step 5: Set a Permanent Password",
+                    title: "Step 5 (Team Member): Set a Permanent Password",
                     steps: [
-                        "Enter your new personal password.",
-                        "Retype it in the Confirm New Password field.",
-                        "Click Update Password → to activate your account."
+                        "The team member is automatically redirected to the Secure Your Account screen.",
+                        "They enter a new personal password and retype it in the Confirm field.",
+                        "Click Update Password → to permanently secure their account."
                     ],
                     image: {
                         src: "/manuals/company_staff_5_secure_account_set_password.png",
                         alt: "Secure Your Account screen with new password fields",
-                        caption: "Step 5: Account Security (/company/reset-password) - Set a permanent personal password"
+                        caption: "Step 5 (Team Member Action): The team member creates their personal password"
                     }
                 },
                 {
-                    title: "Step 6: Access the Partner Portal",
+                    title: "Step 6 (Team Member): Access the Partner Portal",
                     steps: [
-                        "The staff member is logged in and ready to work.",
-                        "The sidebar displays only the sections permitted by their company administrator."
+                        "The team member is now logged in and ready to work.",
+                        "Their navigation sidebar displays only the sections you granted them access to (e.g. Dashboard, Orders, User Manual)."
                     ],
                     image: {
                         src: "/manuals/company_staff_6_member_dashboard_active.png",
                         alt: "Staff portal dashboard showing permitted sidebar sections",
-                        caption: "Step 6: Active Portal - Staff member accesses assigned sections (Dashboard, Orders, User Manual)"
+                        caption: "Step 6 (Team Member Action): Active Portal - The team member accesses their permitted sections"
                     }
                 }
             ]
