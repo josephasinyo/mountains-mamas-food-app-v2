@@ -1,0 +1,31 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 300" width="100%" height="100%">
+  <defs>
+    <linearGradient id="bgGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#fbf8f3" />
+      <stop offset="100%" stop-color="#f3ede2" />
+    </linearGradient>
+    <linearGradient id="breadGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#d4944c" />
+      <stop offset="100%" stop-color="#b4742e" />
+    </linearGradient>
+    <filter id="softShadow" x="-10%" y="-10%" width="120%" height="120%">
+      <feDropShadow dx="0" dy="6" stdDeviation="8" flood-color="#8b5e28" flood-opacity="0.15" />
+    </filter>
+  </defs>
+  <rect width="400" height="300" fill="url(#bgGrad)" rx="24" />
+  
+  <g filter="url(#softShadow)" transform="translate(100, 70)">
+    <!-- Bread Loaf Base -->
+    <path d="M 30 110 C 15 110 10 95 10 75 C 10 35 45 10 100 10 C 155 10 190 35 190 75 C 190 95 185 110 170 110 Z" fill="url(#breadGrad)" />
+    <!-- Crust details / cuts -->
+    <path d="M 50 35 Q 65 60 55 85" stroke="#fce4c4" stroke-width="5" stroke-linecap="round" fill="none" opacity="0.8" />
+    <path d="M 100 25 Q 105 55 95 85" stroke="#fce4c4" stroke-width="5" stroke-linecap="round" fill="none" opacity="0.8" />
+    <path d="M 145 35 Q 155 60 140 85" stroke="#fce4c4" stroke-width="5" stroke-linecap="round" fill="none" opacity="0.8" />
+    <!-- Loaf Bottom Shadow line -->
+    <ellipse cx="100" cy="110" rx="75" ry="12" fill="#8f551b" opacity="0.3" />
+  </g>
+  
+  <text x="200" y="240" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-size="14" font-weight="700" fill="#a0784a" letter-spacing="1">
+    ARTISAN BREAD
+  </text>
+</svg>

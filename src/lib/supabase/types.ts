@@ -75,6 +75,19 @@ export interface Meal {
     updated_at: string;
 }
 
+export interface Ingredient {
+    id: string;
+    name: string;
+    type: 'bread' | 'cookie';
+    description: string | null;
+    image_url: string | null;
+    allergens?: string[] | null;
+    is_active: boolean;
+    sort_order: number;
+    created_at: string;
+    updated_at: string;
+}
+
 export interface CompanyMenuSelection {
     id: string;
     company_id: string;

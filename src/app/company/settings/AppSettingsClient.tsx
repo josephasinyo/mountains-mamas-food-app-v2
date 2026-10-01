@@ -6,19 +6,15 @@ import { Button } from '@/components/ui/button';
 import { Switch } from '@/components/ui/switch';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
-import { Input } from '@/components/ui/input';
 import { 
     Settings, Layout, 
     Save, Loader2, Smartphone, CheckCircle2,
-    Cookie, Utensils, FileText, ArrowUp, ArrowDown,
+    Utensils, FileText, ArrowUp, ArrowDown,
     Copy, ExternalLink, Sun, Coffee, Moon, Sparkles, UtensilsCrossed
 } from 'lucide-react';
 import { updateAppConfig, updateCompanyFormField } from '../actions';
 import { toast } from 'sonner';
-import { motion } from 'framer-motion';
 import { cn } from '@/lib/utils';
-import AllergenBadges from '@/components/allergens/AllergenBadges';
-import { parseOptionItem } from '@/lib/allergens';
 
 interface AppSettingsClientProps {
     initialData: any;
@@ -30,7 +26,7 @@ interface AppSettingsClientProps {
     activeMasterMealTypes?: string[];
 }
 
-export default function AppSettingsClient({ initialData, globalSettings, formFieldsData, activeMasterMealTypes }: AppSettingsClientProps) {
+export default function AppSettingsClient({ initialData, formFieldsData, activeMasterMealTypes }: AppSettingsClientProps) {
     const { config } = initialData;
     const [savedConfig, setSavedConfig] = useState(config);
     const [isPending, startTransition] = useTransition();
@@ -69,7 +65,6 @@ export default function AppSettingsClient({ initialData, globalSettings, formFie
         custom_welcome_message: savedConfig?.custom_welcome_message ?? '',
         use_mountain_mamas_branding: savedConfig?.use_mountain_mamas_branding ?? false,
         confirmation_page_fields: savedConfig?.confirmation_page_fields ?? {},
-        meal_page_options: savedConfig?.meal_page_options ?? { breads: [], cookies: [] }
     };
 
     const [formData, setFormData] = useState(initialFormData);
@@ -87,7 +82,6 @@ export default function AppSettingsClient({ initialData, globalSettings, formFie
             custom_welcome_message: savedConfig?.custom_welcome_message ?? '',
             use_mountain_mamas_branding: savedConfig?.use_mountain_mamas_branding ?? false,
             confirmation_page_fields: savedConfig?.confirmation_page_fields ?? {},
-            meal_page_options: savedConfig?.meal_page_options ?? { breads: [], cookies: [] }
         });
     }, [savedConfig]);
 
@@ -116,7 +110,6 @@ export default function AppSettingsClient({ initialData, globalSettings, formFie
 
                 // Save form fields changes if any
                 if (fieldsChanged) {
-                    // Update all changed fields
                     const fieldsToUpdate = companyFormFields.filter(field => {
                         const initial = initialFormFields.find(i => i.id === field.id);
                         return !initial || initial.is_enabled !== field.is_enabled || initial.sort_order !== field.sort_order;
@@ -147,139 +140,6 @@ export default function AppSettingsClient({ initialData, globalSettings, formFie
         });
     };
 
-    // Helper to check if bread or cookie is selected
-    const isBreadSelected = (bread: string) => {
-        const currentBreads = formData.meal_page_options.breads || [];
-        const targetName = parseOptionItem(bread).name.toLowerCase();
-        return currentBreads.some((b: string) => b === bread || parseOptionItem(b).name.toLowerCase() === targetName);
-    };
-
-    const isCookieSelected = (cookie: string) => {
-        const currentCookies = formData.meal_page_options.cookies || [];
-        const targetName = parseOptionItem(cookie).name.toLowerCase();
-        return currentCookies.some((c: string) => c === cookie || parseOptionItem(c).name.toLowerCase() === targetName);
-    };
-
-    // Helper to get ordered list of breads
-    const orderedBreads = React.useMemo(() => {
-        const selectedBreads = formData.meal_page_options.breads || [];
-        const globalBreads = globalSettings?.bread_options || [];
-        
-        // Active selected ones in their configured order
-        const active: string[] = [];
-        selectedBreads.forEach((b: string) => {
-            const foundInGlobal = globalBreads.find((gb: string) => gb === b || parseOptionItem(gb).name.toLowerCase() === parseOptionItem(b).name.toLowerCase());
-            const itemToPush = foundInGlobal || b;
-            if (!active.some(a => a === itemToPush || parseOptionItem(a).name.toLowerCase() === parseOptionItem(itemToPush).name.toLowerCase())) {
-                active.push(itemToPush);
-            }
-        });
-
-        // Remaining unselected ones in global order
-        const inactive = globalBreads.filter((gb: string) => !active.some(a => a === gb || parseOptionItem(a).name.toLowerCase() === parseOptionItem(gb).name.toLowerCase()));
-        return [...active, ...inactive];
-    }, [formData.meal_page_options.breads, globalSettings?.bread_options]);
-
-    // Helper to get ordered list of cookies
-    const orderedCookies = React.useMemo(() => {
-        const selectedCookies = formData.meal_page_options.cookies || [];
-        const globalCookies = globalSettings?.cookie_options || [];
-        
-        // Active selected ones in their configured order
-        const active: string[] = [];
-        selectedCookies.forEach((c: string) => {
-            const foundInGlobal = globalCookies.find((gc: string) => gc === c || parseOptionItem(gc).name.toLowerCase() === parseOptionItem(c).name.toLowerCase());
-            const itemToPush = foundInGlobal || c;
-            if (!active.some(a => a === itemToPush || parseOptionItem(a).name.toLowerCase() === parseOptionItem(itemToPush).name.toLowerCase())) {
-                active.push(itemToPush);
-            }
-        });
-
-        // Remaining unselected ones in global order
-        const inactive = globalCookies.filter((gc: string) => !active.some(a => a === gc || parseOptionItem(a).name.toLowerCase() === parseOptionItem(gc).name.toLowerCase()));
-        return [...active, ...inactive];
-    }, [formData.meal_page_options.cookies, globalSettings?.cookie_options]);
-
-    const toggleBread = (bread: string) => {
-        const currentBreads = formData.meal_page_options.breads || [];
-        const targetName = parseOptionItem(bread).name.toLowerCase();
-        const isCurrentlySelected = currentBreads.some((b: string) => b === bread || parseOptionItem(b).name.toLowerCase() === targetName);
-        
-        const newBreads = isCurrentlySelected
-            ? currentBreads.filter((b: string) => b !== bread && parseOptionItem(b).name.toLowerCase() !== targetName)
-            : [...currentBreads, bread];
-        
-        setFormData({
-            ...formData,
-            meal_page_options: {
-                ...formData.meal_page_options,
-                breads: newBreads
-            }
-        });
-    };
-
-    const toggleCookie = (cookie: string) => {
-        const currentCookies = formData.meal_page_options.cookies || [];
-        const targetName = parseOptionItem(cookie).name.toLowerCase();
-        const isCurrentlySelected = currentCookies.some((c: string) => c === cookie || parseOptionItem(c).name.toLowerCase() === targetName);
-        
-        const newCookies = isCurrentlySelected
-            ? currentCookies.filter((c: string) => c !== cookie && parseOptionItem(c).name.toLowerCase() !== targetName)
-            : [...currentCookies, cookie];
-        
-        setFormData({
-            ...formData,
-            meal_page_options: {
-                ...formData.meal_page_options,
-                cookies: newCookies
-            }
-        });
-    };
-
-    const moveBread = (bread: string, direction: 'up' | 'down') => {
-        const currentBreads = [...(formData.meal_page_options.breads || [])];
-        const targetName = parseOptionItem(bread).name.toLowerCase();
-        const idx = currentBreads.findIndex((b: string) => b === bread || parseOptionItem(b).name.toLowerCase() === targetName);
-        if (idx === -1) return;
-        if (direction === 'up' && idx === 0) return;
-        if (direction === 'down' && idx === currentBreads.length - 1) return;
-
-        const targetIdx = direction === 'up' ? idx - 1 : idx + 1;
-        const temp = currentBreads[idx];
-        currentBreads[idx] = currentBreads[targetIdx];
-        currentBreads[targetIdx] = temp;
-
-        setFormData({
-            ...formData,
-            meal_page_options: {
-                ...formData.meal_page_options,
-                breads: currentBreads
-            }
-        });
-    };
-
-    const moveCookie = (cookie: string, direction: 'up' | 'down') => {
-        const currentCookies = [...(formData.meal_page_options.cookies || [])];
-        const targetName = parseOptionItem(cookie).name.toLowerCase();
-        const idx = currentCookies.findIndex((c: string) => c === cookie || parseOptionItem(c).name.toLowerCase() === targetName);
-        if (idx === -1) return;
-        if (direction === 'up' && idx === 0) return;
-        if (direction === 'down' && idx === currentCookies.length - 1) return;
-
-        const targetIdx = direction === 'up' ? idx - 1 : idx + 1;
-        const temp = currentCookies[idx];
-        currentCookies[idx] = currentCookies[targetIdx];
-        currentCookies[targetIdx] = temp;
-
-        setFormData({
-            ...formData,
-            meal_page_options: {
-                ...formData.meal_page_options,
-                cookies: currentCookies
-            }
-        });
-    };
-
     const toggleFormField = (fieldId: string, currentState: boolean) => {
         const newState = !currentState;
         setCompanyFormFields(prev => prev.map(f => f.id === fieldId ? { ...f, is_enabled: newState } : f));
@@ -298,226 +158,204 @@ export default function AppSettingsClient({ initialData, globalSettings, formFie
         
         const targetIdxInLocation = direction === 'up' ? idxInLocation - 1 : idxInLocation + 1;
         
-        // Swap their positions in the locationFields array
         const updatedLocationFields = [...locationFields];
         const temp = updatedLocationFields[idxInLocation];
         updatedLocationFields[idxInLocation] = updatedLocationFields[targetIdxInLocation];
         updatedLocationFields[targetIdxInLocation] = temp;
         
-        // Assign clean distinct sequential sort_orders (0, 1, 2...) based on their new positions
         const updatedFieldsWithNewOrders = updatedLocationFields.map((field, index) => ({
             ...field,
             sort_order: index
         }));
         
-        // Merge the updated location fields back into the main list and sort
-        const sortedFields = companyFormFields.map(f => {
+        const updatedFields = companyFormFields.map(f => {
             if (f.location === currentLocation) {
                 return updatedFieldsWithNewOrders.find(u => u.id === f.id)!;
             }
             return f;
-        }).sort((a, b) => {
-            if (a.location !== b.location) return a.location.localeCompare(b.location);
-            return (a.sort_order || 0) - (b.sort_order || 0);
         });
         
-        setCompanyFormFields(sortedFields);
-    };
-
-    const toggleMealType = (mealType: string) => {
-        const current = formData.allowed_meal_types || ['lunch'];
-        if (current.includes(mealType)) {
-            if (current.length === 1) {
-                toast.error('At least one meal type must remain active');
-                return;
-            }
-            setFormData({
-                ...formData,
-                allowed_meal_types: current.filter((t: string) => t !== mealType)
-            });
-        } else {
-            setFormData({
-                ...formData,
-                allowed_meal_types: [...current, mealType]
-            });
-        }
+        setCompanyFormFields(updatedFields);
     };
 
     return (
-        <div className="space-y-8 max-w-4xl pb-12">
+        <div className="space-y-8 max-w-4xl">
             <div>
-                <h1 className="text-3xl font-extrabold tracking-tight text-gray-900">App Settings</h1>
-                <p className="text-gray-500 font-medium mt-1">Configure how your custom ordering app looks and behaves.</p>
+                <h1 className="text-3xl font-extrabold tracking-tight text-gray-900">App Configuration</h1>
+                <p className="text-gray-500 font-medium mt-1">Configure your guest ordering interface, meal types, and custom fields.</p>
             </div>
 
             <div className="grid grid-cols-1 gap-8">
-                {/* Active Meal Types */}
-                <Card className="rounded-[32px] border-none shadow-xl shadow-gray-200/50 overflow-hidden bg-white">
-                    <CardHeader className="p-8 border-b border-gray-50">
-                        <div className="flex items-center gap-4">
-                            <div className="size-10 rounded-xl bg-violet-50 flex items-center justify-center text-violet-600">
-                                <UtensilsCrossed className="size-5" />
-                            </div>
-                            <div>
-                                <CardTitle className="text-xl font-bold">Active Meal Types</CardTitle>
-                                <CardDescription>Select which types of meals you want to offer to your customers on your ordering app.</CardDescription>
-                            </div>
-                        </div>
-                    </CardHeader>
-                    <CardContent className="p-8 space-y-4">
-                        {[
-                            { id: 'lunch', label: 'Lunch', icon: Sun, desc: 'Box lunches, bag lunches, sandwiches & fresh salads' },
-                            { id: 'breakfast', label: 'Breakfast', icon: Coffee, desc: 'Breakfast burritos, fresh yogurt parfaits & pastry platters' },
-                            { id: 'dinner', label: 'Dinner', icon: Moon, desc: 'Wild salmon plates, beef tenderloin medallions & savory entrees' },
-                            { id: 'charcuterie', label: 'Charcuterie', icon: Sparkles, desc: 'Artisan boards, cheeses, cured meats & grazing platters' },
-                        ]
-                        .filter((type) => !activeMasterMealTypes || activeMasterMealTypes.length === 0 || activeMasterMealTypes.includes(type.id))
-                        .map((type) => {
-                            const Icon = type.icon;
-                            const isEnabled = (formData.allowed_meal_types || ['lunch']).includes(type.id);
-                            return (
-                                <div 
-                                    key={type.id} 
-                                    className={`flex items-center justify-between p-4 rounded-2xl border transition-all ${
-                                        isEnabled ? 'border-violet-100 bg-violet-50/20' : 'border-gray-100 bg-gray-50/40'
-                                    }`}
-                                >
-                                    <div className="flex items-center gap-3.5">
-                                        <div className={`size-9 rounded-xl flex items-center justify-center shrink-0 ${
-                                            isEnabled ? 'bg-violet-600 text-white' : 'bg-gray-200 text-gray-400'
-                                        }`}>
-                                            <Icon className="size-4.5" />
-                                        </div>
-                                        <div className="space-y-0.5">
-                                            <div className="flex items-center gap-2">
-                                                <Label className={`text-sm font-bold ${isEnabled ? 'text-gray-900' : 'text-gray-500'}`}>
-                                                    {type.label}
-                                                </Label>
-                                                <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wider ${
-                                                    isEnabled ? 'bg-emerald-100 text-emerald-800' : 'bg-gray-100 text-gray-500'
-                                                }`}>
-                                                    {isEnabled ? 'Active' : 'Disabled'}
-                                                </span>
-                                            </div>
-                                            <p className="text-xs text-gray-500 font-medium">{type.desc}</p>
-                                        </div>
-                                    </div>
-                                    <Switch 
-                                        checked={isEnabled} 
-                                        onCheckedChange={() => toggleMealType(type.id)}
-                                        className="data-[state=checked]:bg-violet-600"
-                                    />
+                {/* Master Meal Type Selection */}
+                {activeMasterMealTypes && activeMasterMealTypes.length > 1 && (
+                    <Card className="rounded-[32px] border-none shadow-xl shadow-gray-200/50 overflow-hidden bg-white">
+                        <CardHeader className="p-8 border-b border-gray-50">
+                            <div className="flex items-center gap-4">
+                                <div className="size-10 rounded-xl bg-violet-50 flex items-center justify-center text-violet-600">
+                                    <UtensilsCrossed className="size-5" />
                                 </div>
-                            );
-                        })}
-                    </CardContent>
-                </Card>
+                                <div>
+                                    <CardTitle className="text-xl font-bold">Enabled Meal Categories</CardTitle>
+                                    <CardDescription>Select which meal times are offered to your guests in your custom ordering app.</CardDescription>
+                                </div>
+                            </div>
+                        </CardHeader>
+                        <CardContent className="p-8 space-y-4">
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                {[
+                                    { key: 'lunch', label: 'Lunch', icon: Sun, desc: 'Boxed lunches and sandwiches' },
+                                    { key: 'breakfast', label: 'Breakfast', icon: Coffee, desc: 'Morning wraps and breakfast boxes' },
+                                    { key: 'dinner', label: 'Dinner', icon: Moon, desc: 'Evening meal selections' },
+                                    { key: 'charcuterie', label: 'Charcuterie', icon: Sparkles, desc: 'Gourmet charcuterie boards and boxes' },
+                                ].filter(item => activeMasterMealTypes.includes(item.key)).map(item => {
+                                    const Icon = item.icon;
+                                    const isSelected = formData.allowed_meal_types.includes(item.key);
+                                    return (
+                                        <div 
+                                            key={item.key}
+                                            onClick={() => {
+                                                const current = formData.allowed_meal_types;
+                                                const next = isSelected 
+                                                    ? current.filter((k: string) => k !== item.key)
+                                                    : [...current, item.key];
+                                                if (next.length === 0) {
+                                                    toast.error('At least one meal category must remain enabled');
+                                                    return;
+                                                }
+                                                setFormData({ ...formData, allowed_meal_types: next });
+                                            }}
+                                            className={cn(
+                                                "p-4 rounded-2xl border-2 cursor-pointer transition-all flex items-start justify-between gap-3",
+                                                isSelected 
+                                                    ? "border-violet-600 bg-violet-50/20 shadow-sm" 
+                                                    : "border-gray-100 bg-gray-50/50 opacity-60 hover:opacity-100"
+                                            )}
+                                        >
+                                            <div className="flex items-start gap-3">
+                                                <div className={cn(
+                                                    "size-9 rounded-xl flex items-center justify-center shrink-0 mt-0.5",
+                                                    isSelected ? "bg-violet-600 text-white" : "bg-gray-100 text-gray-500"
+                                                )}>
+                                                    <Icon className="size-4" />
+                                                </div>
+                                                <div>
+                                                    <p className="text-sm font-bold text-gray-900">{item.label}</p>
+                                                    <p className="text-xs text-gray-500 mt-0.5">{item.desc}</p>
+                                                </div>
+                                            </div>
+                                            <Switch 
+                                                checked={isSelected}
+                                                onCheckedChange={() => {}}
+                                                className="data-[state=checked]:bg-violet-600 shrink-0 pointer-events-none"
+                                            />
+                                        </div>
+                                    );
+                                })}
+                            </div>
+                        </CardContent>
+                    </Card>
+                )}
 
-                {/* Lunch Meal Options */}
+                {/* Lunch Variations Configuration */}
+                {formData.allowed_meal_types.includes('lunch') && (
+                    <Card className="rounded-[32px] border-none shadow-xl shadow-gray-200/50 overflow-hidden bg-white">
+                        <CardHeader className="p-8 border-b border-gray-50">
+                            <div className="flex items-center gap-4">
+                                <div className="size-10 rounded-xl bg-blue-50 flex items-center justify-center text-blue-600">
+                                    <Utensils className="size-5" />
+                                </div>
+                                <div>
+                                    <CardTitle className="text-xl font-bold">Lunch Variations</CardTitle>
+                                    <CardDescription>Select which package types your guests can choose from for lunch items.</CardDescription>
+                                </div>
+                            </div>
+                        </CardHeader>
+                        <CardContent className="p-8 space-y-6">
+                            <div className="flex items-center justify-between p-4 rounded-2xl border border-gray-100 bg-gray-50/50">
+                                <div>
+                                    <Label htmlFor="standard_box" className="text-sm font-bold text-gray-800">Standard Box / Bag Lunch</Label>
+                                    <p className="text-xs text-gray-500 mt-0.5">Offer full lunch options with complete sides and drinks.</p>
+                                </div>
+                                <Switch 
+                                    id="standard_box"
+                                    checked={formData.show_box_lunch_category} 
+                                    onCheckedChange={(val) => setFormData({...formData, show_box_lunch_category: val})}
+                                    className="data-[state=checked]:bg-violet-600"
+                                />
+                            </div>
+
+                            <div className="flex items-center justify-between p-4 rounded-2xl border border-gray-100 bg-gray-50/50">
+                                <div>
+                                    <Label htmlFor="junior_box" className="text-sm font-bold text-gray-800">Junior Box / Bag Lunch</Label>
+                                    <p className="text-xs text-gray-500 mt-0.5">Offer smaller portion lunch options for kids or light eaters.</p>
+                                </div>
+                                <Switch 
+                                    id="junior_box"
+                                    checked={formData.show_junior_box_lunch_category} 
+                                    onCheckedChange={(val) => setFormData({...formData, show_junior_box_lunch_category: val})}
+                                    className="data-[state=checked]:bg-violet-600"
+                                />
+                            </div>
+
+                            <div className="flex items-center justify-between p-4 rounded-2xl border border-gray-100 bg-gray-50/50">
+                                <div>
+                                    <Label htmlFor="sandwich_only" className="text-sm font-bold text-gray-800">Sandwich Only Version</Label>
+                                    <p className="text-xs text-gray-500 mt-0.5">Allow guests to order standalone sandwiches without sides.</p>
+                                </div>
+                                <Switch 
+                                    id="sandwich_only"
+                                    checked={formData.use_sandwich_only} 
+                                    onCheckedChange={(val) => setFormData({...formData, use_sandwich_only: val})}
+                                    className="data-[state=checked]:bg-violet-600"
+                                />
+                            </div>
+                        </CardContent>
+                    </Card>
+                )}
+
+                {/* White-Label Branding & Welcome Message */}
                 <Card className="rounded-[32px] border-none shadow-xl shadow-gray-200/50 overflow-hidden bg-white">
                     <CardHeader className="p-8 border-b border-gray-50">
                         <div className="flex items-center gap-4">
-                            <div className="size-10 rounded-xl bg-violet-50 flex items-center justify-center text-violet-600">
-                                <Layout className="size-5" />
-                            </div>
-                            <div>
-                                <CardTitle className="text-xl font-bold">Lunch Packaging Options</CardTitle>
-                                <CardDescription>Configure how lunch items are presented in your ordering app.</CardDescription>
-                            </div>
-                        </div>
-                    </CardHeader>
-                    <CardContent className="p-8 space-y-6">
-                        <div className="flex items-center justify-between p-4 rounded-2xl border border-violet-100 bg-violet-50/20">
-                            <div className="space-y-1">
-                                <Label className="text-sm font-bold text-violet-900">Enable sandwich only</Label>
-                                <p className="text-xs text-violet-600/70 font-medium">When enabled, customers can choose standalone sandwiches</p>
-                            </div>
-                            <Switch 
-                                checked={formData.use_sandwich_only} 
-                                onCheckedChange={(val) => setFormData({...formData, use_sandwich_only: val})}
-                                className="data-[state=checked]:bg-violet-600"
-                            />
-                        </div>
-
-                        <div className="flex items-center justify-between p-4 rounded-2xl border border-violet-100 bg-violet-50/20">
-                            <div className="space-y-1">
-                                <Label className="text-sm font-bold text-violet-900">Enable box lunch</Label>
-                                <p className="text-xs text-violet-600/70 font-medium">When enabled, customers can choose the box lunch</p>
-                            </div>
-                            <Switch 
-                                checked={formData.show_box_lunch_category} 
-                                onCheckedChange={(val) => setFormData({...formData, show_box_lunch_category: val})}
-                                className="data-[state=checked]:bg-violet-600"
-                            />
-                        </div>
-
-                        <div className="flex items-center justify-between p-4 rounded-2xl border border-violet-100 bg-violet-50/20">
-                            <div className="space-y-1">
-                                <Label className="text-sm font-bold text-violet-900">Enable junior box lunch</Label>
-                                <p className="text-xs text-violet-600/70 font-medium">When enabled, customers can choose the junior box lunch</p>
-                            </div>
-                            <Switch 
-                                checked={formData.show_junior_box_lunch_category} 
-                                onCheckedChange={(val) => setFormData({...formData, show_junior_box_lunch_category: val})}
-                                className="data-[state=checked]:bg-violet-600"
-                            />
-                        </div>
-                    </CardContent>
-                </Card>
-
-                {/* Branding & Welcome Message */}
-                <Card className="rounded-[32px] border-none shadow-xl shadow-gray-200/50 overflow-hidden bg-white">
-                    <CardHeader className="p-8 border-b border-gray-50">
-                        <div className="flex items-center gap-4">
-                            <div className="size-10 rounded-xl bg-violet-50 flex items-center justify-center text-violet-600">
+                            <div className="size-10 rounded-xl bg-purple-50 flex items-center justify-center text-purple-600">
                                 <Settings className="size-5" />
                             </div>
                             <div>
-                                <CardTitle className="text-xl font-bold">App Branding & Custom Message</CardTitle>
-                                <CardDescription>Customize the header branding and welcome message shown to your guests.</CardDescription>
+                                <CardTitle className="text-xl font-bold">App Experience & Branding</CardTitle>
+                                <CardDescription>Customize branding, links, and custom greeting messages for your guests.</CardDescription>
                             </div>
                         </div>
                     </CardHeader>
                     <CardContent className="p-8 space-y-6">
-                        <div className="flex items-center justify-between p-4 rounded-2xl border border-violet-100 bg-violet-50/20">
-                            <div className="space-y-1">
-                                <Label className="text-sm font-bold text-violet-900">Use Mountain Mama's Café Branding</Label>
-                                <p className="text-xs text-violet-600/70 font-medium">
-                                    When enabled, your guests will see "Mountain Mama's Café" in the header instead of your company name
-                                </p>
+                        <div className="flex items-center justify-between p-4 rounded-2xl border border-gray-100 bg-gray-50/50">
+                            <div>
+                                <Label htmlFor="branding" className="text-sm font-bold text-gray-800">Use Mountain Mama's Branding</Label>
+                                <p className="text-xs text-gray-500 mt-0.5">Show Mountain Mama's Café logo and header in your custom ordering app.</p>
                             </div>
                             <Switch 
+                                id="branding"
                                 checked={formData.use_mountain_mamas_branding} 
                                 onCheckedChange={(val) => setFormData({...formData, use_mountain_mamas_branding: val})}
                                 className="data-[state=checked]:bg-violet-600"
                             />
                         </div>
 
-                        {formData.use_mountain_mamas_branding && (
-                            <div className="p-4 rounded-2xl border border-violet-100 bg-violet-50/10 space-y-4">
-                                <div className="space-y-1">
-                                    <h4 className="text-xs font-bold text-violet-900 uppercase tracking-widest">Active Ordering Links</h4>
-                                    <p className="text-[11px] text-gray-500 font-medium">Since branding is active, you can share either of the links below with your clients.</p>
-                                </div>
-                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                    {/* Default Link */}
-                                    <div className="flex flex-col justify-between p-4 rounded-xl border border-gray-100 bg-white shadow-sm hover:border-violet-200 transition-all">
-                                        <div className="space-y-1">
-                                            <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider block">Default Link</span>
-                                            <p className="text-xs font-bold text-gray-900 truncate font-mono">
-                                                {typeof window !== 'undefined' ? `${window.location.origin}/${defaultSlug}` : `/${defaultSlug}`}
-                                            </p>
-                                        </div>
-                                        <div className="flex items-center gap-2 mt-3 pt-3 border-t border-gray-50">
+                        {/* Link Previews */}
+                        {defaultSlug && (
+                            <div className="p-4 rounded-2xl bg-violet-50/40 border border-violet-100 space-y-3">
+                                <div>
+                                    <span className="text-[11px] font-bold text-violet-600 uppercase tracking-wider block mb-1">Standard Company Order Link</span>
+                                    <div className="flex items-center justify-between gap-3 bg-white p-3 rounded-xl border border-violet-100">
+                                        <code className="text-xs text-violet-900 font-mono truncate">{typeof window !== 'undefined' ? `${window.location.origin}/${defaultSlug}` : `/${defaultSlug}`}</code>
+                                        <div className="flex items-center gap-1 shrink-0">
                                             <Button
-                                                type="button"
                                                 variant="outline"
                                                 size="sm"
                                                 className="h-8 rounded-lg text-xs font-bold gap-1.5 border-gray-200 text-gray-600 hover:text-violet-600 hover:border-violet-200 hover:bg-violet-50"
                                                 onClick={() => {
                                                     const url = `${window.location.origin}/${defaultSlug}`;
                                                     navigator.clipboard.writeText(url);
-                                                    toast.success('Default link copied to clipboard');
+                                                    toast.success('Company link copied to clipboard');
                                                 }}
                                             >
                                                 <Copy className="size-3.5" />
@@ -525,41 +363,6 @@ export default function AppSettingsClient({ initialData, globalSettings, formFie
                                             </Button>
                                             <a
                                                 href={`/${defaultSlug}`}
-                                                target="_blank"
-                                                rel="noopener noreferrer"
-                                                className="inline-flex items-center justify-center h-8 px-3 rounded-lg border border-gray-200 text-xs font-bold gap-1.5 text-gray-600 hover:text-violet-600 hover:border-violet-200 hover:bg-violet-50 transition-colors"
-                                            >
-                                                <ExternalLink className="size-3.5" />
-                                                Preview
-                                            </a>
-                                        </div>
-                                    </div>
-
-                                    {/* White-Label Link */}
-                                    <div className="flex flex-col justify-between p-4 rounded-xl border border-gray-100 bg-white shadow-sm hover:border-violet-200 transition-all">
-                                        <div className="space-y-1">
-                                            <span className="text-[10px] font-bold text-violet-600 uppercase tracking-wider block font-black">White-Label Order Link</span>
-                                            <p className="text-xs font-bold text-gray-900 truncate font-mono">
-                                                {typeof window !== 'undefined' ? `${window.location.origin}/${genericSlug}` : `/${genericSlug}`}
-                                            </p>
-                                        </div>
-                                        <div className="flex items-center gap-2 mt-3 pt-3 border-t border-gray-50">
-                                            <Button
-                                                type="button"
-                                                variant="outline"
-                                                size="sm"
-                                                className="h-8 rounded-lg text-xs font-bold gap-1.5 border-gray-200 text-gray-600 hover:text-violet-600 hover:border-violet-200 hover:bg-violet-50"
-                                                onClick={() => {
-                                                    const url = `${window.location.origin}/${genericSlug}`;
-                                                    navigator.clipboard.writeText(url);
-                                                    toast.success('White-Label link copied to clipboard');
-                                                }}
-                                            >
-                                                <Copy className="size-3.5" />
-                                                Copy
-                                            </Button>
-                                            <a
-                                                href={`/${genericSlug}`}
                                                 target="_blank"
                                                 rel="noopener noreferrer"
                                                 className="inline-flex items-center justify-center h-8 px-3 rounded-lg border border-gray-200 text-xs font-bold gap-1.5 text-gray-600 hover:text-violet-600 hover:border-violet-200 hover:bg-violet-50 transition-colors"
@@ -585,291 +388,6 @@ export default function AppSettingsClient({ initialData, globalSettings, formFie
                             />
                             <p className="text-[11px] text-gray-400 font-medium">This message will be prominently displayed at the top of your custom ordering page.</p>
                         </div>
-                    </CardContent>
-                </Card>
-
-
-                {/* Bread Selection */}
-                <Card className="rounded-[32px] border-none shadow-xl shadow-gray-200/50 overflow-hidden bg-white">
-                    <CardHeader className="p-8 border-b border-gray-50">
-                        <div className="flex items-center gap-4">
-                            <div className="size-10 rounded-xl bg-orange-50 flex items-center justify-center text-orange-600">
-                                <Utensils className="size-5" />
-                            </div>
-                            <div>
-                                <CardTitle className="text-xl font-bold">Bread Options</CardTitle>
-                                <CardDescription>Select and reorder bread types to offer on your meal pages. Move items up or down to set their display priority.</CardDescription>
-                            </div>
-                        </div>
-                    </CardHeader>
-                    <CardContent className="p-8">
-                        {globalSettings?.bread_options && globalSettings.bread_options.length > 0 ? (
-                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
-                                {/* Left Column */}
-                                <div className="flex flex-col gap-4">
-                                    {orderedBreads.slice(0, Math.ceil(orderedBreads.length / 2)).map((bread: string) => {
-                                        const parsed = parseOptionItem(bread);
-                                        const isSelected = isBreadSelected(bread);
-                                        const currentSelectedBreads = formData.meal_page_options.breads || [];
-                                        const idxInSelected = currentSelectedBreads.findIndex((b: string) => b === bread || parseOptionItem(b).name.toLowerCase() === parsed.name.toLowerCase());
-                                        return (
-                                            <div 
-                                                key={bread}
-                                                className={cn(
-                                                    "flex flex-col justify-between p-4 rounded-2xl border-2 transition-all gap-2",
-                                                    isSelected
-                                                        ? "border-orange-200 bg-orange-50/30 shadow-sm"
-                                                        : "border-gray-100 bg-gray-50/50 opacity-60 hover:opacity-100"
-                                                )}
-                                            >
-                                                <div className="flex items-center justify-between gap-3">
-                                                    <div className="flex items-center gap-2.5 min-w-0 flex-1">
-                                                        {isSelected && currentSelectedBreads.length > 1 && (
-                                                            <div className="flex flex-col gap-0.5 shrink-0">
-                                                                <button 
-                                                                    onClick={(e) => { e.stopPropagation(); moveBread(bread, 'up'); }}
-                                                                    disabled={idxInSelected === 0}
-                                                                    className="p-1 hover:bg-orange-100 rounded disabled:opacity-30 transition-opacity"
-                                                                    title="Move Up"
-                                                                >
-                                                                    <ArrowUp className="size-3 text-orange-800" />
-                                                                </button>
-                                                                <button 
-                                                                    onClick={(e) => { e.stopPropagation(); moveBread(bread, 'down'); }}
-                                                                    disabled={idxInSelected === currentSelectedBreads.length - 1}
-                                                                    className="p-1 hover:bg-orange-100 rounded disabled:opacity-30 transition-opacity"
-                                                                    title="Move Down"
-                                                                >
-                                                                    <ArrowDown className="size-3 text-orange-800" />
-                                                                </button>
-                                                            </div>
-                                                        )}
-                                                        <span className={cn(
-                                                            "text-sm font-bold break-words",
-                                                            isSelected ? "text-orange-950" : "text-gray-600"
-                                                        )}>
-                                                            {isSelected ? `#${idxInSelected + 1}: ` : ''}{parsed.name}
-                                                        </span>
-                                                    </div>
-                                                    <Switch 
-                                                        checked={isSelected} 
-                                                        onCheckedChange={() => toggleBread(bread)}
-                                                        className="data-[state=checked]:bg-orange-600 shrink-0"
-                                                    />
-                                                </div>
-                                                {parsed.allergens && parsed.allergens.length > 0 && (
-                                                    <AllergenBadges allergens={parsed.allergens} size="xs" showLabels={true} itemType="bread" className="mt-0.5" />
-                                                )}
-                                            </div>
-                                        );
-                                    })}
-                                </div>
-
-                                {/* Right Column */}
-                                <div className="flex flex-col gap-4">
-                                    {orderedBreads.slice(Math.ceil(orderedBreads.length / 2)).map((bread: string) => {
-                                        const parsed = parseOptionItem(bread);
-                                        const isSelected = isBreadSelected(bread);
-                                        const currentSelectedBreads = formData.meal_page_options.breads || [];
-                                        const idxInSelected = currentSelectedBreads.findIndex((b: string) => b === bread || parseOptionItem(b).name.toLowerCase() === parsed.name.toLowerCase());
-                                        return (
-                                            <div 
-                                                key={bread}
-                                                className={cn(
-                                                    "flex flex-col justify-between p-4 rounded-2xl border-2 transition-all gap-2",
-                                                    isSelected
-                                                        ? "border-orange-200 bg-orange-50/30 shadow-sm"
-                                                        : "border-gray-100 bg-gray-50/50 opacity-60 hover:opacity-100"
-                                                )}
-                                            >
-                                                <div className="flex items-center justify-between gap-3">
-                                                    <div className="flex items-center gap-2.5 min-w-0 flex-1">
-                                                        {isSelected && currentSelectedBreads.length > 1 && (
-                                                            <div className="flex flex-col gap-0.5 shrink-0">
-                                                                <button 
-                                                                    onClick={(e) => { e.stopPropagation(); moveBread(bread, 'up'); }}
-                                                                    disabled={idxInSelected === 0}
-                                                                    className="p-1 hover:bg-orange-100 rounded disabled:opacity-30 transition-opacity"
-                                                                    title="Move Up"
-                                                                >
-                                                                    <ArrowUp className="size-3 text-orange-800" />
-                                                                </button>
-                                                                <button 
-                                                                    onClick={(e) => { e.stopPropagation(); moveBread(bread, 'down'); }}
-                                                                    disabled={idxInSelected === currentSelectedBreads.length - 1}
-                                                                    className="p-1 hover:bg-orange-100 rounded disabled:opacity-30 transition-opacity"
-                                                                    title="Move Down"
-                                                                >
-                                                                    <ArrowDown className="size-3 text-orange-800" />
-                                                                </button>
-                                                            </div>
-                                                        )}
-                                                        <span className={cn(
-                                                            "text-sm font-bold break-words",
-                                                            isSelected ? "text-orange-950" : "text-gray-600"
-                                                        )}>
-                                                            {isSelected ? `#${idxInSelected + 1}: ` : ''}{parsed.name}
-                                                        </span>
-                                                    </div>
-                                                    <Switch 
-                                                        checked={isSelected} 
-                                                        onCheckedChange={() => toggleBread(bread)}
-                                                        className="data-[state=checked]:bg-orange-600 shrink-0"
-                                                    />
-                                                </div>
-                                                {parsed.allergens && parsed.allergens.length > 0 && (
-                                                    <AllergenBadges allergens={parsed.allergens} size="xs" showLabels={true} itemType="bread" className="mt-0.5" />
-                                                )}
-                                            </div>
-                                        );
-                                    })}
-                                </div>
-                            </div>
-                        ) : (
-                            <p className="text-sm text-gray-500 text-center py-4">No bread options configured by admin.</p>
-                        )}
-                    </CardContent>
-                </Card>
-
-                {/* Cookie Selection */}
-                <Card className="rounded-[32px] border-none shadow-xl shadow-gray-200/50 overflow-hidden bg-white">
-                    <CardHeader className="p-8 border-b border-gray-50">
-                        <div className="flex items-center gap-4">
-                            <div className="size-10 rounded-xl bg-amber-50 flex items-center justify-center text-amber-600">
-                                <Cookie className="size-5" />
-                            </div>
-                            <div>
-                                <CardTitle className="text-xl font-bold">Cookie Options</CardTitle>
-                                <CardDescription>Select and reorder cookie types to offer on your meal pages. Move items up or down to set their display priority.</CardDescription>
-                            </div>
-                        </div>
-                    </CardHeader>
-                    <CardContent className="p-8">
-                        {globalSettings?.cookie_options && globalSettings.cookie_options.length > 0 ? (
-                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
-                                {/* Left Column */}
-                                <div className="flex flex-col gap-4">
-                                    {orderedCookies.slice(0, Math.ceil(orderedCookies.length / 2)).map((cookie: string) => {
-                                        const parsed = parseOptionItem(cookie);
-                                        const isSelected = isCookieSelected(cookie);
-                                        const currentSelectedCookies = formData.meal_page_options.cookies || [];
-                                        const idxInSelected = currentSelectedCookies.findIndex((c: string) => c === cookie || parseOptionItem(c).name.toLowerCase() === parsed.name.toLowerCase());
-                                        return (
-                                            <div 
-                                                key={cookie}
-                                                className={cn(
-                                                    "flex flex-col justify-between p-4 rounded-2xl border-2 transition-all gap-2",
-                                                    isSelected
-                                                        ? "border-amber-200 bg-amber-50/30 shadow-sm"
-                                                        : "border-gray-100 bg-gray-50/50 opacity-60 hover:opacity-100"
-                                                )}
-                                            >
-                                                <div className="flex items-center justify-between gap-3">
-                                                    <div className="flex items-center gap-2.5 min-w-0 flex-1">
-                                                        {isSelected && currentSelectedCookies.length > 1 && (
-                                                            <div className="flex flex-col gap-0.5 shrink-0">
-                                                                <button 
-                                                                    onClick={(e) => { e.stopPropagation(); moveCookie(cookie, 'up'); }}
-                                                                    disabled={idxInSelected === 0}
-                                                                    className="p-1 hover:bg-amber-100 rounded disabled:opacity-30 transition-opacity"
-                                                                    title="Move Up"
-                                                                >
-                                                                    <ArrowUp className="size-3 text-amber-800" />
-                                                                </button>
-                                                                <button 
-                                                                    onClick={(e) => { e.stopPropagation(); moveCookie(cookie, 'down'); }}
-                                                                    disabled={idxInSelected === currentSelectedCookies.length - 1}
-                                                                    className="p-1 hover:bg-amber-100 rounded disabled:opacity-30 transition-opacity"
-                                                                    title="Move Down"
-                                                                >
-                                                                    <ArrowDown className="size-3 text-amber-800" />
-                                                                </button>
-                                                            </div>
-                                                        )}
-                                                        <span className={cn(
-                                                            "text-sm font-bold break-words",
-                                                            isSelected ? "text-amber-950" : "text-gray-600"
-                                                        )}>
-                                                            {isSelected ? `#${idxInSelected + 1}: ` : ''}{parsed.name}
-                                                        </span>
-                                                    </div>
-                                                    <Switch 
-                                                        checked={isSelected} 
-                                                        onCheckedChange={() => toggleCookie(cookie)}
-                                                        className="data-[state=checked]:bg-amber-600 shrink-0"
-                                                    />
-                                                </div>
-                                                {parsed.allergens && parsed.allergens.length > 0 && (
-                                                    <AllergenBadges allergens={parsed.allergens} size="xs" showLabels={true} itemType="cookie" className="mt-0.5" />
-                                                )}
-                                            </div>
-                                        );
-                                    })}
-                                </div>
-
-                                {/* Right Column */}
-                                <div className="flex flex-col gap-4">
-                                    {orderedCookies.slice(Math.ceil(orderedCookies.length / 2)).map((cookie: string) => {
-                                        const parsed = parseOptionItem(cookie);
-                                        const isSelected = isCookieSelected(cookie);
-                                        const currentSelectedCookies = formData.meal_page_options.cookies || [];
-                                        const idxInSelected = currentSelectedCookies.findIndex((c: string) => c === cookie || parseOptionItem(c).name.toLowerCase() === parsed.name.toLowerCase());
-                                        return (
-                                            <div 
-                                                key={cookie}
-                                                className={cn(
-                                                    "flex flex-col justify-between p-4 rounded-2xl border-2 transition-all gap-2",
-                                                    isSelected
-                                                        ? "border-amber-200 bg-amber-50/30 shadow-sm"
-                                                        : "border-gray-100 bg-gray-50/50 opacity-60 hover:opacity-100"
-                                                )}
-                                            >
-                                                <div className="flex items-center justify-between gap-3">
-                                                    <div className="flex items-center gap-2.5 min-w-0 flex-1">
-                                                        {isSelected && currentSelectedCookies.length > 1 && (
-                                                            <div className="flex flex-col gap-0.5 shrink-0">
-                                                                <button 
-                                                                    onClick={(e) => { e.stopPropagation(); moveCookie(cookie, 'up'); }}
-                                                                    disabled={idxInSelected === 0}
-                                                                    className="p-1 hover:bg-amber-100 rounded disabled:opacity-30 transition-opacity"
-                                                                    title="Move Up"
-                                                                >
-                                                                    <ArrowUp className="size-3 text-amber-800" />
-                                                                </button>
-                                                                <button 
-                                                                    onClick={(e) => { e.stopPropagation(); moveCookie(cookie, 'down'); }}
-                                                                    disabled={idxInSelected === currentSelectedCookies.length - 1}
-                                                                    className="p-1 hover:bg-amber-100 rounded disabled:opacity-30 transition-opacity"
-                                                                    title="Move Down"
-                                                                >
-                                                                    <ArrowDown className="size-3 text-amber-800" />
-                                                                </button>
-                                                            </div>
-                                                        )}
-                                                        <span className={cn(
-                                                            "text-sm font-bold break-words",
-                                                            isSelected ? "text-amber-950" : "text-gray-600"
-                                                        )}>
-                                                            {isSelected ? `#${idxInSelected + 1}: ` : ''}{parsed.name}
-                                                        </span>
-                                                    </div>
-                                                    <Switch 
-                                                        checked={isSelected} 
-                                                        onCheckedChange={() => toggleCookie(cookie)}
-                                                        className="data-[state=checked]:bg-amber-600 shrink-0"
-                                                    />
-                                                </div>
-                                                {parsed.allergens && parsed.allergens.length > 0 && (
-                                                    <AllergenBadges allergens={parsed.allergens} size="xs" showLabels={true} itemType="cookie" className="mt-0.5" />
-                                                )}
-                                            </div>
-                                        );
-                                    })}
-                                </div>
-                            </div>
-                        ) : (
-                            <p className="text-sm text-gray-500 text-center py-4">No cookie options configured by admin.</p>
-                        )}
                     </CardContent>
                 </Card>
 

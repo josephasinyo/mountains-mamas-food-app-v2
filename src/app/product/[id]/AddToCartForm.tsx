@@ -4,17 +4,20 @@ import { useState, useRef, useEffect, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 
 import { FoodItem } from '@/lib/types';
+import type { Ingredient } from '@/lib/supabase/types';
 import { useCart } from '@/hooks/useCart';
 import { findGfCookieOption } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import AllergenBadges from '@/components/allergens/AllergenBadges';
 import FormattedText from '@/components/ui/FormattedText';
 import { parseOptionItem } from '@/lib/allergens';
+import { Check, ChevronDown, Cookie, Wheat } from 'lucide-react';
 import styles from './AddToCartForm.module.css';
 
 interface Props {
   item: FoodItem; // Base item
   variants?: FoodItem[]; // Available lunch box variants
+  ingredients?: Ingredient[];
 }
 
 const SANDWICH_OPTIONS = [
@@ -30,7 +33,7 @@ const DRESSING_OPTIONS = [
 
 import { useCompany } from '@/components/context/CompanyProvider';
 
-export default function AddToCartForm({ item }: Props) {
+export default function AddToCartForm({ item, ingredients = [] }: Props) {
   const router = useRouter();
   const { addToCart } = useCart();
   const { company, config, globalSettings, formFields, isLoading } = useCompany();
@@ -90,69 +93,87 @@ export default function AddToCartForm({ item }: Props) {
             ? (item.junior_price || item.price || 0)
             : (item.price || 0)));
 
-  // Compute dynamic options with useMemo for stable references
-  const dynamicBreadOptions = useMemo(() => {
-    // Check company-specific curated options first
-    const mealOpts = config?.meal_page_options;
-    const parsed = typeof mealOpts === 'string' ? JSON.parse(mealOpts) : mealOpts;
-    
+  // Breads list from database ingredients
+  const breadIngredients = useMemo<Ingredient[]>(() => {
+    const dbBreads = (ingredients || []).filter(i => i.type === 'bread' && i.is_active);
+    if (dbBreads.length > 0) {
+      const mealOpts = config?.meal_page_options;
+      const parsed = typeof mealOpts === 'string' ? JSON.parse(mealOpts) : mealOpts;
+      if (parsed?.breads && Array.isArray(parsed.breads) && parsed.breads.length > 0) {
+        const filtered = parsed.breads
+          .map((name: string) => dbBreads.find(b => b.name.toLowerCase() === name.toLowerCase()))
+          .filter(Boolean) as Ingredient[];
+        if (filtered.length > 0) return filtered;
+      }
+      return dbBreads;
+    }
+
+    // Fallback if no ingredients passed yet
     const globalBreads = (globalSettings?.bread_options && Array.isArray(globalSettings.bread_options)) 
       ? globalSettings.bread_options 
-      : [];
-
-    if (parsed?.breads && Array.isArray(parsed.breads) && parsed.breads.length > 0) {
-      // Filter out options that are not in the global active list
-      // Maintain the order of parsed.breads since it is sorted by company preference
-      const activeBreads = parsed.breads.filter((b: string) => globalBreads.includes(b));
-      if (activeBreads.length > 0) {
-        return activeBreads;
-      }
-    }
-    // Fall back to global settings
-    if (globalBreads.length > 0) {
-      return globalBreads;
-    }
-    // Ultimate fallback
-    return ['White Bread'];
-  }, [config, globalSettings]);
-
-  const dynamicCookieOptions = useMemo(() => {
-    const mealOpts = config?.meal_page_options;
-    const parsed = typeof mealOpts === 'string' ? JSON.parse(mealOpts) : mealOpts;
+      : ['White Sourdough', 'Whole Grain Wheat', 'Gluten-Free Bread'];
     
+    return globalBreads.map((name: string, idx: number) => ({
+      id: `fallback-bread-${idx}`,
+      name,
+      type: 'bread' as const,
+      description: '',
+      image_url: null,
+      allergens: name.toLowerCase().includes('gluten') ? ['Gluten-Free'] : ['Vegetarian'],
+      is_active: true,
+      sort_order: idx,
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString()
+    })) as Ingredient[];
+  }, [ingredients, config, globalSettings]);
+
+  // Cookies list from database ingredients
+  const cookieIngredients = useMemo<Ingredient[]>(() => {
+    const dbCookies = (ingredients || []).filter(i => i.type === 'cookie' && i.is_active);
+    if (dbCookies.length > 0) {
+      const mealOpts = config?.meal_page_options;
+      const parsed = typeof mealOpts === 'string' ? JSON.parse(mealOpts) : mealOpts;
+      if (parsed?.cookies && Array.isArray(parsed.cookies) && parsed.cookies.length > 0) {
+        const filtered = parsed.cookies
+          .map((name: string) => dbCookies.find(c => c.name.toLowerCase() === name.toLowerCase()))
+          .filter(Boolean) as Ingredient[];
+        if (filtered.length > 0) return filtered;
+      }
+      return dbCookies;
+    }
+
+    // Fallback if no ingredients passed yet
     const globalCookies = (globalSettings?.cookie_options && Array.isArray(globalSettings.cookie_options)) 
       ? globalSettings.cookie_options 
-      : [];
+      : ['Chocolate Chip Cookie', 'Gluten-Free Brownie'];
 
-    if (parsed?.cookies && Array.isArray(parsed.cookies) && parsed.cookies.length > 0) {
-      // Filter out options that are not in the global active list
-      // Maintain the order of parsed.cookies since it is sorted by company preference
-      const activeCookies = parsed.cookies.filter((c: string) => globalCookies.includes(c));
-      if (activeCookies.length > 0) {
-        return activeCookies;
-      }
-    }
-    if (globalCookies.length > 0) {
-      return globalCookies;
-    }
-    return ['Chocolate Chip'];
-  }, [config, globalSettings]);
+    return globalCookies.map((name: string, idx: number) => ({
+      id: `fallback-cookie-${idx}`,
+      name,
+      type: 'cookie' as const,
+      description: '',
+      image_url: null,
+      allergens: name.toLowerCase().includes('gluten') ? ['Gluten-Free'] : ['Contains Dairy', 'Contains Eggs'],
+      is_active: true,
+      sort_order: idx,
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString()
+    })) as Ingredient[];
+  }, [ingredients, config, globalSettings]);
 
   // Compute the default bread option (company-specific overrides)
   const defaultBreadOption = useMemo(() => {
-    if (company?.slug === 'teton-excursions-llc' && dynamicBreadOptions.length > 0) {
-      // "The Vegetarian" sandwich defaults to "Whole Grain Focaccia"
+    if (company?.slug === 'teton-excursions-llc' && breadIngredients.length > 0) {
       if (item.name === 'The Vegetarian') {
-        const wholeGrain = dynamicBreadOptions.find((b: string) => b === 'Whole Grain Focaccia');
-        if (wholeGrain) return wholeGrain;
+        const wholeGrain = breadIngredients.find((b: Ingredient) => b.name.toLowerCase().includes('whole grain'));
+        if (wholeGrain) return wholeGrain.name;
       } else {
-        // All other sandwiches default to "Herby Focaccia"
-        const herby = dynamicBreadOptions.find((b: string) => b === 'Herby Focaccia');
-        if (herby) return herby;
+        const herby = breadIngredients.find((b: Ingredient) => b.name.toLowerCase().includes('herby'));
+        if (herby) return herby.name;
       }
     }
-    return dynamicBreadOptions[0];
-  }, [company?.slug, item.name, dynamicBreadOptions]);
+    return breadIngredients[0]?.name || 'White Sourdough';
+  }, [company?.slug, item.name, breadIngredients]);
 
   // State
   const [quantity, setQuantity] = useState<number | string>(1);
@@ -168,7 +189,7 @@ export default function AddToCartForm({ item }: Props) {
       formFields.forEach(field => {
         if (field.location === 'meal_page') {
           if (field.name === 'bread_type') initialValues[field.name] = defaultBreadOption;
-          else if (field.name === 'cookie_choice') initialValues[field.name] = dynamicCookieOptions[0];
+          else if (field.name === 'cookie_choice') initialValues[field.name] = cookieIngredients[0]?.name || 'Chocolate Chip Cookie';
           else if (field.name === 'sandwich_options') initialValues[field.name] = SANDWICH_OPTIONS[0];
           else if (field.name === 'dressing_options') initialValues[field.name] = DRESSING_OPTIONS[0];
           else if (field.type === 'select') {
@@ -179,7 +200,7 @@ export default function AddToCartForm({ item }: Props) {
       });
       setFieldValues(initialValues);
     }
-  }, [formFields, dynamicBreadOptions, dynamicCookieOptions, defaultBreadOption]);
+  }, [formFields, breadIngredients, cookieIngredients, defaultBreadOption]);
 
   const handleFieldChange = (name: string, value: any) => {
     setFieldValues(prev => {
@@ -188,7 +209,11 @@ export default function AddToCartForm({ item }: Props) {
       // Auto-logic when Gluten-Free bread is selected
       if (name === 'bread_type' && typeof value === 'string' && value.toLowerCase().includes('gluten')) {
         // Find a cookie option that represents a gluten-free brownie / cookie
-        const gfCookie = findGfCookieOption(dynamicCookieOptions);
+        const gfCookie = cookieIngredients.find(c => 
+          c.name.toLowerCase().includes('gluten') || 
+          (c.allergens && c.allergens.some(a => a.toLowerCase().includes('gluten-free')))
+        )?.name || findGfCookieOption(cookieIngredients.map(c => c.name));
+        
         if (gfCookie) {
           nextValues['cookie_choice'] = gfCookie;
         }
@@ -223,13 +248,13 @@ export default function AddToCartForm({ item }: Props) {
 
   // Sync selected options when the dynamic lists change
   useEffect(() => {
-    if (dynamicBreadOptions.length > 0 && !fieldValues['bread_type']) {
+    if (breadIngredients.length > 0 && !fieldValues['bread_type']) {
       handleFieldChange('bread_type', defaultBreadOption);
     }
-    if (dynamicCookieOptions.length > 0 && !fieldValues['cookie_choice']) {
-      handleFieldChange('cookie_choice', dynamicCookieOptions[0]);
+    if (cookieIngredients.length > 0 && !fieldValues['cookie_choice']) {
+      handleFieldChange('cookie_choice', cookieIngredients[0]?.name);
     }
-  }, [dynamicBreadOptions, dynamicCookieOptions, fieldValues]);
+  }, [breadIngredients, cookieIngredients, fieldValues, defaultBreadOption]);
 
   const handleAddToCart = () => {
     const finalQuantity = typeof quantity === 'string' ? parseInt(quantity) : quantity;
@@ -309,7 +334,129 @@ export default function AddToCartForm({ item }: Props) {
     setOpenDropdown(openDropdown === dropdownName ? null : dropdownName);
   };
 
-  const renderDropdown = (
+  // Enhanced Custom Dropdown for Ingredients (Breads & Cookies)
+  const renderIngredientDropdown = (
+    label: string,
+    id: string,
+    selectedValue: string,
+    ingredientList: Ingredient[],
+    type: 'bread' | 'cookie'
+  ) => {
+    const isOpen = openDropdown === id;
+    const selectedItem = ingredientList.find(
+      i => i.name.toLowerCase() === (selectedValue || '').toLowerCase()
+    ) || ingredientList[0];
+
+    const Icon = type === 'bread' ? Wheat : Cookie;
+
+    return (
+      <div className={styles.section} key={id}>
+        <label className={styles.label}>{label}</label>
+        <div className="relative">
+          {/* Trigger Button */}
+          <div
+            onClick={() => toggleDropdown(id)}
+            className="flex items-center justify-between p-2.5 sm:p-3 rounded-2xl border border-gray-200 bg-white hover:border-violet-300 hover:shadow-md hover:shadow-violet-50/50 cursor-pointer transition-all duration-200"
+          >
+            <div className="flex items-center gap-3 min-w-0 flex-1 pr-2">
+              <div className="size-11 sm:size-12 rounded-xl bg-gray-50 border border-gray-100 overflow-hidden flex items-center justify-center shrink-0 shadow-sm">
+                {selectedItem?.image_url ? (
+                  <img src={selectedItem.image_url} alt={selectedItem.name} className="size-full object-cover" />
+                ) : (
+                  <Icon className="size-6 text-gray-300" />
+                )}
+              </div>
+              <div className="flex flex-col min-w-0 flex-1">
+                <span className="text-[15px] font-bold text-gray-900 truncate">
+                  {selectedItem ? selectedItem.name : selectedValue}
+                </span>
+                {selectedItem?.allergens && selectedItem.allergens.length > 0 && (
+                  <div className="mt-0.5">
+                    <AllergenBadges 
+                      allergens={selectedItem.allergens} 
+                      size="xs" 
+                      showLabels={true} 
+                      itemType={type} 
+                    />
+                  </div>
+                )}
+              </div>
+            </div>
+            <div className="flex items-center gap-1 shrink-0 text-gray-400">
+              <ChevronDown className={`size-5 transition-transform duration-300 ${isOpen ? 'rotate-180 text-violet-600' : ''}`} />
+            </div>
+          </div>
+
+          {/* Expanded Rich Options Dropdown */}
+          {isOpen && (
+            <div className="absolute top-full left-0 right-0 mt-2 z-40 bg-white rounded-3xl border border-gray-100 shadow-[0_20px_40px_-10px_rgba(0,0,0,0.15)] p-2.5 max-h-[380px] overflow-y-auto space-y-2 animate-in fade-in slide-in-from-top-2 duration-200">
+              {ingredientList.map((ingredient) => {
+                const isSelected = (selectedItem?.id && selectedItem.id === ingredient.id) || 
+                  (selectedItem?.name.toLowerCase() === ingredient.name.toLowerCase());
+                return (
+                  <div
+                    key={ingredient.id}
+                    onClick={() => {
+                      handleFieldChange(id, ingredient.name);
+                      setOpenDropdown(null);
+                    }}
+                    className={`flex items-start gap-3.5 p-3 rounded-2xl border transition-all cursor-pointer ${
+                      isSelected
+                        ? 'bg-violet-50/70 border-violet-300 ring-1 ring-violet-200/80 shadow-sm'
+                        : 'bg-white border-gray-100 hover:border-violet-200 hover:bg-violet-50/20'
+                    }`}
+                  >
+                    <div className="w-20 h-16 sm:w-24 sm:h-18 rounded-xl bg-gray-100 border border-gray-100 overflow-hidden shrink-0 shadow-sm relative">
+                      {ingredient.image_url ? (
+                        <img src={ingredient.image_url} alt={ingredient.name} className="size-full object-cover" />
+                      ) : (
+                        <div className="size-full flex items-center justify-center text-gray-300">
+                          <Icon className="size-8" />
+                        </div>
+                      )}
+                    </div>
+                    
+                    <div className="flex-1 min-w-0 py-0.5">
+                      <div className="flex items-center justify-between gap-2 mb-1">
+                        <h4 className="text-[14px] sm:text-[15px] font-extrabold text-gray-900 leading-tight">
+                          {ingredient.name}
+                        </h4>
+                        {isSelected && (
+                          <span className="size-5 rounded-full bg-violet-600 text-white flex items-center justify-center shrink-0 shadow-sm">
+                            <Check className="size-3 stroke-[3]" />
+                          </span>
+                        )}
+                      </div>
+
+                      {ingredient.allergens && ingredient.allergens.length > 0 && (
+                        <div className="mb-1.5" onClick={e => e.stopPropagation()}>
+                          <AllergenBadges 
+                            allergens={ingredient.allergens} 
+                            size="xs" 
+                            showLabels={true} 
+                            itemType={type} 
+                          />
+                        </div>
+                      )}
+
+                      {ingredient.description && (
+                        <div className="text-xs text-gray-500 font-medium line-clamp-2 leading-relaxed">
+                          <FormattedText text={ingredient.description} />
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  };
+
+  // Standard Dropdown for other fields (Sandwich Options, Dressing, Custom Selects)
+  const renderStandardDropdown = (
     label: string, 
     id: string, 
     selectedValue: string, 
@@ -317,7 +464,6 @@ export default function AddToCartForm({ item }: Props) {
   ) => {
     const isOpen = openDropdown === id;
     const parsedSelected = parseOptionItem(selectedValue);
-    const itemType = id === 'bread_type' || id === 'bread_options' ? 'bread' : id === 'cookie_choice' ? 'cookie' : 'item';
 
     return (
       <div className={styles.section} key={id}>
@@ -330,7 +476,7 @@ export default function AddToCartForm({ item }: Props) {
               </span>
               {parsedSelected.allergens.length > 0 && (
                 <div style={{ width: '100%' }}>
-                  <AllergenBadges allergens={parsedSelected.allergens} size="xs" showLabels={true} itemType={itemType} className="my-0.5" />
+                  <AllergenBadges allergens={parsedSelected.allergens} size="xs" showLabels={true} itemType="item" className="my-0.5" />
                 </div>
               )}
             </div>
@@ -365,7 +511,7 @@ export default function AddToCartForm({ item }: Props) {
                       </span>
                       {parsedOpt.allergens.length > 0 && (
                         <div style={{ width: '100%' }} onClick={(e) => e.stopPropagation()}>
-                          <AllergenBadges allergens={parsedOpt.allergens} size="xs" showLabels={true} itemType={itemType} className="my-0.5" />
+                          <AllergenBadges allergens={parsedOpt.allergens} size="xs" showLabels={true} itemType="item" className="my-0.5" />
                         </div>
                       )}
                     </div>
@@ -379,8 +525,6 @@ export default function AddToCartForm({ item }: Props) {
     );
   };
 
-  // Don't render the form until company context is loaded — this prevents
-  // the global settings from flashing as a fallback before the company config arrives
   if (isLoading) {
     return (
       <div className={styles.form} style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '300px' }}>
@@ -420,7 +564,9 @@ export default function AddToCartForm({ item }: Props) {
               alt={item.name} 
               className={styles.image} 
           />
-      </div>      <div className={styles.detailsWrapper}>
+      </div>
+
+      <div className={styles.detailsWrapper}>
         <div className={styles.headerRow}>
             <h1 className={styles.title}>{item.name}</h1>
             {config?.show_prices && price > 0 && (
@@ -541,15 +687,35 @@ export default function AddToCartForm({ item }: Props) {
 
             const currentValue = fieldValues[field.name] || '';
 
-            if (field.type === 'select' || ['sandwich_options', 'bread_type', 'cookie_choice', 'dressing_options'].includes(field.name)) {
+            // Render rich dropdown for breads
+            if (field.name === 'bread_type' || field.name === 'bread_options') {
+              return renderIngredientDropdown(
+                field.label,
+                'bread_type',
+                currentValue,
+                breadIngredients,
+                'bread'
+              );
+            }
+
+            // Render rich dropdown for cookies
+            if (field.name === 'cookie_choice') {
+              return renderIngredientDropdown(
+                field.label,
+                'cookie_choice',
+                currentValue,
+                cookieIngredients,
+                'cookie'
+              );
+            }
+
+            if (field.type === 'select' || ['sandwich_options', 'dressing_options'].includes(field.name)) {
               let options: string[] = [];
               if (field.name === 'sandwich_options') options = SANDWICH_OPTIONS;
-              else if (field.name === 'bread_type') options = dynamicBreadOptions;
-              else if (field.name === 'cookie_choice') options = dynamicCookieOptions;
               else if (field.name === 'dressing_options') options = DRESSING_OPTIONS;
               else options = field.default_options || field.options || [];
 
-              return renderDropdown(
+              return renderStandardDropdown(
                 field.label,
                 field.name,
                 currentValue,

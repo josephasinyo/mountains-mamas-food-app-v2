@@ -50,6 +50,7 @@ const AVAILABLE_PAGES = [
     { id: '/admin/quantities', label: 'Quantities' },
     { id: '/admin/invoices', label: 'Invoices' },
     { id: '/admin/meals', label: 'Meals' },
+    { id: '/admin/ingredients', label: 'Ingredients' },
     { id: '/admin/companies', label: 'Companies' },
     { id: '/admin/analytics', label: 'Analytics' },
     { id: '/admin/activity', label: 'Activity Log' },

@@ -25,6 +25,14 @@ export default async function ProductPage({ params }: Props) {
     notFound();
   }
 
+  // Fetch active ingredients for rich dropdowns (breads & cookies)
+  const { data: ingredients } = await supabase
+    .from('ingredients')
+    .select('*')
+    .eq('is_active', true)
+    .order('sort_order', { ascending: true })
+    .order('created_at', { ascending: true });
+
   // Cast to FoodItem (our updated interface)
   const foodItem: FoodItem = {
     ...item,
@@ -34,7 +42,7 @@ export default async function ProductPage({ params }: Props) {
 
   return (
     <div className="container mx-auto px-4 py-8">
-        <AddToCartForm item={foodItem} />
+        <AddToCartForm item={foodItem} ingredients={ingredients || []} />
     </div>
   );
 }

@@ -8,7 +8,7 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import {
     LayoutDashboard, ShoppingCart, UtensilsCrossed,
     Settings, LogOut, Mountain, PanelLeftClose, PanelLeft,
-    Clock, ExternalLink, Eye, ArrowLeft, FileText, BookOpen
+    Clock, ExternalLink, Eye, ArrowLeft, FileText, BookOpen, Wheat
 } from 'lucide-react';
 import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -30,6 +30,7 @@ const navSections = [
         label: 'App Configuration',
         items: [
             { title: 'Menu Management', href: '/company/menu', icon: UtensilsCrossed },
+            { title: 'Ingredients', href: '/company/ingredients', icon: Wheat },
             { title: 'App Settings', href: '/company/settings', icon: Settings },
         ],
     },

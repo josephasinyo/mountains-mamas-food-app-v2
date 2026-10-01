@@ -686,3 +686,79 @@ export async function getPaginatedCompanyOrders(filters: {
         return { success: false, error: e.message || String(e), orders: [], totalCount: 0, totalLunches: 0, pendingCount: 0 };
     }
 }
+
+export async function getCompanyIngredients() {
+    try {
+        const companyId = await getCompanyId();
+        const supabase = await createClient();
+
+        // Get all active ingredients from master list
+        const { data: allIngredients, error: ingError } = await supabase
+            .from('ingredients')
+            .select('*')
+            .eq('is_active', true)
+            .order('sort_order', { ascending: true })
+            .order('created_at', { ascending: true });
+
+        if (ingError) throw ingError;
+
+        // Get company config for curated meal_page_options
+        const { data: config, error: configError } = await supabase
+            .from('company_app_config')
+            .select('meal_page_options')
+            .eq('company_id', companyId)
+            .single();
+
+        let mealPageOptions = config?.meal_page_options;
+        if (typeof mealPageOptions === 'string') {
+            try { mealPageOptions = JSON.parse(mealPageOptions); } catch { mealPageOptions = {}; }
+        }
+
+        return {
+            success: true,
+            ingredients: (allIngredients || []) as any[],
+            mealPageOptions: mealPageOptions || { breads: [], cookies: [] }
+        };
+    } catch (error: any) {
+        console.error('Error fetching company ingredients:', error);
+        return { 
+            success: false, 
+            error: error.message, 
+            ingredients: [], 
+            mealPageOptions: { breads: [], cookies: [] } 
+        };
+    }
+}
+
+export async function updateCompanyIngredientsConfig(mealPageOptions: { breads: string[]; cookies: string[] }) {
+    try {
+        const companyId = await getCompanyId();
+        const supabase = createAdminClient();
+
+        const { error } = await supabase
+            .from('company_app_config')
+            .update({ meal_page_options: mealPageOptions })
+            .eq('company_id', companyId);
+
+        if (error) throw error;
+
+        await logActivity({
+            action: 'company_ingredients_updated',
+            entityType: 'config',
+            entityId: companyId,
+            details: {
+                breads_count: mealPageOptions.breads?.length || 0,
+                cookies_count: mealPageOptions.cookies?.length || 0
+            }
+        });
+
+        revalidatePath('/company/ingredients');
+        revalidatePath('/company/settings');
+        revalidatePath('/', 'layout');
+        return { success: true };
+    } catch (error: any) {
+        console.error('Error updating company ingredients config:', error);
+        return { success: false, error: error.message };
+    }
+}
+

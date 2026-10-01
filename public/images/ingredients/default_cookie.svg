@@ -1,0 +1,35 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 300" width="100%" height="100%">
+  <defs>
+    <linearGradient id="cookieBgGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#fff9f2" />
+      <stop offset="100%" stop-color="#f8efe2" />
+    </linearGradient>
+    <linearGradient id="cookieGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#e09e53" />
+      <stop offset="100%" stop-color="#be7b2e" />
+    </linearGradient>
+    <filter id="cookieShadow" x="-10%" y="-10%" width="120%" height="120%">
+      <feDropShadow dx="0" dy="6" stdDeviation="8" flood-color="#8b5e28" flood-opacity="0.15" />
+    </filter>
+  </defs>
+  <rect width="400" height="300" fill="url(#cookieBgGrad)" rx="24" />
+  
+  <g filter="url(#cookieShadow)" transform="translate(130, 45)">
+    <!-- Cookie Circle Base -->
+    <ellipse cx="70" cy="80" rx="65" ry="65" fill="url(#cookieGrad)" />
+    
+    <!-- Chocolate Chips / Texture dots -->
+    <ellipse cx="45" cy="55" rx="7" ry="6" fill="#4a2511" />
+    <ellipse cx="75" cy="45" rx="8" ry="7" fill="#3d1e0d" />
+    <ellipse cx="95" cy="70" rx="7" ry="8" fill="#4a2511" />
+    <ellipse cx="50" cy="95" rx="8" ry="6" fill="#3d1e0d" />
+    <ellipse cx="80" cy="105" rx="7" ry="7" fill="#4a2511" />
+    <ellipse cx="70" cy="75" rx="6" ry="6" fill="#5c3016" />
+    <ellipse cx="110" cy="100" rx="5" ry="5" fill="#3d1e0d" />
+    <ellipse cx="32" cy="75" rx="5" ry="5" fill="#4a2511" />
+  </g>
+  
+  <text x="200" y="240" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-size="14" font-weight="700" fill="#a87c4d" letter-spacing="1">
+    HOMEMADE COOKIE
+  </text>
+</svg>

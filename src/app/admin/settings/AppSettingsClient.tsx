@@ -5,10 +5,9 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/com
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
-import { Settings, Save, Loader2, Plus, Trash2, Cookie, Utensils, Layout, FileText, Edit2, ArrowUp, ArrowDown, Volume2, VolumeX } from 'lucide-react';
+import { Settings, Save, Loader2, Plus, Trash2, Utensils, Layout, FileText, Edit2, ArrowUp, ArrowDown, Volume2, VolumeX } from 'lucide-react';
 import { saveAllSettings } from './actions';
 import { toast } from 'sonner';
-import { motion, AnimatePresence } from 'framer-motion';
 import { cn } from '@/lib/utils';
 import {
     Dialog, DialogContent, DialogHeader, DialogTitle,
@@ -20,9 +19,6 @@ import {
 import { Switch } from '@/components/ui/switch';
 import { playSoundAlert } from '@/lib/sound-alerts';
 import { ConfirmDialog } from '@/components/ConfirmDialog';
-import AllergenPicker from '@/components/allergens/AllergenPicker';
-import AllergenBadges from '@/components/allergens/AllergenBadges';
-import { parseOptionItem, formatOptionItem } from '@/lib/allergens';
 
 interface AppSettingsClientProps {
     initialSettings: any;
@@ -33,18 +29,8 @@ export default function AppSettingsClient({ initialSettings, initialFields }: Ap
     const [isPending, startTransition] = useTransition();
     
     // Core state buffers
-    const [breadOptions, setBreadOptions] = useState<string[]>(initialSettings?.bread_options || []);
-    const [cookieOptions, setCookieOptions] = useState<string[]>(initialSettings?.cookie_options || []);
     const [fields, setFields] = useState<any[]>(initialFields || []);
     const [deletedFieldIds, setDeletedFieldIds] = useState<string[]>([]);
-
-    // Option Editor Dialog State (for rich Bread/Cookie configuration with allergens)
-    const [isOptionDialogOpen, setIsOptionDialogOpen] = useState(false);
-    const [optionDialogType, setOptionDialogType] = useState<'bread' | 'cookie'>('cookie');
-    const [editingOptionIdx, setEditingOptionIdx] = useState<number | null>(null);
-    const [optionName, setOptionName] = useState('');
-    const [optionAllergens, setOptionAllergens] = useState<string[]>([]);
-
     const [isSoundMuted, setIsSoundMuted] = useState(false);
 
     useEffect(() => {
@@ -75,8 +61,7 @@ export default function AppSettingsClient({ initialSettings, initialFields }: Ap
     };
 
     // Original references for change detection
-    const [originalSettings, setOriginalSettings] = useState(initialSettings);
-    const [originalFields, setOriginalFields] = useState(initialFields);
+    const [originalFields] = useState(initialFields);
 
     // Field Editor State
     const [isFieldDialogOpen, setIsFieldDialogOpen] = useState(false);
@@ -95,8 +80,6 @@ export default function AppSettingsClient({ initialSettings, initialFields }: Ap
 
     // Change Detection
     const hasChanges = 
-        JSON.stringify(breadOptions) !== JSON.stringify(originalSettings?.bread_options || []) ||
-        JSON.stringify(cookieOptions) !== JSON.stringify(originalSettings?.cookie_options || []) ||
         JSON.stringify(fields) !== JSON.stringify(originalFields) ||
         deletedFieldIds.length > 0;
 
@@ -106,104 +89,18 @@ export default function AppSettingsClient({ initialSettings, initialFields }: Ap
         
         startTransition(async () => {
             const result = await saveAllSettings({
-                breadOptions,
-                cookieOptions,
+                breadOptions: initialSettings?.bread_options || [],
+                cookieOptions: initialSettings?.cookie_options || [],
                 fields,
                 deletedFieldIds
             });
             if (result.success) {
-                toast.success('All settings and form fields saved successfully');
-                // Perform a reload to get fresh database IDs for any newly created fields
+                toast.success('Form fields saved successfully');
                 window.location.reload();
             } else {
                 toast.error('Failed to save settings: ' + result.error);
             }
         });
-    };
-
-    // Option Dialog Handlers (Bread & Cookie Options with Allergens)
-    const openAddOption = (type: 'bread' | 'cookie') => {
-        setOptionDialogType(type);
-        setEditingOptionIdx(null);
-        setOptionName('');
-        setOptionAllergens([]);
-        setIsOptionDialogOpen(true);
-    };
-
-    const openEditOption = (type: 'bread' | 'cookie', idx: number) => {
-        setOptionDialogType(type);
-        setEditingOptionIdx(idx);
-        const target = type === 'bread' ? breadOptions[idx] : cookieOptions[idx];
-        const parsed = parseOptionItem(target);
-        setOptionName(parsed.name);
-        setOptionAllergens(parsed.allergens);
-        setIsOptionDialogOpen(true);
-    };
-
-    const handleSaveOption = () => {
-        if (!optionName.trim()) {
-            toast.error('Option name is required');
-            return;
-        }
-        const formatted = formatOptionItem(optionName.trim(), optionAllergens);
-        if (optionDialogType === 'bread') {
-            if (editingOptionIdx !== null) {
-                const updated = [...breadOptions];
-                updated[editingOptionIdx] = formatted;
-                setBreadOptions(updated);
-            } else {
-                if (breadOptions.some(b => parseOptionItem(b).name.toLowerCase() === optionName.trim().toLowerCase())) {
-                    toast.error('This bread option already exists');
-                    return;
-                }
-                setBreadOptions([...breadOptions, formatted]);
-            }
-            toast.success('Bread option updated (click "Save Changes" at bottom to save)');
-        } else {
-            if (editingOptionIdx !== null) {
-                const updated = [...cookieOptions];
-                updated[editingOptionIdx] = formatted;
-                setCookieOptions(updated);
-            } else {
-                if (cookieOptions.some(c => parseOptionItem(c).name.toLowerCase() === optionName.trim().toLowerCase())) {
-                    toast.error('This cookie option already exists');
-                    return;
-                }
-                setCookieOptions([...cookieOptions, formatted]);
-            }
-            toast.success('Cookie option updated (click "Save Changes" at bottom to save)');
-        }
-        setIsOptionDialogOpen(false);
-    };
-
-    const removeOption = (type: 'bread' | 'cookie', index: number) => {
-        if (type === 'bread') {
-            setBreadOptions(breadOptions.filter((_, i) => i !== index));
-        } else {
-            setCookieOptions(cookieOptions.filter((_, i) => i !== index));
-        }
-    };
-
-    const moveOption = (type: 'bread' | 'cookie', index: number, direction: 'up' | 'down') => {
-        if (type === 'bread') {
-            if (direction === 'up' && index === 0) return;
-            if (direction === 'down' && index === breadOptions.length - 1) return;
-            const updated = [...breadOptions];
-            const targetIndex = direction === 'up' ? index - 1 : index + 1;
-            const temp = updated[index];
-            updated[index] = updated[targetIndex];
-            updated[targetIndex] = temp;
-            setBreadOptions(updated);
-        } else {
-            if (direction === 'up' && index === 0) return;
-            if (direction === 'down' && index === cookieOptions.length - 1) return;
-            const updated = [...cookieOptions];
-            const targetIndex = direction === 'up' ? index - 1 : index + 1;
-            const temp = updated[index];
-            updated[index] = updated[targetIndex];
-            updated[targetIndex] = temp;
-            setCookieOptions(updated);
-        }
     };
 
     // Field Creation / Dialog Editing
@@ -258,44 +155,54 @@ export default function AppSettingsClient({ initialSettings, initialFields }: Ap
         });
     };
 
-    // Dialog Save - Buffered into client state fields array!
     const handleSaveField = () => {
-        if (!fieldFormData.name || !fieldFormData.label) {
-            toast.error('Name and Label are required');
+        if (!fieldFormData.label.trim()) {
+            toast.error('Field display label is required');
             return;
         }
 
-        const nameExists = fields.some(f => 
-            f.name.toLowerCase() === fieldFormData.name.toLowerCase() && 
-            (!editingField || f.id !== editingField.id)
-        );
-        if (nameExists) {
-            toast.error(`A field with name "${fieldFormData.name}" already exists.`);
-            return;
+        let cleanName = fieldFormData.name.trim();
+        if (!cleanName) {
+            cleanName = fieldFormData.label.toLowerCase().replace(/[^a-z0-9_]/g, '_');
         }
 
         if (editingField) {
-            // Edit existing field in state
             setFields(fields.map(f => f.id === editingField.id ? {
                 ...f,
-                ...fieldFormData
+                name: cleanName,
+                label: fieldFormData.label.trim(),
+                placeholder: fieldFormData.placeholder.trim(),
+                type: fieldFormData.type,
+                location: fieldFormData.location,
+                is_required: fieldFormData.is_required,
+                default_options: fieldFormData.default_options,
+                auto_add: fieldFormData.auto_add
             } : f));
-            toast.success('Field changes updated (click "Save Changes" at bottom to save)');
+            toast.success('Field updated (click "Save Changes" at bottom to save)');
         } else {
-            // Add new field with a temporary ID
-            const tempId = 'temp_' + Date.now();
-            const locationFields = fields.filter(f => f.location === fieldFormData.location);
-            const maxSort = locationFields.reduce((max, f) => Math.max(max, f.sort_order || 0), -1);
+            if (fields.some(f => f.name.toLowerCase() === cleanName.toLowerCase())) {
+                toast.error('A field with this name ID already exists');
+                return;
+            }
+
+            const highestOrder = fields.reduce((max, f) => Math.max(max, f.sort_order || 0), -1);
             
-            const newField = {
-                id: tempId,
-                ...fieldFormData,
+            const newFieldObj = {
+                id: 'temp_' + Date.now(),
+                name: cleanName,
+                label: fieldFormData.label.trim(),
+                placeholder: fieldFormData.placeholder.trim(),
+                type: fieldFormData.type,
+                location: fieldFormData.location,
+                is_required: fieldFormData.is_required,
+                default_options: fieldFormData.default_options,
                 is_active: true,
-                sort_order: maxSort + 1,
+                sort_order: highestOrder + 1,
+                auto_add: fieldFormData.auto_add,
                 is_system_core: false
             };
-            setFields([...fields, newField]);
-            toast.success('New field added (click "Save Changes" at bottom to save)');
+            setFields([...fields, newFieldObj]);
+            toast.success('Field added (click "Save Changes" at bottom to save)');
         }
         setIsFieldDialogOpen(false);
     };
@@ -322,13 +229,11 @@ export default function AppSettingsClient({ initialSettings, initialFields }: Ap
         updatedLocationFields[idxInLocation] = updatedLocationFields[targetIdxInLocation];
         updatedLocationFields[targetIdxInLocation] = temp;
         
-        // Re-assign clean distinct sequential sort orders
         const updatedFieldsWithNewOrders = updatedLocationFields.map((field, index) => ({
             ...field,
             sort_order: index
         }));
         
-        // Re-merge into primary list
         const updatedFields = fields.map(f => {
             if (f.location === currentLocation) {
                 return updatedFieldsWithNewOrders.find(u => u.id === f.id)!;
@@ -363,7 +268,6 @@ export default function AppSettingsClient({ initialSettings, initialFields }: Ap
                 return;
             }
             
-            // Buffer ID if it's not a temp one
             if (!String(fieldToDelete).startsWith('temp_')) {
                 setDeletedFieldIds([...deletedFieldIds, fieldToDelete]);
             }
@@ -374,89 +278,11 @@ export default function AppSettingsClient({ initialSettings, initialFields }: Ap
         setFieldToDelete(null);
     };
 
-    const renderOptionList = (type: 'bread' | 'cookie', options: string[]) => {
-        const N = options.length;
-        const leftCount = Math.ceil(N / 2);
-        
-        const leftOptions = options.slice(0, leftCount);
-        const rightOptions = options.slice(leftCount);
-
-        const renderItem = (opt: string, originalIdx: number) => {
-            const parsed = parseOptionItem(opt);
-            return (
-                <motion.div 
-                    key={opt + originalIdx}
-                    initial={{ opacity: 0, scale: 0.95 }}
-                    animate={{ opacity: 1, scale: 1 }}
-                    exit={{ opacity: 0, scale: 0.95 }}
-                    className="flex flex-col justify-between p-3.5 rounded-2xl border border-gray-100 bg-gray-50/50 group hover:border-gray-200 hover:bg-gray-50 transition-all gap-1.5"
-                >
-                    <div className="flex items-center justify-between gap-2">
-                        <span className="text-sm font-bold text-gray-800 break-words flex-1">{parsed.name}</span>
-                        <div className="flex items-center gap-1 shrink-0">
-                            <button 
-                                onClick={() => openEditOption(type, originalIdx)}
-                                className="p-1.5 text-gray-400 hover:text-violet-600 hover:bg-violet-50 rounded-lg transition-colors"
-                                title="Edit Name & Allergens"
-                            >
-                                <Edit2 className="size-3.5" />
-                            </button>
-                            <button 
-                                onClick={() => moveOption(type, originalIdx, 'up')}
-                                disabled={originalIdx === 0}
-                                className="p-1.5 text-gray-400 hover:text-gray-900 disabled:opacity-20 transition-opacity"
-                                title="Move Up"
-                            >
-                                <ArrowUp className="size-4" />
-                            </button>
-                            <button 
-                                onClick={() => moveOption(type, originalIdx, 'down')}
-                                disabled={originalIdx === N - 1}
-                                className="p-1.5 text-gray-400 hover:text-gray-900 disabled:opacity-20 transition-opacity"
-                                title="Move Down"
-                            >
-                                <ArrowDown className="size-4" />
-                            </button>
-                            <button 
-                                onClick={() => removeOption(type, originalIdx)}
-                                className="p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors opacity-0 group-hover:opacity-100"
-                                title="Delete"
-                            >
-                                <Trash2 className="size-4" />
-                            </button>
-                        </div>
-                    </div>
-                    {parsed.allergens && parsed.allergens.length > 0 && (
-                        <AllergenBadges allergens={parsed.allergens} size="xs" showLabels={true} itemType={type} className="mt-0.5" />
-                    )}
-                </motion.div>
-            );
-        };
-        
-        return (
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-4">
-                {/* Left Column */}
-                <div className="flex flex-col gap-3">
-                    <AnimatePresence>
-                        {leftOptions.map((opt, i) => renderItem(opt, i))}
-                    </AnimatePresence>
-                </div>
-
-                {/* Right Column */}
-                <div className="flex flex-col gap-3">
-                    <AnimatePresence>
-                        {rightOptions.map((opt, i) => renderItem(opt, leftCount + i))}
-                    </AnimatePresence>
-                </div>
-            </div>
-        );
-    };
-
     return (
         <div className="space-y-8 max-w-4xl">
             <div>
                 <h1 className="text-3xl font-extrabold tracking-tight text-gray-900">Global App Settings</h1>
-                <p className="text-gray-500 font-medium mt-1">Manage global options and dynamic checkout/meal fields.</p>
+                <p className="text-gray-500 font-medium mt-1">Manage global app notifications and dynamic checkout/meal fields.</p>
             </div>
 
             <div className="grid grid-cols-1 gap-8">
@@ -502,56 +328,6 @@ export default function AppSettingsClient({ initialSettings, initialFields }: Ap
                     </CardContent>
                 </Card>
 
-                {/* Bread Options */}
-                <Card className="rounded-[32px] border-none shadow-xl shadow-gray-200/50 overflow-hidden bg-white">
-                    <CardHeader className="p-8 border-b border-gray-50 flex flex-row items-center justify-between gap-4 flex-wrap">
-                        <div className="flex items-center gap-4">
-                            <div className="size-10 rounded-xl bg-amber-50 flex items-center justify-center text-amber-600">
-                                <Utensils className="size-5" />
-                            </div>
-                            <div>
-                                <CardTitle className="text-xl font-bold">Bread Options</CardTitle>
-                                <CardDescription>Manage the list of bread types and their allergen/dietary tags.</CardDescription>
-                            </div>
-                        </div>
-                        <Button
-                            type="button"
-                            onClick={() => openAddOption('bread')}
-                            className="rounded-xl bg-amber-600 hover:bg-amber-700 shadow-md shadow-amber-100 gap-1.5 text-white font-bold text-xs"
-                        >
-                            <Plus className="size-4" /> Add Bread
-                        </Button>
-                    </CardHeader>
-                    <CardContent className="p-8">
-                        {renderOptionList('bread', breadOptions)}
-                    </CardContent>
-                </Card>
-
-                {/* Cookie Options */}
-                <Card className="rounded-[32px] border-none shadow-xl shadow-gray-200/50 overflow-hidden bg-white">
-                    <CardHeader className="p-8 border-b border-gray-50 flex flex-row items-center justify-between gap-4 flex-wrap">
-                        <div className="flex items-center gap-4">
-                            <div className="size-10 rounded-xl bg-orange-50 flex items-center justify-center text-orange-600">
-                                <Cookie className="size-5" />
-                            </div>
-                            <div>
-                                <CardTitle className="text-xl font-bold">Cookie Options</CardTitle>
-                                <CardDescription>Manage the list of cookie types and their allergen/dietary tags.</CardDescription>
-                            </div>
-                        </div>
-                        <Button
-                            type="button"
-                            onClick={() => openAddOption('cookie')}
-                            className="rounded-xl bg-orange-600 hover:bg-orange-700 shadow-md shadow-orange-100 gap-1.5 text-white font-bold text-xs"
-                        >
-                            <Plus className="size-4" /> Add Cookie
-                        </Button>
-                    </CardHeader>
-                    <CardContent className="p-8">
-                        {renderOptionList('cookie', cookieOptions)}
-                    </CardContent>
-                </Card>
-
                 {/* Dynamic Form Fields Management */}
                 <Card className="rounded-[32px] border-none shadow-xl shadow-gray-200/50 overflow-hidden bg-white">
                     <CardHeader className="p-8 border-b border-gray-50 flex flex-row items-center justify-between gap-4 flex-wrap">
@@ -561,7 +337,7 @@ export default function AppSettingsClient({ initialSettings, initialFields }: Ap
                             </div>
                             <div>
                                 <CardTitle className="text-xl font-bold">Dynamic Form Fields</CardTitle>
-                                <CardDescription>Define global fields, set their order, and control default default onboarding rules.</CardDescription>
+                                <CardDescription>Define global fields, set their order, and control default onboarding rules.</CardDescription>
                             </div>
                         </div>
                         <Button 
@@ -599,13 +375,19 @@ export default function AppSettingsClient({ initialSettings, initialFields }: Ap
                                                                 {field.auto_add && (
                                                                     <span className="px-1.5 py-0.5 text-[9px] font-bold bg-violet-50 text-violet-600 rounded-md">AUTO-ADD</span>
                                                                 )}
+                                                                {field.is_required && (
+                                                                    <span className="px-1.5 py-0.5 text-[9px] font-bold bg-rose-50 text-rose-600 rounded-md">REQUIRED</span>
+                                                                )}
                                                             </div>
-                                                            <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-tight mt-0.5">{field.type} • {field.is_required ? 'Required' : 'Optional'} • Name: {field.name}</p>
+                                                            <p className="text-xs text-gray-400 mt-0.5 font-mono">
+                                                                ID: {field.name} · Type: {field.type}
+                                                            </p>
                                                         </div>
                                                     </div>
-                                                    <div className="flex items-center gap-4 self-end sm:self-auto">
-                                                        {/* Up/Down Sort */}
-                                                        <div className="flex items-center gap-0.5">
+
+                                                    <div className="flex items-center gap-2 self-end sm:self-center">
+                                                        {/* Reordering */}
+                                                        <div className="flex items-center gap-1">
                                                             <Button 
                                                                 variant="ghost" 
                                                                 size="icon" 
@@ -640,7 +422,7 @@ export default function AppSettingsClient({ initialSettings, initialFields }: Ap
                                                             </span>
                                                         </div>
 
-                                                        {/* Edit / Delete (Visible on Hover/Focus) */}
+                                                        {/* Edit / Delete */}
                                                         <div className="flex items-center gap-1 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity ml-1">
                                                             <Button variant="ghost" size="icon" className="size-7 text-gray-400 hover:text-gray-900" onClick={() => handleEditField(field)}>
                                                                 <Edit2 className="size-3.5" />
@@ -684,13 +466,19 @@ export default function AppSettingsClient({ initialSettings, initialFields }: Ap
                                                                 {field.auto_add && (
                                                                     <span className="px-1.5 py-0.5 text-[9px] font-bold bg-violet-50 text-violet-600 rounded-md">AUTO-ADD</span>
                                                                 )}
+                                                                {field.is_required && (
+                                                                    <span className="px-1.5 py-0.5 text-[9px] font-bold bg-rose-50 text-rose-600 rounded-md">REQUIRED</span>
+                                                                )}
                                                             </div>
-                                                            <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-tight mt-0.5">{field.type} • {field.is_required ? 'Required' : 'Optional'} • Name: {field.name}</p>
+                                                            <p className="text-xs text-gray-400 mt-0.5 font-mono">
+                                                                ID: {field.name} · Type: {field.type}
+                                                            </p>
                                                         </div>
                                                     </div>
-                                                    <div className="flex items-center gap-4 self-end sm:self-auto">
-                                                        {/* Up/Down Sort */}
-                                                        <div className="flex items-center gap-0.5">
+
+                                                    <div className="flex items-center gap-2 self-end sm:self-center">
+                                                        {/* Reordering */}
+                                                        <div className="flex items-center gap-1">
                                                             <Button 
                                                                 variant="ghost" 
                                                                 size="icon" 
@@ -745,59 +533,6 @@ export default function AppSettingsClient({ initialSettings, initialFields }: Ap
                         </div>
                     </CardContent>
                 </Card>
-
-                {/* Bread & Cookie Option Edit Dialog */}
-                <Dialog open={isOptionDialogOpen} onOpenChange={setIsOptionDialogOpen}>
-                    <DialogContent className="sm:max-w-[560px] max-h-[90vh] overflow-y-auto rounded-3xl bg-white border border-gray-100 shadow-2xl p-6">
-                        <div className="flex flex-col gap-2">
-                            <DialogTitle className="text-xl font-extrabold text-gray-900">
-                                {editingOptionIdx !== null ? `Edit ${optionDialogType === 'bread' ? 'Bread' : 'Cookie'} Option` : `Add ${optionDialogType === 'bread' ? 'Bread' : 'Cookie'} Option`}
-                            </DialogTitle>
-                            <DialogDescription className="text-gray-500 text-xs">
-                                Configure the option name and select its allergen warnings and dietary lifestyle tags.
-                            </DialogDescription>
-                        </div>
-
-                        <div className="space-y-5 py-4">
-                            <div className="space-y-2">
-                                <Label htmlFor="option_name" className="text-sm font-bold text-gray-800">
-                                    Option Name
-                                </Label>
-                                <Input 
-                                    id="option_name"
-                                    value={optionName}
-                                    onChange={e => setOptionName(e.target.value)}
-                                    placeholder={optionDialogType === 'bread' ? 'e.g. Sourdough, Gluten-Free Roll' : 'e.g. Chocolate Chip, Gluten-Free Brownie'}
-                                    className="rounded-xl border-gray-200 bg-gray-50/50 focus:bg-white"
-                                    onKeyDown={e => e.key === 'Enter' && handleSaveOption()}
-                                />
-                            </div>
-
-                            <div className="space-y-2 pt-2">
-                                <Label className="text-sm font-bold text-gray-800">
-                                    Allergens & Dietary Tags
-                                </Label>
-                                <p className="text-xs text-gray-500">
-                                    Select all allergens contained in this option or dietary categories it satisfies.
-                                </p>
-                                <div className="p-3.5 rounded-2xl border border-gray-100 bg-gray-50/30">
-                                    <AllergenPicker 
-                                        selectedAllergens={optionAllergens}
-                                        onChange={setOptionAllergens}
-                                        itemType={optionDialogType}
-                                    />
-                                </div>
-                            </div>
-                        </div>
-
-                        <DialogFooter className="pt-2 gap-2 sm:gap-0">
-                            <Button variant="outline" className="rounded-xl border-gray-200" onClick={() => setIsOptionDialogOpen(false)}>Cancel</Button>
-                            <Button className="bg-violet-600 hover:bg-violet-700 text-white font-bold px-8 shadow-lg shadow-violet-100 rounded-xl" onClick={handleSaveOption}>
-                                Save Option
-                            </Button>
-                        </DialogFooter>
-                    </DialogContent>
-                </Dialog>
 
                 {/* Field Edit Dialog */}
                 <Dialog open={isFieldDialogOpen} onOpenChange={setIsFieldDialogOpen}>
@@ -963,7 +698,7 @@ export default function AppSettingsClient({ initialSettings, initialFields }: Ap
                                                     </SelectTrigger>
                                                     <SelectContent>
                                                         {fieldFormData.default_options.map((opt: string, idx: number) => (
-                                                            <SelectItem key={idx} value={opt} className="text-xs">
+                                                             <SelectItem key={idx} value={opt} className="text-xs">
                                                                 {opt} {idx === 0 ? '(Default)' : ''}
                                                             </SelectItem>
                                                         ))}

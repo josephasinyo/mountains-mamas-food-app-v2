@@ -9,7 +9,7 @@ import {
     LayoutDashboard, ShoppingCart, ClipboardList, UtensilsCrossed,
     Building2, FileText, ScrollText, BarChart3, Activity,
     LogOut, Ticket, Mountain, PanelLeftClose, PanelLeft, Settings, UserCog,
-    BellRing, X, Eye, Mail, BookOpen
+    BellRing, X, Eye, Mail, BookOpen, Wheat
 } from 'lucide-react';
 import { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -43,6 +43,7 @@ const ALL_NAV_SECTIONS = [
         label: 'Management',
         items: [
             { title: 'Meals', href: '/admin/meals', icon: UtensilsCrossed },
+            { title: 'Ingredients', href: '/admin/ingredients', icon: Wheat },
             { title: 'Companies', href: '/admin/companies', icon: Building2 },
             { title: 'App Settings', href: '/admin/settings', icon: Settings },
             { title: 'Staff', href: '/admin/staff', icon: UserCog, adminOnly: true },
