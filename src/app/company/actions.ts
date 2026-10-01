@@ -6,7 +6,7 @@ import { revalidatePath } from 'next/cache';
 import { cookies } from 'next/headers';
 
 
-async function getCompanyId() {
+export async function getCompanyId() {
     const supabase = await createClient();
     const { data: { user }, error: userError } = await supabase.auth.getUser();
     if (userError || !user) throw new Error('Not authenticated');

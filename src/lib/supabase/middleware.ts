@@ -111,6 +111,39 @@ export async function updateSession(request: NextRequest) {
             url.pathname = '/company/login';
             return NextResponse.redirect(url);
         }
+
+        const isCompanyStaff = user.user_metadata?.role === 'company_staff' || (user.user_metadata?.role === 'staff' && user.user_metadata?.company_id);
+
+        // Check if company staff is suspended
+        if (isCompanyStaff && user.user_metadata?.suspended) {
+            const url = request.nextUrl.clone();
+            url.pathname = '/company/login';
+            url.searchParams.set('error', 'Account is suspended. Please contact your company manager.');
+            return NextResponse.redirect(url);
+        }
+
+        // Force password reset if needed
+        if (isCompanyStaff && user.user_metadata?.needs_password_change) {
+            const url = request.nextUrl.clone();
+            url.pathname = '/company/reset-password';
+            return NextResponse.redirect(url);
+        }
+
+        // Enforce accessible pages for company staff
+        if (isCompanyStaff && user.user_metadata?.accessible_pages && Array.isArray(user.user_metadata.accessible_pages)) {
+            const accessiblePages: string[] = user.user_metadata.accessible_pages;
+            if (accessiblePages.length > 0) {
+                const isAllowed = accessiblePages.some(page => 
+                    page === pathname || (page !== '/company' && pathname.startsWith(page))
+                );
+
+                if (!isAllowed) {
+                    const url = request.nextUrl.clone();
+                    url.pathname = accessiblePages[0] || '/company';
+                    return NextResponse.redirect(url);
+                }
+            }
+        }
     }
 
     return supabaseResponse;

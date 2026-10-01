@@ -8,7 +8,7 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import {
     LayoutDashboard, ShoppingCart, UtensilsCrossed,
     Settings, LogOut, Mountain, PanelLeftClose, PanelLeft,
-    Clock, ExternalLink, Eye, ArrowLeft, FileText, BookOpen, Wheat
+    Clock, ExternalLink, Eye, ArrowLeft, FileText, BookOpen, Wheat, Users
 } from 'lucide-react';
 import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -32,6 +32,12 @@ const navSections = [
             { title: 'Menu Management', href: '/company/menu', icon: UtensilsCrossed },
             { title: 'Ingredients', href: '/company/ingredients', icon: Wheat },
             { title: 'App Settings', href: '/company/settings', icon: Settings },
+        ],
+    },
+    {
+        label: 'Company Team',
+        items: [
+            { title: 'Staff', href: '/company/staff', icon: Users },
         ],
     },
 ];
@@ -185,6 +191,21 @@ export default function CompanyLayout({ children }: { children: React.ReactNode 
         );
     }
 
+    const isStaff = user?.user_metadata?.role === 'company_staff' || (user?.user_metadata?.role === 'staff' && user?.user_metadata?.company_id);
+    const accessiblePages: string[] = user?.user_metadata?.accessible_pages || [];
+
+    const visibleSections = isStaff
+        ? navSections
+            .map(section => ({
+                ...section,
+                items: section.items.filter(item => 
+                    accessiblePages.includes(item.href) || 
+                    accessiblePages.some(page => page !== '/company' && item.href.startsWith(page))
+                )
+            }))
+            .filter(section => section.items.length > 0)
+        : navSections;
+
     return (
         <div className="flex flex-col min-h-screen bg-[#fafafa] overflow-x-hidden">
             {/* Impersonation Banner */}
@@ -253,7 +274,7 @@ export default function CompanyLayout({ children }: { children: React.ReactNode 
                 {/* Nav */}
                 <ScrollArea className="flex-1 py-4">
                     <nav className="space-y-6 px-3">
-                        {navSections.map((section) => (
+                        {visibleSections.map((section) => (
                             <div key={section.label}>
                                 <AnimatePresence>
                                     {(!collapsed || isMobile) && (

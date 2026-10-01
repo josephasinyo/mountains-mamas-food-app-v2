@@ -368,3 +368,43 @@ export async function sendStaffInviteEmail(staffEmail: string, staffName: string
         htmlContent
     });
 }
+
+/**
+ * Sends an invitation email to a newly created company team/staff member.
+ */
+export async function sendCompanyStaffInviteEmail(staffEmail: string, staffName: string, companyName: string, tempPassword: string) {
+    const loginUrl = `${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/company/login`;
+
+    const htmlContent = `
+        <div style="font-family: sans-serif; max-width: 600px; margin: 0 auto; color: #111827;">
+            <div style="background-color: #7c3aed; padding: 32px; text-align: center; border-radius: 16px 16px 0 0;">
+                <h1 style="color: white; margin: 0; font-size: 24px;">Welcome to ${companyName} Portal</h1>
+            </div>
+            <div style="padding: 32px; border: 1px solid #e5e7eb; border-top: none; border-radius: 0 0 16px 16px;">
+                <p style="font-size: 16px; line-height: 24px;">Hello <strong>${staffName}</strong>,</p>
+                <p style="font-size: 16px; line-height: 24px;">You have been invited to join the <strong>${companyName}</strong> team portal on Mountain Mama's Café. You now have access to manage tour orders, menus, and company settings.</p>
+                
+                <div style="background-color: #f9fafb; padding: 24px; border-radius: 12px; margin: 24px 0;">
+                    <p style="margin: 0 0 8px 0; font-size: 14px; color: #6b7280; font-weight: bold; text-transform: uppercase;">Temporary Login Credentials</p>
+                    <p style="margin: 0; font-size: 16px;"><strong>Email:</strong> ${staffEmail}</p>
+                    <p style="margin: 8px 0 0 0; font-size: 16px;"><strong>Password:</strong> ${tempPassword}</p>
+                </div>
+                
+                <p style="font-size: 15px; color: #dc2626; font-weight: bold;">Note: You will be prompted to change this temporary password the first time you log in.</p>
+
+                <a href="${loginUrl}" style="display: inline-block; background-color: #7c3aed; color: white; padding: 12px 24px; border-radius: 8px; text-decoration: none; font-weight: bold; font-size: 16px; margin-top: 16px;">Login to Company Portal</a>
+                
+                <p style="margin-top: 32px; font-size: 14px; color: #6b7280; border-top: 1px solid #e5e7eb; padding-top: 24px;">
+                    If you have any questions, please contact your company manager or Mountain Mama's Café support.
+                </p>
+            </div>
+        </div>
+    `;
+
+    return sendEmail({
+        to: [{ email: staffEmail, name: staffName }],
+        subject: `Invitation: Team Access to ${companyName} Portal`,
+        htmlContent
+    });
+}
+
