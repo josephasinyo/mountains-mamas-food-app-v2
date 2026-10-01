@@ -36,9 +36,18 @@ export default function CompanyLoginPage() {
             return;
         }
 
-        // Check if user is a company user
+        // Check if user is a company user or staff
         const { data: userData } = await supabase.auth.getUser();
-        const role = userData?.user?.user_metadata?.role;
+        const user = userData?.user;
+        const role = user?.user_metadata?.role;
+        const suspended = user?.user_metadata?.suspended;
+
+        if (suspended) {
+            setError('Your account has been suspended. Please contact your company administrator.');
+            await supabase.auth.signOut();
+            setLoading(false);
+            return;
+        }
 
         if (role === 'admin') {
             router.push('/company');
@@ -51,6 +60,13 @@ export default function CompanyLoginPage() {
                 .single();
 
             if (company?.needs_password_change) {
+                router.push('/company/reset-password?force=true');
+            } else {
+                router.push('/company');
+            }
+        } else if (role === 'company_staff' || (role === 'staff' && user?.user_metadata?.company_id)) {
+            // Check if company staff needs to change temporary password
+            if (user?.user_metadata?.needs_password_change) {
                 router.push('/company/reset-password?force=true');
             } else {
                 router.push('/company');

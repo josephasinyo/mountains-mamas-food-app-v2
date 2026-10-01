@@ -1,21 +1,63 @@
 'use client';
 
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, useCallback } from 'react';
 import Link from 'next/link';
 import { 
     Search, Printer, BookOpen, ChevronRight, ChevronLeft,
-    ZoomIn, X, FileText, CheckCircle2, AlertTriangle, Lightbulb, ExternalLink
+    ZoomIn, X, FileText, CheckCircle2, AlertTriangle, Lightbulb, ExternalLink,
+    Link2, Check, Share2
 } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { motion, AnimatePresence } from 'framer-motion';
+import { toast } from 'sonner';
 import { safePrint } from '@/lib/utils';
 import { ManualData, ManualSection } from '@/lib/manuals-data';
 
 interface ManualViewerProps {
     data: ManualData;
+}
+
+// Smart section resolution from URL hash, number, question, or keyword
+function findMatchingSection(rawHash: string, sections: ManualSection[]): string | null {
+    if (!rawHash) return null;
+    const clean = decodeURIComponent(rawHash.replace(/^#/, '')).trim().toLowerCase();
+    if (!clean) return null;
+
+    // 1. Direct section ID match (e.g. #team-staff-management)
+    const direct = sections.find(s => s.id.toLowerCase() === clean);
+    if (direct) return direct.id;
+
+    // 2. Number / Question index match: "#10", "#section-10", "#sec-10", "#question-10", "#step-10", "10."
+    const numMatch = clean.match(/^(?:section-|sec-|step-|question-|q-)?(\d+)/i);
+    if (numMatch) {
+        const num = parseInt(numMatch[1], 10);
+        // Look for section whose title starts with that number (e.g. "10. How to Create...")
+        const byNumTitle = sections.find(s => s.title.trim().startsWith(`${num}.`) || s.title.trim().startsWith(`${num} `));
+        if (byNumTitle) return byNumTitle.id;
+        // Or 1-indexed section position
+        if (num > 0 && num <= sections.length) {
+            return sections[num - 1].id;
+        }
+    }
+
+    // 3. Normalized slug match (e.g. #how-to-create-and-onboard-team-members or #onboard-team-members)
+    const slugify = (str: string) => str.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
+    const cleanSlug = slugify(clean);
+    const bySlug = sections.find(s => slugify(s.title).includes(cleanSlug) || cleanSlug.includes(slugify(s.title)) || slugify(s.id).includes(cleanSlug));
+    if (bySlug) return bySlug.id;
+
+    // 4. Keyword / Question match in ID, Title or Description
+    const byKeyword = sections.find(s => 
+        s.id.toLowerCase().includes(clean) || 
+        s.title.toLowerCase().includes(clean) ||
+        s.description?.toLowerCase().includes(clean)
+    );
+    if (byKeyword) return byKeyword.id;
+
+    return null;
 }
 
 // Helper to style directory paths (e.g. /admin, /company/settings, /cart) as interactive clickable badges
@@ -63,11 +105,37 @@ function SectionContent({
     section: ManualSection; 
     onZoomImage: (img: { src: string; alt?: string }) => void;
 }) {
+    const [copied, setCopied] = useState(false);
+
+    const handleCopySectionLink = () => {
+        if (typeof window !== 'undefined') {
+            const url = `${window.location.origin}${window.location.pathname}#${section.id}`;
+            navigator.clipboard.writeText(url);
+            setCopied(true);
+            toast.success('Direct link copied to clipboard!', {
+                description: url
+            });
+            setTimeout(() => setCopied(false), 2500);
+        }
+    };
+
     return (
         <div className="space-y-6">
-            <h2 className="text-xl md:text-2xl font-black text-gray-900 tracking-tight flex items-center gap-2">
-                <span>{section.title}</span>
-            </h2>
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-gray-100 pb-4">
+                <h2 className="text-xl md:text-2xl font-black text-gray-900 tracking-tight flex items-center gap-2">
+                    <span>{section.title}</span>
+                </h2>
+                <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={handleCopySectionLink}
+                    className="self-start sm:self-auto rounded-xl text-xs font-bold gap-1.5 h-8 text-violet-700 bg-violet-50/70 border-violet-200 hover:bg-violet-100 hover:border-violet-300 transition-colors shadow-2xs shrink-0 cursor-pointer print:hidden"
+                    title="Copy direct link for this section to share with partners"
+                >
+                    {copied ? <Check className="size-3.5 text-emerald-600" /> : <Link2 className="size-3.5 text-violet-600" />}
+                    <span>{copied ? 'Link Copied!' : 'Copy Section Link'}</span>
+                </Button>
+            </div>
 
             {section.description && (
                 <div className="bg-indigo-50/70 border-l-4 border-indigo-500 p-4 rounded-r-2xl text-xs md:text-sm text-indigo-950 font-medium my-3 shadow-2xs">
@@ -206,6 +274,30 @@ export default function ManualViewer({ data }: ManualViewerProps) {
     const [searchQuery, setSearchQuery] = useState('');
     const [zoomImage, setZoomImage] = useState<{ src: string; alt?: string } | null>(null);
 
+    // Synchronize section selection with URL hash
+    useEffect(() => {
+        const syncHashWithSection = () => {
+            if (typeof window === 'undefined') return;
+            const hash = window.location.hash;
+            if (hash) {
+                const matchedId = findMatchingSection(hash, data.sections);
+                if (matchedId) {
+                    setSelectedSectionId(matchedId);
+                    setTimeout(() => {
+                        const mainContent = document.getElementById('manual-main-content');
+                        if (mainContent) {
+                            mainContent.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                        }
+                    }, 50);
+                }
+            }
+        };
+
+        syncHashWithSection();
+        window.addEventListener('hashchange', syncHashWithSection);
+        return () => window.removeEventListener('hashchange', syncHashWithSection);
+    }, [data.sections]);
+
     // If active section ID is not found, reset to first section
     useEffect(() => {
         if (!data.sections.some(s => s.id === selectedSectionId) && data.sections.length > 0) {
@@ -239,8 +331,11 @@ export default function ManualViewer({ data }: ManualViewerProps) {
     const prevSection = currentSectionIndex > 0 ? data.sections[currentSectionIndex - 1] : null;
     const nextSection = currentSectionIndex < data.sections.length - 1 ? data.sections[currentSectionIndex + 1] : null;
 
-    const handleSelectSection = (id: string) => {
+    const handleSelectSection = (id: string, updateUrlHash: boolean = true) => {
         setSelectedSectionId(id);
+        if (updateUrlHash && typeof window !== 'undefined') {
+            window.history.replaceState(null, '', `#${id}`);
+        }
         // Scroll smoothly to top of manual content on mobile / small screens
         const mainContent = document.getElementById('manual-main-content');
         if (mainContent && window.innerWidth < 1024) {

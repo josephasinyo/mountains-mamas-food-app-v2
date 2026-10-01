@@ -62,7 +62,7 @@ export default function CompanyLayout({ children }: { children: React.ReactNode 
     useEffect(() => {
         async function getSession() {
             const { data: { session } } = await supabase.auth.getSession();
-            const publicRoutes = ['/company/login', '/company/register', '/company/forgot-password'];
+            const publicRoutes = ['/company/login', '/company/register', '/company/forgot-password', '/company/reset-password'];
             if (!session) {
                 if (!publicRoutes.includes(pathname)) {
                     router.push('/company/login');
@@ -169,7 +169,7 @@ export default function CompanyLayout({ children }: { children: React.ReactNode 
     };
 
     // Public guest pages — standalone, no sidebar
-    const publicRoutes = ['/company/login', '/company/register', '/company/forgot-password'];
+    const publicRoutes = ['/company/login', '/company/register', '/company/forgot-password', '/company/reset-password'];
     if (publicRoutes.includes(pathname)) {
         return (
             <div className="min-h-screen bg-background">

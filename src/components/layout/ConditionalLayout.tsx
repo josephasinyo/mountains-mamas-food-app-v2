@@ -15,6 +15,7 @@ export default function ConditionalLayout({ children }: { children: React.ReactN
 
     const isPublicMealRoute = pathname?.startsWith('/public-meal');
     const isInvoiceRoute = pathname?.startsWith('/invoice');
+    const isManualsRoute = pathname?.startsWith('/manuals');
 
     useEffect(() => {
         if (typeof window !== 'undefined' && window.location.hash) {
@@ -41,8 +42,8 @@ export default function ConditionalLayout({ children }: { children: React.ReactN
         }
     }, []);
 
-    // Admin, company dashboard, onboarding, public meal showcase, invoice pages, and root pages get a clean layout (no cart/header)
-    if (isAdminRoute || isCompanyDashRoute || isOnboardRoute || pathname === '/' || isPublicMealRoute || isInvoiceRoute) {
+    // Admin, company dashboard, onboarding, public meal showcase, invoice pages, manuals, and root pages get a clean layout (no cart/header)
+    if (isAdminRoute || isCompanyDashRoute || isOnboardRoute || pathname === '/' || isPublicMealRoute || isInvoiceRoute || isManualsRoute) {
         return <>{children}</>;
     }
 

@@ -21,7 +21,7 @@ interface CompanyDashboardClientProps {
 }
 
 export default function CompanyDashboardClient({ initialData }: CompanyDashboardClientProps) {
-    const { stats, recentOrders, pendingInvoices = [] } = initialData;
+    const { stats, recentOrders, pendingInvoices = [], canAccessInvoices = true } = initialData;
     const [expanded, setExpanded] = React.useState<string | null>(null);
     const [sortConfig, setSortConfig] = React.useState<{ key: 'created_at' | 'tour_date', direction: 'asc' | 'desc' }>({ 
         key: 'created_at', 
@@ -79,7 +79,7 @@ export default function CompanyDashboardClient({ initialData }: CompanyDashboard
             description: 'Awaiting fulfillment',
             href: '/company/orders'
         },
-        {
+        ...(canAccessInvoices ? [{
             title: 'Unpaid Invoices',
             value: unpaidCount > 0 ? formatCurrency(unpaidTotal) : '$0.00',
             icon: FileText,
@@ -88,7 +88,7 @@ export default function CompanyDashboardClient({ initialData }: CompanyDashboard
             badge: unpaidCount > 0 ? `${unpaidCount} Pending` : null,
             description: unpaidCount > 0 ? `${unpaidCount} invoice(s) awaiting payment` : 'All invoices paid',
             href: '/company/invoices'
-        }
+        }] : [])
     ];
 
     const container = {
@@ -115,7 +115,7 @@ export default function CompanyDashboardClient({ initialData }: CompanyDashboard
             </div>
 
             {/* Pending Invoices Alert Banner */}
-            {pendingInvoices && pendingInvoices.length > 0 && (
+            {canAccessInvoices && pendingInvoices && pendingInvoices.length > 0 && (
                 <motion.div
                     initial={{ opacity: 0, y: -10 }}
                     animate={{ opacity: 1, y: 0 }}
@@ -179,7 +179,7 @@ export default function CompanyDashboardClient({ initialData }: CompanyDashboard
                 variants={container}
                 initial="hidden"
                 animate="show"
-                className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6"
+                className={`grid grid-cols-1 sm:grid-cols-2 ${statCards.length === 3 ? 'lg:grid-cols-3' : 'lg:grid-cols-4'} gap-6`}
             >
                 {statCards.map((card, i) => (
                     <motion.div key={i} variants={item}>

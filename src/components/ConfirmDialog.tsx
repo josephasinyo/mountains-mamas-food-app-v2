@@ -15,7 +15,7 @@ import { AlertTriangle, Info, CheckCircle2, HelpCircle, Loader2 } from 'lucide-r
 interface ConfirmDialogProps {
     isOpen: boolean;
     onClose: () => void;
-    onConfirm: () => void;
+    onConfirm: () => void | Promise<void>;
     title: string;
     description: string;
     confirmText?: string;
@@ -35,6 +35,8 @@ export function ConfirmDialog({
     variant = 'info',
     isLoading = false
 }: ConfirmDialogProps) {
+    const [internalLoading, setInternalLoading] = React.useState(false);
+    const activeLoading = isLoading || internalLoading;
     
     const getIcon = () => {
         switch (variant) {
@@ -54,8 +56,24 @@ export function ConfirmDialog({
         }
     };
 
+    const handleConfirm = async () => {
+        if (activeLoading) return;
+        try {
+            const result = onConfirm();
+            if (result && typeof (result as any).then === 'function') {
+                setInternalLoading(true);
+                await result;
+                onClose();
+            }
+        } catch (err) {
+            console.error('ConfirmDialog action error:', err);
+        } finally {
+            setInternalLoading(false);
+        }
+    };
+
     return (
-        <Dialog open={isOpen} onOpenChange={(open) => !open && !isLoading && onClose()}>
+        <Dialog open={isOpen} onOpenChange={(open) => !open && !activeLoading && onClose()}>
             <DialogContent className="sm:max-w-[440px] p-0 overflow-hidden rounded-3xl border-none shadow-2xl">
                 <div className="p-8">
                     <div className="flex items-start gap-4">
@@ -83,22 +101,18 @@ export function ConfirmDialog({
                     <Button
                         variant="ghost"
                         onClick={onClose}
-                        disabled={isLoading}
+                        disabled={activeLoading}
                         className="rounded-xl font-bold text-gray-500 hover:text-gray-700 hover:bg-gray-100 px-6 h-11"
                     >
                         {cancelText}
                     </Button>
                     <Button
-                        onClick={() => {
-                            if (!isLoading) {
-                                onConfirm();
-                            }
-                        }}
-                        disabled={isLoading}
+                        onClick={handleConfirm}
+                        disabled={activeLoading}
                         className={`rounded-xl font-black px-8 h-11 shadow-lg transition-all active:scale-95 ${getButtonStyles()}`}
                     >
-                        {isLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                        {confirmText}
+                        {activeLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                        {activeLoading ? 'Processing...' : confirmText}
                     </Button>
                 </DialogFooter>
             </DialogContent>

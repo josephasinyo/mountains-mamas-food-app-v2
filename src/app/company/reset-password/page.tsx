@@ -55,7 +55,8 @@ export default function ResetPasswordPage() {
         }
 
         const { error: updateError } = await supabase.auth.updateUser({
-            password: password
+            password: password,
+            data: { needs_password_change: false }
         });
 
         if (updateError) {
@@ -64,23 +65,19 @@ export default function ResetPasswordPage() {
             return;
         }
 
-        // If it was a forced change, update the tour_companies table securely via Server Action
-        if (isForced) {
-            const res = await completeForcedPasswordChange();
-            if (!res.success) {
-                setError(res.error || 'Failed to finalize your password update. Please try again.');
-                setLoading(false);
-                return;
-            }
+        // Finalize password change across auth metadata and company records
+        const res = await completeForcedPasswordChange();
+        if (!res.success) {
+            console.error('Password reset completion warning:', res.error);
         }
 
         setSuccess(true);
         setLoading(false);
         
-        // Redirect to dashboard after a delay
+        // Refresh session and redirect to dashboard
         setTimeout(() => {
-            router.push('/company');
-        }, 2000);
+            window.location.href = '/company';
+        }, 1500);
     };
 
     return (

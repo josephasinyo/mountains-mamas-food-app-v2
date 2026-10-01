@@ -55,6 +55,12 @@ const AVAILABLE_PAGES = [
     { id: '/company/staff', label: 'Staff Management' },
 ];
 
+const DEFAULT_STAFF_PAGES = [
+    '/company', 
+    '/company/orders', 
+    '/company/manual'
+];
+
 export function CompanyStaffClient({ initialStaff }: { initialStaff: StaffUser[] }) {
     const [staff, setStaff] = useState<StaffUser[]>(initialStaff);
     const [search, setSearch] = useState('');
@@ -64,13 +70,7 @@ export function CompanyStaffClient({ initialStaff }: { initialStaff: StaffUser[]
     // Add Form State
     const [name, setName] = useState('');
     const [email, setEmail] = useState('');
-    const [selectedPages, setSelectedPages] = useState<string[]>([
-        '/company', 
-        '/company/orders', 
-        '/company/invoices',
-        '/company/menu',
-        '/company/ingredients'
-    ]);
+    const [selectedPages, setSelectedPages] = useState<string[]>(DEFAULT_STAFF_PAGES);
     const [loading, setLoading] = useState(false);
 
     // Edit Form State
@@ -105,6 +105,7 @@ export function CompanyStaffClient({ initialStaff }: { initialStaff: StaffUser[]
                 setIsAddOpen(false);
                 setName('');
                 setEmail('');
+                setSelectedPages(DEFAULT_STAFF_PAGES);
                 window.location.reload();
             } else {
                 toast.error(result.error || 'Failed to create team member');
@@ -189,7 +190,7 @@ export function CompanyStaffClient({ initialStaff }: { initialStaff: StaffUser[]
                         onClick={() => {
                             setName('');
                             setEmail('');
-                            setSelectedPages(['/company', '/company/orders', '/company/invoices', '/company/menu', '/company/ingredients']);
+                            setSelectedPages(DEFAULT_STAFF_PAGES);
                             setIsAddOpen(true);
                         }} 
                         className="gap-2 rounded-xl bg-violet-600 hover:bg-violet-700 shadow-md shadow-violet-100 font-bold h-10 px-4"
@@ -225,12 +226,19 @@ export function CompanyStaffClient({ initialStaff }: { initialStaff: StaffUser[]
                             : 'Add staff members to give your team access to manage orders, invoices, and menus.'}
                     </p>
                     {!search && (
-                        <Button 
-                            onClick={() => setIsAddOpen(true)} 
-                            className="gap-2 rounded-xl bg-violet-600 hover:bg-violet-700 font-bold"
-                        >
-                            <UserPlus className="size-4" /> Add First Team Member
-                        </Button>
+                        <div className="flex justify-center">
+                            <Button 
+                                onClick={() => {
+                                    setName('');
+                                    setEmail('');
+                                    setSelectedPages(DEFAULT_STAFF_PAGES);
+                                    setIsAddOpen(true);
+                                }} 
+                                className="gap-2 rounded-xl bg-violet-600 hover:bg-violet-700 font-bold h-11 px-6 shadow-md shadow-violet-200"
+                            >
+                                <UserPlus className="size-4" /> Add First Team Member
+                            </Button>
+                        </div>
                     )}
                 </Card>
             ) : (
@@ -281,12 +289,17 @@ export function CompanyStaffClient({ initialStaff }: { initialStaff: StaffUser[]
                                                         confirmText: user.suspended ? 'Reactivate' : 'Suspend Member',
                                                         variant: user.suspended ? 'success' : 'warning',
                                                         onConfirm: async () => {
-                                                            const result = await toggleCompanyStaffSuspension(user.id, !user.suspended);
-                                                            if (result.success) {
-                                                                toast.success(user.suspended ? 'Team member reactivated' : 'Team member suspended');
-                                                                setStaff(staff.map(s => s.id === user.id ? { ...s, suspended: !user.suspended } : s));
-                                                            } else {
-                                                                toast.error(result.error || 'Failed to update status');
+                                                            const toastId = toast.loading(user.suspended ? 'Reactivating team member...' : 'Suspending team member...');
+                                                            try {
+                                                                const result = await toggleCompanyStaffSuspension(user.id, !user.suspended);
+                                                                if (result.success) {
+                                                                    toast.success(user.suspended ? 'Team member reactivated successfully' : 'Team member suspended successfully', { id: toastId });
+                                                                    setStaff(prev => prev.map(s => s.id === user.id ? { ...s, suspended: !user.suspended } : s));
+                                                                } else {
+                                                                    toast.error(result.error || 'Failed to update status', { id: toastId });
+                                                                }
+                                                            } catch (err: any) {
+                                                                toast.error(err.message || 'An error occurred', { id: toastId });
                                                             }
                                                         }
                                                     });
@@ -309,12 +322,17 @@ export function CompanyStaffClient({ initialStaff }: { initialStaff: StaffUser[]
                                                         confirmText: 'Delete Permanently',
                                                         variant: 'danger',
                                                         onConfirm: async () => {
-                                                            const result = await deleteCompanyStaffMember(user.id);
-                                                            if (result.success) {
-                                                                toast.success('Team member deleted');
-                                                                setStaff(staff.filter(s => s.id !== user.id));
-                                                            } else {
-                                                                toast.error(result.error || 'Failed to delete team member');
+                                                            const toastId = toast.loading(`Deleting ${user.name}...`);
+                                                            try {
+                                                                const result = await deleteCompanyStaffMember(user.id);
+                                                                if (result.success) {
+                                                                    toast.success('Team member permanently deleted', { id: toastId });
+                                                                    setStaff(prev => prev.filter(s => s.id !== user.id));
+                                                                } else {
+                                                                    toast.error(result.error || 'Failed to delete team member', { id: toastId });
+                                                                }
+                                                            } catch (err: any) {
+                                                                toast.error(err.message || 'An error occurred', { id: toastId });
                                                             }
                                                         }
                                                     });

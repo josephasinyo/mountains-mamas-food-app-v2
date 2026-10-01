@@ -64,6 +64,14 @@ export async function getCompanyDashboardData() {
         const companyId = await getCompanyId();
         const supabase = createAdminClient();
 
+        // Check if current user is staff with restricted page permissions
+        const supabaseUserClient = await createClient();
+        const { data: { user } } = await supabaseUserClient.auth.getUser();
+
+        const isStaff = user?.user_metadata?.role === 'company_staff' || (user?.user_metadata?.role === 'staff' && user?.user_metadata?.company_id);
+        const accessiblePages: string[] = user?.user_metadata?.accessible_pages || [];
+        const canAccessInvoices = !isStaff || accessiblePages.includes('/company/invoices');
+
         // Get orders for this company
         const { data: orders, error } = await supabase
             .from('orders')
@@ -84,13 +92,17 @@ export async function getCompanyDashboardData() {
         const todayLunches = todayOrders.reduce((sum: number, o: any) => sum + (o.order_items?.reduce((s: number, item: any) => s + (item.quantity || 1), 0) || 0), 0);
         const pendingLunches = pendingOrders.reduce((sum: number, o: any) => sum + (o.order_items?.reduce((s: number, item: any) => s + (item.quantity || 1), 0) || 0), 0);
 
-        // Get pending/unpaid invoices for this company
-        const { data: pendingInvoices } = await supabase
-            .from('invoices')
-            .select('*')
-            .eq('company_id', companyId)
-            .in('status', ['sent', 'overdue'])
-            .order('created_at', { ascending: false });
+        // Get pending/unpaid invoices for this company only if user has permission
+        let pendingInvoices: any[] = [];
+        if (canAccessInvoices) {
+            const { data } = await supabase
+                .from('invoices')
+                .select('*')
+                .eq('company_id', companyId)
+                .in('status', ['sent', 'overdue'])
+                .order('created_at', { ascending: false });
+            pendingInvoices = data || [];
+        }
 
         return {
             success: true,
@@ -99,12 +111,13 @@ export async function getCompanyDashboardData() {
                 todayLunches,
                 pendingLunches
             },
-            recentOrders: orders.slice(0, 5),
-            pendingInvoices: pendingInvoices || []
+            recentOrders: (orders || []).slice(0, 5),
+            pendingInvoices,
+            canAccessInvoices
         };
     } catch (error: any) {
         console.error('Error fetching dashboard data:', error);
-        return { success: false, error: error.message, pendingInvoices: [] };
+        return { success: false, error: error.message, pendingInvoices: [], canAccessInvoices: false };
     }
 }
 
@@ -537,12 +550,23 @@ export async function completeForcedPasswordChange() {
         if (!user) throw new Error('Not authenticated');
 
         const adminSupabase = await createAdminClient();
-        const { error } = await adminSupabase
-            .from('tour_companies')
-            .update({ needs_password_change: false })
-            .eq('email', user.email);
+        
+        // Update user metadata in Supabase Auth (for staff members)
+        await adminSupabase.auth.admin.updateUserById(user.id, {
+            user_metadata: {
+                ...user.user_metadata,
+                needs_password_change: false
+            }
+        });
 
-        if (error) throw error;
+        // Also update tour_companies table if it's a primary company account
+        if (user.email) {
+            await adminSupabase
+                .from('tour_companies')
+                .update({ needs_password_change: false })
+                .eq('email', user.email);
+        }
+
         return { success: true };
     } catch (error: any) {
         console.error('Error completing forced password change:', error);

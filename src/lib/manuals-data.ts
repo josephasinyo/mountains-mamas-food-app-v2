@@ -1705,6 +1705,95 @@ export const COMPANY_MANUAL_DATA: ManualData = {
                     tip: "Instant Guest Sync: Turning a meal toggle off immediately hides that item from your customer ordering portal with zero delay."
                 }
             ]
+        },
+        {
+            id: "team-staff-management",
+            title: "10. How to Create & Onboard Team Members",
+            description: "Purpose: Invite staff members (guides, dispatchers, coordinators) and assign granular permissions for portal access.",
+            paragraphs: [
+                "Follow this 6-step guide to invite a new team member, set up their credentials, and onboard them into your company portal."
+            ],
+            subsections: [
+                {
+                    title: "Step 1: Click '+ Add Team Member'",
+                    steps: [
+                        "Click Staff in the left sidebar.",
+                        "Click the + Add Team Member button in the top-right corner."
+                    ],
+                    image: {
+                        src: "/manuals/company_staff_1_add_member_button.png",
+                        alt: "Staff Management page showing + Add Team Member button",
+                        caption: "Step 1: Staff Management (/company/staff) - Click + Add Team Member"
+                    }
+                },
+                {
+                    title: "Step 2: Enter Details & Select Page Permissions",
+                    paragraphs: [
+                        "• Default Access: Dashboard, Orders, and User Manual are pre-selected for standard staff.",
+                        "• Privacy: Invoices and billing details remain hidden unless explicitly granted."
+                    ],
+                    steps: [
+                        "Enter the member's Full Name and Email Address.",
+                        "Select the section permissions they should have access to.",
+                        "Click Send Invite to dispatch their credentials."
+                    ],
+                    image: {
+                        src: "/manuals/company_staff_2_invite_modal_permissions.png",
+                        alt: "Add Team Member modal with details and permissions checkboxes",
+                        caption: "Step 2: Member Details & Permissions - Fill in name, email, select sections, and click Send Invite"
+                    }
+                },
+                {
+                    title: "Step 3: Receive Invitation Email",
+                    steps: [
+                        "The team member receives a welcome email with their login Email and Temporary Password.",
+                        "Click the Login to Company Portal button in the email."
+                    ],
+                    image: {
+                        src: "/manuals/company_staff_3_invitation_email_credentials.png",
+                        alt: "Welcome invitation email containing temporary login credentials",
+                        caption: "Step 3: Invitation Email - Temporary login credentials and portal access link"
+                    }
+                },
+                {
+                    title: "Step 4: Log In with Temporary Password",
+                    steps: [
+                        "Go to /company/login (or follow the link in the email).",
+                        "Enter the invited Email Address and Temporary Password.",
+                        "Click Sign In to Portal."
+                    ],
+                    image: {
+                        src: "/manuals/company_staff_4_portal_login_temporary_password.png",
+                        alt: "Partner Portal sign in page with email and temporary password",
+                        caption: "Step 4: Sign In (/company/login) - Enter credentials from the invitation email"
+                    }
+                },
+                {
+                    title: "Step 5: Set a Permanent Password",
+                    steps: [
+                        "Enter your new personal password.",
+                        "Retype it in the Confirm New Password field.",
+                        "Click Update Password → to activate your account."
+                    ],
+                    image: {
+                        src: "/manuals/company_staff_5_secure_account_set_password.png",
+                        alt: "Secure Your Account screen with new password fields",
+                        caption: "Step 5: Account Security (/company/reset-password) - Set a permanent personal password"
+                    }
+                },
+                {
+                    title: "Step 6: Access the Partner Portal",
+                    steps: [
+                        "The staff member is logged in and ready to work.",
+                        "The sidebar displays only the sections permitted by their company administrator."
+                    ],
+                    image: {
+                        src: "/manuals/company_staff_6_member_dashboard_active.png",
+                        alt: "Staff portal dashboard showing permitted sidebar sections",
+                        caption: "Step 6: Active Portal - Staff member accesses assigned sections (Dashboard, Orders, User Manual)"
+                    }
+                }
+            ]
         }
     ]
 };
