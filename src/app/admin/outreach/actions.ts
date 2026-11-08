@@ -7,6 +7,7 @@ import fs from 'fs';
 import path from 'path';
 import crypto from 'crypto';
 import { formatTitleCase } from '@/lib/utils';
+import { DEFAULT_PREP_INSTRUCTIONS } from '@/lib/constants';
 
 // ---- Types ----
 interface OutreachLead {
@@ -1218,6 +1219,7 @@ export async function convertLeadToPartner(leadId: string) {
         representative_name: lead.contact_name || null,
         representative_title: lead.title || null,
         mailing_address: lead.mailing_address || null,
+        prep_instructions: DEFAULT_PREP_INSTRUCTIONS,
         payment_method: 'monthly_invoice',
         status: 'active' as const,
         is_active: true,

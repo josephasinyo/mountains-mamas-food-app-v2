@@ -864,8 +864,20 @@ export async function getPaginatedOrders(filters: {
             statsQuery = statsQuery.or(orQuery);
         }
 
-        const { data: statsData } = await statsQuery;
-        const statsOrders = statsData || [];
+        // Fetch all matching stats orders in batches of 1000
+        let statsOrders: any[] = [];
+        let statsPage = 0;
+        const STATS_PAGE_SIZE = 1000;
+
+        while (true) {
+            const { data: batch, error: statsError } = await statsQuery
+                .range(statsPage * STATS_PAGE_SIZE, (statsPage + 1) * STATS_PAGE_SIZE - 1);
+            if (statsError || !batch || batch.length === 0) break;
+            statsOrders = statsOrders.concat(batch);
+            if (batch.length < STATS_PAGE_SIZE) break;
+            statsPage++;
+        }
+
         const pendingCount = statsOrders.filter((o: any) => o.status === 'pending').length;
         const totalLunches = statsOrders.reduce((sum: number, o: any) => {
             if (o.status === 'cancelled') return sum;

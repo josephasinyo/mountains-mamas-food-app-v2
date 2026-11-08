@@ -34,6 +34,7 @@ import {
     UtensilsCrossed, Check
 } from 'lucide-react';
 import { cn, formatDateUS, formatTitleCase } from '@/lib/utils';
+import { DEFAULT_PREP_INSTRUCTIONS } from '@/lib/constants';
 
 
 interface CompaniesClientProps {
@@ -190,7 +191,7 @@ export function CompaniesClient({ initialCompanies }: CompaniesClientProps) {
         setRepresentativeTitle('');
         setMailingAddress('');
         setDiscountPercentage('0');
-        setPrepInstructions('');
+        setPrepInstructions(DEFAULT_PREP_INSTRUCTIONS);
         setUseMountainMamasBranding(false);
         setCustomWelcomeMessage('');
         setAllowedMealTypes(['lunch']);
@@ -207,7 +208,7 @@ export function CompaniesClient({ initialCompanies }: CompaniesClientProps) {
         setRepresentativeTitle(company.representative_title || '');
         setMailingAddress(company.mailing_address || '');
         setDiscountPercentage(String(company.discount_percentage ?? 0));
-        setPrepInstructions(company.prep_instructions || '');
+        setPrepInstructions(company.prep_instructions || DEFAULT_PREP_INSTRUCTIONS);
         setUseMountainMamasBranding(company.company_app_config?.use_mountain_mamas_branding ?? false);
         setCustomWelcomeMessage(company.company_app_config?.custom_welcome_message || '');
         setAllowedMealTypes(company.company_app_config?.allowed_meal_types || ['lunch']);

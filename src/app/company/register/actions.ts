@@ -3,6 +3,7 @@
 import { createAdminClient } from '@/lib/supabase/server';
 import { logActivity } from '@/lib/supabase/activity-log';
 import { sendEmail } from '@/lib/brevo';
+import { DEFAULT_PREP_INSTRUCTIONS } from '@/lib/constants';
 import { headers } from 'next/headers';
 import crypto from 'crypto';
 
@@ -118,6 +119,7 @@ export async function registerCompany(formData: any) {
         representative_name: signerName || null,
         representative_title: signerTitle || null,
         mailing_address: resolvedMailingAddress,
+        prep_instructions: DEFAULT_PREP_INSTRUCTIONS,
         status: 'pending_approval' as const,
         is_active: false,
         needs_password_change: false, // Since they set it themselves

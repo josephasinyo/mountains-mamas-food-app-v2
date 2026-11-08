@@ -8,6 +8,7 @@ import path from 'path';
 import { cookies } from 'next/headers';
 import crypto from 'crypto';
 import { formatTitleCase } from '@/lib/utils';
+import { DEFAULT_PREP_INSTRUCTIONS } from '@/lib/constants';
 
 
 function slugify(text: string): string {
@@ -27,7 +28,7 @@ export async function createCompany(formData: FormData) {
     const paymentMethod = formData.get('payment_method') as string;
     const representativeName = formData.get('representative_name') as string || null;
     const representativeTitle = formData.get('representative_title') as string || null;
-    const prepInstructions = formData.get('prep_instructions') as string || null;
+    const prepInstructions = (formData.get('prep_instructions') as string)?.trim() || DEFAULT_PREP_INSTRUCTIONS;
 
     const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
     const useMountainMamasBranding = formData.get('use_mountain_mamas_branding') === 'true';

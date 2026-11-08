@@ -19,8 +19,25 @@ export default async function AdminDashboard() {
     const today = new Date().toISOString().split('T')[0];
     const monthStart = new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().split('T')[0];
 
+    const fetchAllOrdersData = async () => {
+        let all: any[] = [];
+        let page = 0;
+        const limit = 1000;
+        while (true) {
+            const { data } = await supabaseAdmin
+                .from('orders')
+                .select('status, custom_fields, tour_date, pickup_time, order_items(quantity)')
+                .range(page * limit, (page + 1) * limit - 1);
+            if (!data || data.length === 0) break;
+            all = all.concat(data);
+            if (data.length < limit) break;
+            page++;
+        }
+        return all;
+    };
+
     const [
-        { data: allOrdersData },
+        allOrdersData,
         { data: todayOrdersData },
         { data: pendingOrdersData },
         { count: activeCompanies },
@@ -29,7 +46,7 @@ export default async function AdminDashboard() {
         { data: recentOrders },
         { data: { user } },
     ] = await Promise.all([
-        supabaseAdmin.from('orders').select('status, custom_fields, tour_date, pickup_time, order_items(quantity)'),
+        fetchAllOrdersData(),
         supabaseAdmin.from('orders').select('status, custom_fields, tour_date, pickup_time, order_items(quantity)').eq('tour_date', today),
         supabaseAdmin.from('orders').select('status, custom_fields, tour_date, pickup_time, order_items(quantity)').eq('status', 'pending'),
         supabaseAdmin.from('tour_companies').select('*', { count: 'exact', head: true }).eq('status', 'active'),

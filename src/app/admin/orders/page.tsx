@@ -13,10 +13,23 @@ export default async function OrdersPage() {
         .order('created_at', { ascending: false })
         .range(0, 99);
 
-    const { data: statsOrders } = await supabase
-        .from('orders')
-        .select('*, tour_companies(name, slug, prep_instructions), order_items(*), order_change_requests(*)')
-        .order('created_at', { ascending: false });
+    // Fetch all orders for stats calculation in batches of 1000 to bypass Supabase default limit
+    let statsOrders: any[] = [];
+    let statsPage = 0;
+    const STATS_PAGE_SIZE = 1000;
+
+    while (true) {
+        const { data: batch } = await supabase
+            .from('orders')
+            .select('*, tour_companies(name, slug, prep_instructions), order_items(*), order_change_requests(*)')
+            .order('created_at', { ascending: false })
+            .range(statsPage * STATS_PAGE_SIZE, (statsPage + 1) * STATS_PAGE_SIZE - 1);
+
+        if (!batch || batch.length === 0) break;
+        statsOrders = statsOrders.concat(batch);
+        if (batch.length < STATS_PAGE_SIZE) break;
+        statsPage++;
+    }
 
     const { count: initialPending } = await supabase
         .from('orders')
